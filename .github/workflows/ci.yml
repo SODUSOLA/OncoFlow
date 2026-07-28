@@ -1,0 +1,68 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  ci:
+    runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_DB: oncoflow
+          POSTGRES_USER: oncoflow
+          POSTGRES_PASSWORD: oncoflow_ci
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready -U oncoflow
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 5
+
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 5
+
+    env:
+      DATABASE_URL: postgresql://oncoflow:oncoflow_ci@localhost:5432/oncoflow
+      REDIS_URL: redis://localhost:6379
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - run: npm ci
+
+      - run: npx drizzle-kit migrate
+        name: Run migrations
+
+      - run: npm run typecheck
+        name: Typecheck
+
+      - run: npm run lint
+        name: Lint
+
+      - run: npm run depcruise
+        name: Module boundary check
+
+      - run: node scripts/check-rbac-coverage.mjs
+        name: RBAC coverage check
+
+      - run: npm test
+        name: Tests
