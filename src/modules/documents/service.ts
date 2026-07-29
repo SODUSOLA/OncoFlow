@@ -1,8 +1,8 @@
 import crypto from "node:crypto";
-import { FileRepository } from "./repository";
-import { File } from "./entities/File";
-import { computeFileHash, buildStorageKey, uploadToR2 } from "./services/StorageService";
-import { NotFoundError } from "../../lib/errors";
+import { FileRepository } from "./repository.js";
+import { File } from "./entities/File.js";
+import { computeFileHash, buildStorageKey, uploadToR2 } from "./services/StorageService.js";
+import { NotFoundError } from "../../lib/errors.js";
 
 const fileRepo = new FileRepository();
 

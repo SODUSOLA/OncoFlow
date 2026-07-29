@@ -1,10 +1,10 @@
 import crypto from "node:crypto";
-import { db } from "../../db";
-import { patient, wallet, patientTimeline } from "./schema";
-import { PatientRepository } from "./repository";
-import { Patient } from "./entities/Patient";
-import { Wallet } from "./entities/Wallet";
-import { PATIENT_TIMELINE_EVENT_TYPES } from "./entities/TimelineEvent";
+import { db } from "../../db/index.js";
+import { patient, wallet, patientTimeline } from "./schema.js";
+import { PatientRepository } from "./repository.js";
+import { Patient } from "./entities/Patient.js";
+import { Wallet } from "./entities/Wallet.js";
+import { PATIENT_TIMELINE_EVENT_TYPES } from "./entities/TimelineEvent.js";
 
 const patientRepo = new PatientRepository();
 

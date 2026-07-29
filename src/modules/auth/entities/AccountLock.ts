@@ -1,4 +1,4 @@
-import type { accountLockTypeEnum } from "../../../db/enums";
+import type { accountLockTypeEnum } from "../../../db/enums.js";
 
 type LockType = (typeof accountLockTypeEnum.enumValues)[number];
 

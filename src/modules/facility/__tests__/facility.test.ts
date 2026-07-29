@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import crypto from "node:crypto";
-import { FacilityRepository, DepartmentRepository } from "../repository";
+import { FacilityRepository, DepartmentRepository } from "../repository.js";
 
 const facRepo = new FacilityRepository();
 const deptRepo = new DepartmentRepository();

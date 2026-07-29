@@ -1,4 +1,4 @@
-import type { virusScanStatusEnum } from "../../../db/enums";
+import type { virusScanStatusEnum } from "../../../db/enums.js";
 
 type VirusScanStatus = (typeof virusScanStatusEnum.enumValues)[number];
 

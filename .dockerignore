@@ -1,0 +1,14 @@
+node_modules/
+dist/
+.git/
+.env
+.env.local
+*.tsbuildinfo
+coverage/
+
+# Frontend is a separate deploy target (Cloudflare Pages) — not part of the backend image.
+frontend/
+
+# Not needed inside the build context; docs/tests don't affect the compiled output.
+docs/
+drizzle/

@@ -1,9 +1,9 @@
 import {
   pgTable, uuid, varchar, integer, boolean, timestamp, uniqueIndex,
 } from "drizzle-orm/pg-core";
-import { virusScanStatusEnum } from "../../db/enums";
-import { patient } from "../patient/schema";
-import { user } from "../auth/schema";
+import { virusScanStatusEnum } from "../../db/enums.js";
+import { patient } from "../patient/schema.js";
+import { user } from "../auth/schema.js";
 
 export const file = pgTable("file", {
   id: uuid("id").primaryKey().defaultRandom(),

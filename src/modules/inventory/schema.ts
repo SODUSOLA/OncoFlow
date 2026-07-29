@@ -1,10 +1,10 @@
 import {
   pgTable, uuid, varchar, integer, date, boolean, timestamp,
 } from "drizzle-orm/pg-core";
-import { inventoryMovementTypeEnum, incidentTypeEnum, reconciliationStatusEnum } from "../../db/enums";
-import { facility } from "../facility/schema";
-import { user } from "../auth/schema";
-import { file } from "../documents/schema";
+import { inventoryMovementTypeEnum, incidentTypeEnum, reconciliationStatusEnum } from "../../db/enums.js";
+import { facility } from "../facility/schema.js";
+import { user } from "../auth/schema.js";
+import { file } from "../documents/schema.js";
 
 export const drug = pgTable("drug", {
   id: uuid("id").primaryKey().defaultRandom(),

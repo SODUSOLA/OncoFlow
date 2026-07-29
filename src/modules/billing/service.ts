@@ -1,9 +1,9 @@
 import crypto from "node:crypto";
-import { InvoiceRepository, InvoiceItemRepository, TariffRepository } from "./repository";
-import { Invoice } from "./entities/Invoice";
-import { PaymentService } from "./services/PaymentService";
-import { db } from "../../db";
-import { invoice, invoiceItem } from "./schema";
+import { InvoiceRepository, InvoiceItemRepository, TariffRepository } from "./repository.js";
+import { Invoice } from "./entities/Invoice.js";
+import { PaymentService } from "./services/PaymentService.js";
+import { db } from "../../db/index.js";
+import { invoice, invoiceItem } from "./schema.js";
 
 const invoiceRepo = new InvoiceRepository();
 const itemRepo = new InvoiceItemRepository();

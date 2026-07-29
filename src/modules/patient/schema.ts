@@ -2,9 +2,9 @@ import {
   pgTable, uuid, varchar, text, date, boolean, bigint, timestamp, uniqueIndex, index,
 } from "drizzle-orm/pg-core";
 import { sql } from "drizzle-orm";
-import { patientStatusEnum } from "../../db/enums";
-import { user } from "../auth/schema";
-import { facility } from "../facility/schema";
+import { patientStatusEnum } from "../../db/enums.js";
+import { user } from "../auth/schema.js";
+import { facility } from "../facility/schema.js";
 
 export const patient = pgTable("patient", {
   id: uuid("id").primaryKey().defaultRandom(),
@@ -66,7 +66,10 @@ export const patientTimeline = pgTable("patient_timeline", {
 export const wallet = pgTable("wallet", {
   id: uuid("id").primaryKey().defaultRandom(),
   patientId: uuid("patient_id").notNull().references(() => patient.id),
-  balanceKobo: bigint("balance_kobo", { mode: "bigint" }).notNull().default(0n),
+  // No DB-level default: every insert site (PatientService, seed/patient.ts) sets this
+  // explicitly. A literal `0n` default here breaks drizzle-kit's snapshot diffing —
+  // JSON.stringify can't serialize a raw BigInt when building the migration snapshot.
+  balanceKobo: bigint("balance_kobo", { mode: "bigint" }).notNull(),
   createdAt: timestamp("created_at").notNull().defaultNow(),
   updatedAt: timestamp("updated_at").notNull().defaultNow(),
 }, (t) => ({

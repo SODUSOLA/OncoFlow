@@ -2,10 +2,10 @@ import { Router } from "express";
 import {
   createAppointmentHandler, getAppointmentHandler, listAppointmentsHandler,
   updateAppointmentStatusHandler, addParticipantHandler, deleteAppointmentHandler,
-} from "./controller";
-import { requirePermission } from "../../lib/rbac";
-import { validateBody, validateParams, validateQuery } from "../../lib/validation";
-import { appointmentStatusEnum, appointmentTypeEnum } from "../../db/enums";
+} from "./controller.js";
+import { requirePermission } from "../../lib/rbac.js";
+import { validateBody, validateParams, validateQuery } from "../../lib/validation.js";
+import { appointmentStatusEnum, appointmentTypeEnum } from "../../db/enums.js";
 import { z } from "zod";
 
 const appointmentIdParamSchema = z.object({

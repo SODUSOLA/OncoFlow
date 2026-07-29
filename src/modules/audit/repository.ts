@@ -1,5 +1,5 @@
-import { db } from "../../db";
-import { auditLog } from "./schema";
+import { db } from "../../db/index.js";
+import { auditLog } from "./schema.js";
 
 export type AuditAction =
   | "CREATE"

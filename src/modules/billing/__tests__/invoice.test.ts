@@ -1,12 +1,12 @@
 import { describe, it, expect, beforeAll } from "vitest";
 import request from "supertest";
-import { createApp } from "../../../app";
-import { db } from "../../../db";
+import { createApp } from "../../../app.js";
+import { db } from "../../../db/index.js";
 import { eq, and, sql } from "drizzle-orm";
 import crypto from "node:crypto";
-import { facility } from "../../facility/schema";
-import { patient, wallet } from "../../patient/schema";
-import { serviceClassification, tariff, invoice, invoiceItem } from "../schema";
+import { facility } from "../../facility/schema.js";
+import { patient, wallet } from "../../patient/schema.js";
+import { serviceClassification, tariff, invoice, invoiceItem } from "../schema.js";
 
 const app = createApp();
 const base = "/invoices";
@@ -59,7 +59,7 @@ beforeAll(async () => {
 
 describe("Invoice entity — state machine", () => {
   it("transitions DRAFT → SENT → PAID", async () => {
-    const { Invoice } = await import("../entities/Invoice");
+    const { Invoice } = await import("../entities/Invoice.js");
     const inv = new Invoice({
       id: crypto.randomUUID(), patientId: testPatientId, facilityId: testFacilityId,
       classificationId: testClassificationId, status: "DRAFT", totalKobo: 200000n, appointmentId: null, issuedAt: null,
@@ -71,7 +71,7 @@ describe("Invoice entity — state machine", () => {
   });
 
   it("rejects invalid transition DRAFT → PAID", async () => {
-    const { Invoice } = await import("../entities/Invoice");
+    const { Invoice } = await import("../entities/Invoice.js");
     const inv = new Invoice({
       id: crypto.randomUUID(), patientId: testPatientId, facilityId: testFacilityId,
       classificationId: testClassificationId, status: "DRAFT", totalKobo: 200000n, appointmentId: null, issuedAt: null,
@@ -136,7 +136,7 @@ describe("InvoiceItem — append-only guard", () => {
 
     await request(app).post(`${base}/${invoiceId}/send`);
 
-    const { InvoiceService } = await import("../service");
+    const { InvoiceService } = await import("../service.js");
     const svc = new InvoiceService();
     await expect(
       svc.addItem(invoiceId, "NETWORK_FEE", 10000n),

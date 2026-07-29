@@ -1,5 +1,5 @@
 import crypto from "node:crypto";
-import { AuditRepository, type AuditAction, type AuditResult } from "./repository";
+import { AuditRepository, type AuditAction, type AuditResult } from "./repository.js";
 
 const auditRepo = new AuditRepository();
 

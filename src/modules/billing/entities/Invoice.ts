@@ -1,4 +1,4 @@
-import type { invoiceStatusEnum, invoiceComponentEnum } from "../../../db/enums";
+import type { invoiceStatusEnum, invoiceComponentEnum } from "../../../db/enums.js";
 
 type InvoiceStatus = (typeof invoiceStatusEnum.enumValues)[number];
 type InvoiceComponent = (typeof invoiceComponentEnum.enumValues)[number];

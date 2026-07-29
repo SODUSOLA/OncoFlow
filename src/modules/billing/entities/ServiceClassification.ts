@@ -1,4 +1,4 @@
-import type { serviceClassificationNameEnum } from "../../../db/enums";
+import type { serviceClassificationNameEnum } from "../../../db/enums.js";
 
 type ClassificationName = (typeof serviceClassificationNameEnum.enumValues)[number];
 

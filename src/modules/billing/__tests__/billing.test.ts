@@ -1,9 +1,9 @@
 import { describe, it, expect, beforeAll } from "vitest";
 import crypto from "node:crypto";
-import { ServiceClassificationRepository, TariffRepository } from "../repository";
-import { db } from "../../../db";
-import { serviceClassification, tariff } from "../schema";
-import { facility } from "../../facility/schema";
+import { ServiceClassificationRepository, TariffRepository } from "../repository.js";
+import { db } from "../../../db/index.js";
+import { serviceClassification, tariff } from "../schema.js";
+import { facility } from "../../facility/schema.js";
 
 const classRepo = new ServiceClassificationRepository();
 const tariffRepo = new TariffRepository();
@@ -69,7 +69,7 @@ describe("TariffRepository", () => {
   });
 
   it("computes total from tariff components", async () => {
-    const { Tariff } = await import("../entities/ServiceClassification");
+    const { Tariff } = await import("../entities/ServiceClassification.js");
     const t = new Tariff({
       id: "00000000-0000-0000-0000-000000000001",
       facilityId: "00000000-0000-0000-0000-000000000002",

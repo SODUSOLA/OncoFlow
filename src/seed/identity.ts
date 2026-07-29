@@ -1,7 +1,7 @@
-import { db } from "../db";
+import { db } from "../db/index.js";
 import { sql } from "drizzle-orm";
 import crypto from "node:crypto";
-import { role, permission, rolePermission } from "../db/schema";
+import { role, permission, rolePermission } from "../db/schema.js";
 
 const ROLES = [
   "PATIENT",

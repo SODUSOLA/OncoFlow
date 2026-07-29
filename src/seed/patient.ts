@@ -1,6 +1,6 @@
-import { db } from "../db";
+import { db } from "../db/index.js";
 import crypto from "node:crypto";
-import { facility, patient, patientAddress, emergencyContact, wallet, patientTimeline } from "../db/schema";
+import { facility, patient, patientAddress, emergencyContact, wallet, patientTimeline } from "../db/schema.js";
 
 const PATIENTS = [
   {

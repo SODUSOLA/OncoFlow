@@ -1,9 +1,9 @@
 import type { Request, Response } from "express";
 import crypto from "node:crypto";
-import { PatientService } from "./service";
-import { PatientRepository, AddressRepository, EmergencyContactRepository, WalletRepository } from "./repository";
-import { Patient } from "./entities/Patient";
-import { Wallet } from "./entities/Wallet";
+import { PatientService } from "./service.js";
+import { PatientRepository, AddressRepository, EmergencyContactRepository, WalletRepository } from "./repository.js";
+import { Patient } from "./entities/Patient.js";
+import { Wallet } from "./entities/Wallet.js";
 
 const patientSvc = new PatientService();
 const patientRepo = new PatientRepository();

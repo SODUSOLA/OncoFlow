@@ -1,6 +1,6 @@
-import { db } from "../../db";
+import { db } from "../../db/index.js";
 import { eq, sql, and, gt } from "drizzle-orm";
-import { countdownCase } from "./schema";
+import { countdownCase } from "./schema.js";
 
 export class CountdownCaseRepository {
   async findById(id: string) {

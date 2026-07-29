@@ -1,6 +1,6 @@
 import { Router } from "express";
-import { listCountdownCasesHandler } from "./controller";
-import { requirePermission } from "../../lib/rbac";
+import { listCountdownCasesHandler } from "./controller.js";
+import { requirePermission } from "../../lib/rbac.js";
 
 const router = Router();
 

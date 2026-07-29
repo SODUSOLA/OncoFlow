@@ -3,10 +3,10 @@ import {
 } from "drizzle-orm/pg-core";
 import {
   conversationTypeEnum, conversationStatusEnum, messageTypeEnum, messageStatusEnum, meetingStatusEnum,
-} from "../../db/enums";
-import { patient } from "../patient/schema";
-import { user } from "../auth/schema";
-import { appointment } from "../appointment/schema";
+} from "../../db/enums.js";
+import { patient } from "../patient/schema.js";
+import { user } from "../auth/schema.js";
+import { appointment } from "../appointment/schema.js";
 
 export const conversation = pgTable("conversation", {
   id: uuid("id").primaryKey().defaultRandom(),

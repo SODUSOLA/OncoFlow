@@ -1,6 +1,6 @@
 import type { Request, Response } from "express";
-import { CountdownCaseRepository } from "./repository";
-import { CountdownCase } from "./entities/CountdownCase";
+import { CountdownCaseRepository } from "./repository.js";
+import { CountdownCase } from "./entities/CountdownCase.js";
 
 const caseRepo = new CountdownCaseRepository();
 

@@ -1,4 +1,4 @@
-import type { countdownStatusEnum } from "../../../db/enums";
+import type { countdownStatusEnum } from "../../../db/enums.js";
 
 type CountdownStatus = (typeof countdownStatusEnum.enumValues)[number];
 

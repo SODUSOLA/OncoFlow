@@ -1,6 +1,6 @@
 import type { Request, Response } from "express";
-import { AuthService } from "./service";
-import { SESSION_COOKIE_NAME, getSessionCookieOptions } from "../../lib/session-cookie";
+import { AuthService } from "./service.js";
+import { SESSION_COOKIE_NAME, getSessionCookieOptions } from "../../lib/session-cookie.js";
 
 const auth = new AuthService();
 

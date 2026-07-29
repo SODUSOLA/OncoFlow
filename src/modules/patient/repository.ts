@@ -1,8 +1,8 @@
-import { db } from "../../db";
+import { db } from "../../db/index.js";
 import { eq, sql, and } from "drizzle-orm";
 import {
   patient, patientAddress, emergencyContact, wallet, patientTimeline,
-} from "./schema";
+} from "./schema.js";
 
 export class PatientRepository {
   async findById(id: string) {

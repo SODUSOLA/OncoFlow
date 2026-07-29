@@ -1,12 +1,12 @@
 import { describe, it, expect, beforeAll } from "vitest";
 import crypto from "node:crypto";
-import { CountdownCase } from "../entities/CountdownCase";
-import { CountdownCaseRepository } from "../repository";
-import { CountdownJobService } from "../services/CountdownJobService";
-import { db } from "../../../db";
-import { countdownCase } from "../schema";
-import { patient } from "../../patient/schema";
-import { facility } from "../../facility/schema";
+import { CountdownCase } from "../entities/CountdownCase.js";
+import { CountdownCaseRepository } from "../repository.js";
+import { CountdownJobService } from "../services/CountdownJobService.js";
+import { db } from "../../../db/index.js";
+import { countdownCase } from "../schema.js";
+import { patient } from "../../patient/schema.js";
+import { facility } from "../../facility/schema.js";
 import { eq, sql } from "drizzle-orm";
 
 const caseRepo = new CountdownCaseRepository();

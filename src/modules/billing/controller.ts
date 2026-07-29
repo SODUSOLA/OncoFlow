@@ -1,8 +1,8 @@
 import type { Request, Response } from "express";
-import { InvoiceService } from "./service";
-import { InvoiceRepository, ServiceClassificationRepository } from "./repository";
-import { Invoice } from "./entities/Invoice";
-import { ServiceClassification } from "./entities/ServiceClassification";
+import { InvoiceService } from "./service.js";
+import { InvoiceRepository, ServiceClassificationRepository } from "./repository.js";
+import { Invoice } from "./entities/Invoice.js";
+import { ServiceClassification } from "./entities/ServiceClassification.js";
 
 const invoiceSvc = new InvoiceService();
 const invoiceRepo = new InvoiceRepository();

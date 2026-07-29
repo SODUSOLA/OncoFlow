@@ -1,5 +1,5 @@
 import { pgTable, uuid, varchar, boolean, timestamp, text } from "drizzle-orm/pg-core";
-import { facilityStatusEnum } from "../../db/enums";
+import { facilityStatusEnum } from "../../db/enums.js";
 
 export const facility = pgTable("facility", {
   id: uuid("id").primaryKey().defaultRandom(),

@@ -1,6 +1,6 @@
-import { db } from "../../db";
+import { db } from "../../db/index.js";
 import { eq, sql, and } from "drizzle-orm";
-import { facility, department } from "./schema";
+import { facility, department } from "./schema.js";
 
 export class FacilityRepository {
   async findById(id: string) {

@@ -1,9 +1,9 @@
 import { describe, it, expect, beforeAll, afterAll } from "vitest";
 import request from "supertest";
 import express from "express";
-import { requirePermission, invalidatePermissionCache } from "./rbac";
-import { db } from "../db";
-import { closeRedis, connectRedis } from "./redis";
+import { requirePermission, invalidatePermissionCache } from "./rbac.js";
+import { db } from "../db/index.js";
+import { closeRedis, connectRedis } from "./redis.js";
 import { sql, eq } from "drizzle-orm";
 
 function createTestApp() {
@@ -25,7 +25,7 @@ let roleId: string;
 
 beforeAll(async () => {
   await connectRedis();
-  const { role, permission, rolePermission, user, userRole } = await import("../modules/auth/schema");
+  const { role, permission, rolePermission, user, userRole } = await import("../modules/auth/schema.js");
 
   const existing = await db.execute<{ id: string }>(sql`
     SELECT id FROM "role" WHERE name = 'VIRTUAL_MEDICAL_OFFICER' LIMIT 1
@@ -45,7 +45,7 @@ beforeAll(async () => {
 });
 
 afterAll(async () => {
-  const { permission, rolePermission } = await import("../modules/auth/schema");
+  const { permission, rolePermission } = await import("../modules/auth/schema.js");
   await db.delete(rolePermission).where(eq(rolePermission.permissionId, permissionId)).catch(() => {});
   await db.delete(permission).where(eq(permission.id, permissionId)).catch(() => {});
   await closeRedis();
@@ -62,7 +62,7 @@ it("returns 403 for user without permission", async () => {
 });
 
 it("returns 200 for user with permission", async () => {
-  const { user, userRole } = await import("../modules/auth/schema");
+  const { user, userRole } = await import("../modules/auth/schema.js");
   const uid = crypto.randomUUID();
   await db.insert(user).values({ id: uid, email: `rbac-pass-${Date.now()}@example.com`, passwordHash: "test" });
   await db.insert(userRole).values({ userId: uid, roleId });
@@ -73,7 +73,7 @@ it("returns 200 for user with permission", async () => {
 });
 
 it("cache hit works", async () => {
-  const { user, userRole } = await import("../modules/auth/schema");
+  const { user, userRole } = await import("../modules/auth/schema.js");
   const uid = crypto.randomUUID();
   await db.insert(user).values({ id: uid, email: `rbac-cache-${Date.now()}@example.com`, passwordHash: "test" });
   await db.insert(userRole).values({ userId: uid, roleId });
@@ -91,7 +91,7 @@ it("cache hit works", async () => {
 });
 
 it("cache invalidation reflects role revocation", async () => {
-  const { user, userRole } = await import("../modules/auth/schema");
+  const { user, userRole } = await import("../modules/auth/schema.js");
   const uid = crypto.randomUUID();
   await db.insert(user).values({ id: uid, email: `rbac-revoke-${Date.now()}@example.com`, passwordHash: "test" });
   await db.insert(userRole).values({ userId: uid, roleId });

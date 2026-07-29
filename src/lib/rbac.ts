@@ -1,8 +1,22 @@
 import type { Request, Response, NextFunction } from "express";
-import { db } from "../db";
-import { getRedis } from "./redis";
+import { db } from "../db/index.js";
+import { getRedis } from "./redis.js";
 import { sql } from "drizzle-orm";
-import { AppError, ForbiddenError, UnauthorizedError } from "./errors";
+import { AppError, ForbiddenError, UnauthorizedError } from "./errors.js";
+// Cross-module coupling (global-conventions.md §2): every access-denied decision must produce
+// an append-only AuditLog row, so the RBAC gate itself is the one place that has to know about it.
+import { auditService } from "../modules/audit/index.js";
+
+// Audit logging is a side effect, not the security decision itself — a write failure here
+// (e.g. actorId with no matching user row in a test/edge case) must never turn a clean
+// 401/403 into a 500.
+async function safeAuditLog(event: Parameters<typeof auditService.recordEvent>[0]): Promise<void> {
+  try {
+    await auditService.recordEvent(event);
+  } catch {
+    // best-effort only
+  }
+}
 
 export interface AuthenticatedRequest extends Request {
   userId: string;
@@ -74,6 +88,9 @@ export function requirePermission(resource: string, action: PermissionAction) {
 
       const perms = await resolveUserPermissions(userId);
       if (!userHasPermission(perms, resource, action)) {
+        await safeAuditLog({
+          actorId: userId, action: "ACCESS_DENIED", resource, result: "DENIED", ip: req.ip,
+        });
         next(new ForbiddenError());
         return;
       }
@@ -107,12 +124,18 @@ export function requirePermissionScoped(
 
       const perms = await resolveUserPermissions(authed.userId);
       if (!userHasPermission(perms, resource, action)) {
+        await safeAuditLog({
+          actorId: authed.userId, action: "ACCESS_DENIED", resource, result: "DENIED", ip: req.ip,
+        });
         next(new ForbiddenError());
         return;
       }
 
       const resourceFacilityId = getResourceFacilityId(req);
       if (resourceFacilityId && !comparator(authed.facilityId, resourceFacilityId)) {
+        await safeAuditLog({
+          actorId: authed.userId, action: "ACCESS_DENIED", resource, result: "DENIED", ip: req.ip,
+        });
         next(new ForbiddenError("Forbidden: facility mismatch"));
         return;
       }

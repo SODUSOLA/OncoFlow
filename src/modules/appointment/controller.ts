@@ -1,7 +1,7 @@
 import type { Request, Response } from "express";
-import { appointmentStatusEnum } from "../../db/enums";
-import { AppointmentService } from "./service";
-import { AppointmentRepository } from "./repository";
+import { appointmentStatusEnum } from "../../db/enums.js";
+import { AppointmentService } from "./service.js";
+import { AppointmentRepository } from "./repository.js";
 
 const apptSvc = new AppointmentService();
 const apptRepo = new AppointmentRepository();

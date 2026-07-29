@@ -1,9 +1,9 @@
 import { describe, it, expect, beforeAll } from "vitest";
 import request from "supertest";
-import { createApp } from "../../../app";
-import { db } from "../../../db";
+import { createApp } from "../../../app.js";
+import { db } from "../../../db/index.js";
 import crypto from "node:crypto";
-import { facility } from "../../facility/schema";
+import { facility } from "../../facility/schema.js";
 
 const app = createApp();
 const base = "/patients";

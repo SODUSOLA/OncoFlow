@@ -5,11 +5,11 @@ import {
   serviceClassificationNameEnum, invoiceStatusEnum, invoiceComponentEnum, payoutRoleEnum,
   billingCycleEnum, paymentStatusEnum, subscriptionStatusEnum, walletTransactionTypeEnum,
   payeeOwnerTypeEnum, payoutStatusEnum, payoutSourceTypeEnum,
-} from "../../db/enums";
-import { patient, wallet } from "../patient/schema";
-import { appointment } from "../appointment/schema";
-import { facility } from "../facility/schema";
-import { user } from "../auth/schema";
+} from "../../db/enums.js";
+import { patient, wallet } from "../patient/schema.js";
+import { appointment } from "../appointment/schema.js";
+import { facility } from "../facility/schema.js";
+import { user } from "../auth/schema.js";
 
 export const serviceClassification = pgTable("service_classification", {
   id: uuid("id").primaryKey().defaultRandom(),

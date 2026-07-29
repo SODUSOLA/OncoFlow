@@ -1,1 +1,1 @@
-export { File, type FileData } from "./File";
+export { File, type FileData } from "./File.js";

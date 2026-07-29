@@ -5,10 +5,10 @@ import {
   logoutHandler,
   verifyMfaHandler,
   profileHandler,
-} from "./controller";
-import { requirePermission } from "../../lib/rbac";
-import { validateBody } from "../../lib/validation";
-import { createRateLimiter } from "../../lib/rate-limit";
+} from "./controller.js";
+import { requirePermission } from "../../lib/rbac.js";
+import { validateBody } from "../../lib/validation.js";
+import { createRateLimiter } from "../../lib/rate-limit.js";
 import { z } from "zod";
 
 const authLoginSchema = z.object({

@@ -1,7 +1,7 @@
 import { describe, it, expect, afterAll } from "vitest";
 import request from "supertest";
-import { createApp } from "../../../app";
-import { db } from "../../../db";
+import { createApp } from "../../../app.js";
+import { db } from "../../../db/index.js";
 import { eq } from "drizzle-orm";
 
 const app = createApp();
@@ -11,7 +11,7 @@ let sessionCookie: string | null = null;
 
 afterAll(async () => {
   if (createdUserId) {
-    const { user } = await import("../schema");
+    const { user } = await import("../schema.js");
     await db.delete(user).where(eq(user.id, createdUserId)).catch(() => {});
   }
 });
@@ -92,7 +92,7 @@ it("logout revokes session", async () => {
   expect(res.status).toBe(200);
   expect(res.body.ok).toBe(true);
 
-  const { session: sessionTbl } = await import("../schema");
+  const { session: sessionTbl } = await import("../schema.js");
   const row = await db.select().from(sessionTbl).where(eq(sessionTbl.id, sid)).limit(1);
   expect(row[0]?.revokedAt).not.toBeNull();
 });

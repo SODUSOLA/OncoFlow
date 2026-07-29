@@ -1,7 +1,7 @@
-import { db } from "../../db";
+import { db } from "../../db/index.js";
 import { eq, and, sql } from "drizzle-orm";
-import { appointment, appointmentParticipant } from "./schema";
-import type { AppointmentStatus } from "./entities/Appointment";
+import { appointment, appointmentParticipant } from "./schema.js";
+import type { AppointmentStatus } from "./entities/Appointment.js";
 
 export class AppointmentRepository {
   async findById(id: string) {

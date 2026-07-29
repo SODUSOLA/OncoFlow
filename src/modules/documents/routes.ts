@@ -1,7 +1,7 @@
 import { Router } from "express";
-import { uploadFileHandler, getFileHandler, listPatientFilesHandler } from "./controller";
-import { requirePermission } from "../../lib/rbac";
-import { validateBody, validateParams, validateQuery } from "../../lib/validation";
+import { uploadFileHandler, getFileHandler, listPatientFilesHandler } from "./controller.js";
+import { requirePermission } from "../../lib/rbac.js";
+import { validateBody, validateParams, validateQuery } from "../../lib/validation.js";
 import { z } from "zod";
 
 const uploadSchema = z.object({

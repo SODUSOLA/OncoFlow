@@ -1,6 +1,6 @@
 import type { NextFunction, Request, Response } from "express";
-import { getRedis } from "./redis";
-import { RateLimitError } from "./errors";
+import { getRedis } from "./redis.js";
+import { RateLimitError } from "./errors.js";
 
 type RateLimitConfig = {
   windowMs: number;

@@ -1,7 +1,7 @@
-import { seedIdentity } from "./identity";
-import { seedFacilities } from "./facility";
-import { seedPatients } from "./patient";
-import { seedBilling } from "./billing";
+import { seedIdentity } from "./identity.js";
+import { seedFacilities } from "./facility.js";
+import { seedPatients } from "./patient.js";
+import { seedBilling } from "./billing.js";
 
 async function seed() {
   console.log("--- Seeding OncoFlow ---");

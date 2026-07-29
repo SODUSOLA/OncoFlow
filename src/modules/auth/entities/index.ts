@@ -1,1 +1,1 @@
-export { User, type UserData } from "./User";
+export { User, type UserData } from "./User.js";

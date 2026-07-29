@@ -1,1 +1,1 @@
-export { CountdownCase, type CountdownCaseData } from "./CountdownCase";
+export { CountdownCase, type CountdownCaseData } from "./CountdownCase.js";

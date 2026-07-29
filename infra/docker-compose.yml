@@ -1,3 +1,9 @@
+# Rebuild from a clean state:
+#   docker compose -f infra/docker-compose.yml down          # stop + remove containers (keeps pgdata volume)
+#   docker compose -f infra/docker-compose.yml build --no-cache app
+#   docker compose -f infra/docker-compose.yml up -d
+# Add `-v` to `down` if you also want to wipe the Postgres volume and start the DB from scratch.
+
 services:
   postgres:
     image: postgres:16-alpine
@@ -26,6 +32,11 @@ services:
       POOL_MODE: transaction
       MAX_CLIENT_CONN: "100"
       DEFAULT_POOL_SIZE: "25"
+      # Postgres 16 defaults to scram-sha-256 password storage; this image's own default
+      # (auth_type=md5) can't complete a login against that and fails with "wrong password
+      # type". Verified locally: without this, `drizzle-kit migrate` against :6432 never
+      # gets past authentication.
+      AUTH_TYPE: scram-sha-256
     ports:
       - "6432:5432"
     depends_on:
@@ -63,13 +74,17 @@ services:
       R2_ACCESS_KEY_ID: ${R2_ACCESS_KEY_ID:-}
       R2_SECRET_ACCESS_KEY: ${R2_SECRET_ACCESS_KEY:-}
       R2_BUCKET_NAME: ${R2_BUCKET_NAME:-oncoflow-uploads}
+      R2_PUBLIC_URL: ${R2_PUBLIC_URL:-}
+      VIDEO_SDK_KEY: ${VIDEO_SDK_KEY:-}
     depends_on:
       pgbouncer:
         condition: service_started
       redis:
         condition: service_healthy
     healthcheck:
-      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:8080/health"]
+      # 127.0.0.1, not localhost — see infra/Dockerfile's HEALTHCHECK comment (IPv6 loopback
+      # resolves first inside the container, nginx only binds IPv4).
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://127.0.0.1:8080/health"]
       interval: 30s
       timeout: 5s
       start_period: 10s

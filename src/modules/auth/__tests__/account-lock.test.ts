@@ -1,10 +1,10 @@
 import { describe, it, expect } from "vitest";
 import request from "supertest";
 import { eq } from "drizzle-orm";
-import { createApp } from "../../../app";
+import { createApp } from "../../../app.js";
 import crypto from "node:crypto";
-import { db } from "../../../db";
-import { accountLock, misconductFlag } from "../schema";
+import { db } from "../../../db/index.js";
+import { accountLock, misconductFlag } from "../schema.js";
 
 const app = createApp();
 const base = "/auth";

@@ -1,6 +1,6 @@
 import type { NextFunction, Request, Response } from "express";
 import type { ZodIssue, ZodTypeAny } from "zod";
-import { ValidationError } from "./errors";
+import { ValidationError } from "./errors.js";
 
 function formatIssues(issues: ZodIssue[]) {
   return issues.map((issue) => ({

@@ -4,13 +4,13 @@ import {
 import {
   countdownStatusEnum, physicalCaseTypeEnum, physicalCaseStatusEnum, appointmentCardStatusEnum,
   treatmentStatusEnum, labRequestStatusEnum, clinicalDecisionEnum, prescriptionStatusEnum,
-} from "../../db/enums";
-import { user } from "../auth/schema";
-import { patient } from "../patient/schema";
-import { appointment } from "../appointment/schema";
-import { conversation } from "../messaging/schema";
-import { file } from "../documents/schema";
-import { invoice } from "../billing/schema";
+} from "../../db/enums.js";
+import { user } from "../auth/schema.js";
+import { patient } from "../patient/schema.js";
+import { appointment } from "../appointment/schema.js";
+import { conversation } from "../messaging/schema.js";
+import { file } from "../documents/schema.js";
+import { invoice } from "../billing/schema.js";
 
 export const countdownCase = pgTable("countdown_case", {
   id: uuid("id").primaryKey().defaultRandom(),

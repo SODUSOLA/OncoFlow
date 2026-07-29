@@ -1,6 +1,6 @@
-import { db } from "../db";
+import { db } from "../db/index.js";
 import crypto from "node:crypto";
-import { facility, department } from "../db/schema";
+import { facility, department } from "../db/schema.js";
 
 const FACILITIES = [
   {

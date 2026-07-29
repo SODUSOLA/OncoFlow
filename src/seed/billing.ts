@@ -1,7 +1,7 @@
-import { db } from "../db";
+import { db } from "../db/index.js";
 import { sql } from "drizzle-orm";
 import crypto from "node:crypto";
-import { serviceClassification, tariff, facility } from "../db/schema";
+import { serviceClassification, tariff, facility } from "../db/schema.js";
 
 const CLASSIFICATIONS: { name: "SUBSCRIPTION" | "CONSULTATION" | "DRUG_ADMINISTRATION" | "CHEMOTHERAPY" | "GENERAL_ADMISSION" | "PROCEDURE"; cappedNetworkFeeKobo: number }[] = [
   { name: "SUBSCRIPTION", cappedNetworkFeeKobo: 0 },

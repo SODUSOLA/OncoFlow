@@ -4,14 +4,19 @@ import {
 import { sql } from "drizzle-orm";
 import {
   userStatusEnum, roleNameEnum, accountLockTypeEnum, misconductStatusEnum,
-} from "../../db/enums";
-import { conversation } from "../messaging/schema";
+} from "../../db/enums.js";
+import { conversation } from "../messaging/schema.js";
+import { facility } from "../facility/schema.js";
 
 export const user = pgTable("user", {
   id: uuid("id").primaryKey().defaultRandom(),
   email: varchar("email", { length: 255 }).notNull(),
   passwordHash: text("password_hash").notNull(),
   status: userStatusEnum("status").notNull().default("ACTIVE"),
+  // Nullable: patients, Super Admin, and the two national-level roles aren't tied to one facility.
+  // Populated for facility-scoped staff (QA officers, oncologists, nurses, regional admins) so
+  // requirePermissionScoped() (src/lib/rbac.ts) can compare against a resource's facility_id.
+  facilityId: uuid("facility_id").references(() => facility.id),
   lastLogin: timestamp("last_login"),
   mfaEnabled: boolean("mfa_enabled").notNull().default(false),
   createdAt: timestamp("created_at").notNull().defaultNow(),
@@ -22,6 +27,7 @@ export const user = pgTable("user", {
   emailUniqueActive: uniqueIndex("user_email_unique_active").on(t.email).where(sql`${t.isDeleted} = false`),
   statusIdx: index("user_status_idx").on(t.status),
   lastLoginIdx: index("user_last_login_idx").on(t.lastLogin),
+  facilityIdx: index("user_facility_idx").on(t.facilityId),
 }));
 
 export const role = pgTable("role", {

@@ -1,5 +1,5 @@
 import bcrypt from "bcryptjs";
-import type { userStatusEnum } from "../../../db/enums";
+import type { userStatusEnum } from "../../../db/enums.js";
 
 type UserStatus = (typeof userStatusEnum.enumValues)[number];
 
@@ -15,6 +15,7 @@ export interface UserData {
   email: string;
   passwordHash: string;
   status: UserStatus;
+  facilityId: string | null;
   lastLogin: Date | null;
   mfaEnabled: boolean;
   isDeleted: boolean;
@@ -39,6 +40,9 @@ export class User {
   }
   get mfaEnabled(): boolean {
     return this.data.mfaEnabled;
+  }
+  get facilityId(): string | null {
+    return this.data.facilityId;
   }
   get passwordHash(): string {
     return this.data.passwordHash;
@@ -79,6 +83,7 @@ export class User {
       id: this.data.id,
       email: this.data.email,
       status: this.data.status,
+      facilityId: this.data.facilityId,
       lastLogin: this.data.lastLogin,
       mfaEnabled: this.data.mfaEnabled,
     };

@@ -1,10 +1,10 @@
 import {
   pgTable, uuid, varchar, boolean, timestamp, index,
 } from "drizzle-orm/pg-core";
-import { appointmentTypeEnum, appointmentStatusEnum, transferStatusEnum } from "../../db/enums";
-import { patient } from "../patient/schema";
-import { user } from "../auth/schema";
-import { facility } from "../facility/schema";
+import { appointmentTypeEnum, appointmentStatusEnum, transferStatusEnum } from "../../db/enums.js";
+import { patient } from "../patient/schema.js";
+import { user } from "../auth/schema.js";
+import { facility } from "../facility/schema.js";
 
 export const appointment = pgTable("appointment", {
   id: uuid("id").primaryKey().defaultRandom(),

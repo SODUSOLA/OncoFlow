@@ -1,10 +1,10 @@
 import { describe, it, expect, beforeAll, vi } from "vitest";
 import request from "supertest";
 import crypto from "node:crypto";
-import { createApp } from "../../../app";
-import { FileRepository } from "../repository";
-import { File } from "../entities/File";
-import { computeFileHash, buildStorageKey } from "../services/StorageService";
+import { createApp } from "../../../app.js";
+import { FileRepository } from "../repository.js";
+import { File } from "../entities/File.js";
+import { computeFileHash, buildStorageKey } from "../services/StorageService.js";
 
 vi.mock("@aws-sdk/client-s3", () => {
   const send = vi.fn().mockResolvedValue({});

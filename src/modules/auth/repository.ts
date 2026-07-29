@@ -1,9 +1,9 @@
-import { db } from "../../db";
+import { db } from "../../db/index.js";
 import { eq, sql, and } from "drizzle-orm";
 import {
   user, role, permission, userRole, rolePermission, session,
   accountLock, misconductFlag,
-} from "./schema";
+} from "./schema.js";
 
 export class UserRepository {
   async findById(id: string) {

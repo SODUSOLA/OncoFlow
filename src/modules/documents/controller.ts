@@ -1,6 +1,6 @@
 import type { Request, Response } from "express";
-import { FileService } from "./service";
-import { FileRepository } from "./repository";
+import { FileService } from "./service.js";
+import { FileRepository } from "./repository.js";
 
 const fileSvc = new FileService();
 const fileRepo = new FileRepository();
@@ -12,7 +12,7 @@ export async function uploadFileHandler(req: Request, res: Response) {
       res.status(400).json({ error: "mimeType and content (base64) are required" });
       return;
     }
-    const uploadedBy = req.userId ?? "unknown";
+    const uploadedBy = (req as Request & { userId?: string }).userId ?? "unknown";
     const buffer = Buffer.from(content as string, "base64");
     const result = await fileSvc.upload({ patientId, uploadedBy, mimeType, content: buffer });
     res.status(201).json(result);

@@ -1,16 +1,29 @@
 import crypto from "node:crypto";
 import { sql } from "drizzle-orm";
-import { db } from "../../db";
-import { session } from "./schema";
+import { db } from "../../db/index.js";
+import { session } from "./schema.js";
 import {
   UserRepository,
   SessionRepository,
   UserRoleRepository,
   RoleRepository,
   AccountLockRepository,
-} from "./repository";
-import { User } from "./entities/User";
-import { invalidatePermissionCache } from "../../lib/rbac";
+} from "./repository.js";
+import { User } from "./entities/User.js";
+import { invalidatePermissionCache } from "../../lib/rbac.js";
+// Cross-module coupling (global-conventions.md §2): login/logout are explicitly-required
+// audit events, so AuthService is one of the few callers of AuditService besides rbac.ts.
+import { auditService } from "../audit/index.js";
+
+// Audit logging is a side effect, not the auth decision itself — a write failure here must
+// never turn a clean login/logout outcome into an unhandled error (see src/lib/rbac.ts).
+async function safeAuditLog(event: Parameters<typeof auditService.recordEvent>[0]): Promise<void> {
+  try {
+    await auditService.recordEvent(event);
+  } catch {
+    // best-effort only
+  }
+}
 
 const SESSION_DURATION_MS = 7 * 24 * 60 * 60 * 1000;
 
@@ -44,21 +57,25 @@ export class AuthService {
   async login(email: string, password: string, device: string, ip: string) {
     const userRow = await this.userRepo.findByEmail(email);
     if (!userRow) {
+      await safeAuditLog({ action: "LOGIN", resource: "auth", result: "DENIED", ip });
       throw new Error("Invalid credentials");
     }
 
     const entity = new User(userRow);
     if (entity.status === "LOCKED" || entity.status === "SUSPENDED") {
+      await safeAuditLog({ actorId: userRow.id, action: "LOGIN", resource: "auth", result: "DENIED", ip });
       throw new Error("Account is locked or suspended");
     }
 
     const activeLock = await this.lockRepo.findActiveByUser(userRow.id);
     if (activeLock) {
+      await safeAuditLog({ actorId: userRow.id, action: "LOGIN", resource: "auth", result: "DENIED", ip });
       throw new Error("Account is locked or suspended");
     }
 
     const valid = await entity.verifyPassword(password);
     if (!valid) {
+      await safeAuditLog({ actorId: userRow.id, action: "LOGIN", resource: "auth", result: "DENIED", ip });
       throw new Error("Invalid credentials");
     }
 
@@ -79,6 +96,8 @@ export class AuthService {
 
     const roles = await this.userRoleRepo.findByUser(userRow.id);
 
+    await safeAuditLog({ actorId: userRow.id, action: "LOGIN", resource: "auth", result: "ALLOWED", ip });
+
     return {
       sessionId: sessionRow.id,
       expiresAt: sessionRow.expiresAt,
@@ -91,7 +110,11 @@ export class AuthService {
   }
 
   async logout(sessionId: string) {
+    const sessionRow = await this.sessionRepo.findById(sessionId);
     await this.sessionRepo.revoke(sessionId);
+    if (sessionRow) {
+      await safeAuditLog({ actorId: sessionRow.userId, action: "LOGOUT", resource: "auth", result: "ALLOWED" });
+    }
   }
 
   async getSession(sessionId: string) {

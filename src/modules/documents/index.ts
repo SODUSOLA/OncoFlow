@@ -1,5 +1,5 @@
-export { FileRepository } from "./repository";
-export { FileService } from "./service";
-export { File, type FileData } from "./entities";
-export { documentRoutes } from "./routes";
-export { computeFileHash, buildStorageKey } from "./services/StorageService";
+export { FileRepository } from "./repository.js";
+export { FileService } from "./service.js";
+export { File, type FileData } from "./entities/index.js";
+export { documentRoutes } from "./routes.js";
+export { computeFileHash, buildStorageKey } from "./services/StorageService.js";

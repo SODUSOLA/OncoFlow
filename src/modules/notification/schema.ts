@@ -1,6 +1,6 @@
 import { pgTable, uuid, varchar, timestamp } from "drizzle-orm/pg-core";
-import { notificationStatusEnum } from "../../db/enums";
-import { user } from "../auth/schema";
+import { notificationStatusEnum } from "../../db/enums.js";
+import { user } from "../auth/schema.js";
 
 export const notification = pgTable("notification", {
   id: uuid("id").primaryKey().defaultRandom(),

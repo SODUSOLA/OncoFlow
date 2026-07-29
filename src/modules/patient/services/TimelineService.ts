@@ -1,6 +1,6 @@
 import crypto from "node:crypto";
-import { PatientTimelineRepository } from "../repository";
-import type { PatientTimelineEventType } from "../entities/TimelineEvent";
+import { PatientTimelineRepository } from "../repository.js";
+import type { PatientTimelineEventType } from "../entities/TimelineEvent.js";
 
 const timelineRepo = new PatientTimelineRepository();
 

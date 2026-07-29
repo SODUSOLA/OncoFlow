@@ -1,8 +1,8 @@
-import type { AppointmentStatus } from "./entities/Appointment";
-import { Appointment } from "./entities/Appointment";
-import { canConfirmOnDay } from "./entities/cutoff";
-import { AppointmentRepository, AppointmentParticipantRepository } from "./repository";
-import { appointmentTypeEnum } from "../../db/enums";
+import type { AppointmentStatus } from "./entities/Appointment.js";
+import { Appointment } from "./entities/Appointment.js";
+import { canConfirmOnDay } from "./entities/cutoff.js";
+import { AppointmentRepository, AppointmentParticipantRepository } from "./repository.js";
+import { appointmentTypeEnum } from "../../db/enums.js";
 
 type AppointmentType = (typeof appointmentTypeEnum.enumValues)[number];
 

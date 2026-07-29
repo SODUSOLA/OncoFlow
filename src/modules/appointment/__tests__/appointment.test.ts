@@ -1,14 +1,14 @@
 import { describe, it, expect, beforeAll } from "vitest";
 import crypto from "node:crypto";
-import { Appointment } from "../entities/Appointment";
-import { isAfter2pmNigeria, canConfirmOnDay } from "../entities/cutoff";
-import { AppointmentRepository, AppointmentParticipantRepository } from "../repository";
-import { AppointmentService } from "../service";
-import { db } from "../../../db";
-import { appointment } from "../schema";
-import { patient } from "../../patient/schema";
-import { facility } from "../../facility/schema";
-import { user } from "../../auth/schema";
+import { Appointment } from "../entities/Appointment.js";
+import { isAfter2pmNigeria, canConfirmOnDay } from "../entities/cutoff.js";
+import { AppointmentRepository, AppointmentParticipantRepository } from "../repository.js";
+import { AppointmentService } from "../service.js";
+import { db } from "../../../db/index.js";
+import { appointment } from "../schema.js";
+import { patient } from "../../patient/schema.js";
+import { facility } from "../../facility/schema.js";
+import { user } from "../../auth/schema.js";
 
 const apptRepo = new AppointmentRepository();
 const apptSvc = new AppointmentService();

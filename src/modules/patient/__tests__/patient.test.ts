@@ -1,12 +1,12 @@
 import { describe, it, expect } from "vitest";
 import crypto from "node:crypto";
-import { PatientService } from "../service";
+import { PatientService } from "../service.js";
 import {
   PatientRepository, AddressRepository, EmergencyContactRepository, WalletRepository,
-} from "../repository";
-import { db } from "../../../db";
-import { patient, patientAddress, emergencyContact, wallet } from "../schema";
-import { facility } from "../../facility/schema";
+} from "../repository.js";
+import { db } from "../../../db/index.js";
+import { patient, patientAddress, emergencyContact, wallet } from "../schema.js";
+import { facility } from "../../facility/schema.js";
 
 const patientSvc = new PatientService();
 const patientRepo = new PatientRepository();

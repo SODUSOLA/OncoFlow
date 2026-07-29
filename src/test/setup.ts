@@ -1,7 +1,7 @@
 import crypto from "node:crypto";
-import { db } from "../db";
+import { db } from "../db/index.js";
 import { and, eq } from "drizzle-orm";
-import { role, user, userRole } from "../db/schema";
+import { role, user, userRole } from "../db/schema.js";
 
 const roleName = "SUPER_ADMIN";
 const testEmail = `test-super-admin-${process.pid}@example.com`;

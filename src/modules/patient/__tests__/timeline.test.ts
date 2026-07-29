@@ -1,9 +1,9 @@
 import { describe, it, expect } from "vitest";
 import crypto from "node:crypto";
-import { timelineService } from "../services/TimelineService";
-import { db } from "../../../db";
-import { patient } from "../schema";
-import { facility } from "../../facility/schema";
+import { timelineService } from "../services/TimelineService.js";
+import { db } from "../../../db/index.js";
+import { patient } from "../schema.js";
+import { facility } from "../../facility/schema.js";
 
 async function createTestPatient() {
   const facRows = await db.insert(facility).values({

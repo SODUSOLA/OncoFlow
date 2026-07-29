@@ -4,9 +4,9 @@ import {
   updatePatientHandler, deletePatientHandler,
   createAddressHandler, createEmergencyContactHandler,
   getWalletHandler,
-} from "./controller";
-import { requirePermission } from "../../lib/rbac";
-import { validateBody, validateParams, validateQuery } from "../../lib/validation";
+} from "./controller.js";
+import { requirePermission } from "../../lib/rbac.js";
+import { validateBody, validateParams, validateQuery } from "../../lib/validation.js";
 import { z } from "zod";
 
 const patientIdParamSchema = z.object({

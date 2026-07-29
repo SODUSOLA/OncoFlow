@@ -1,4 +1,4 @@
-import type { patientStatusEnum } from "../../../db/enums";
+import type { patientStatusEnum } from "../../../db/enums.js";
 
 type PatientStatus = (typeof patientStatusEnum.enumValues)[number];
 

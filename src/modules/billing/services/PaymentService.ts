@@ -1,10 +1,10 @@
 import crypto from "node:crypto";
-import { db } from "../../../db";
-import { payment, walletTransaction, invoice } from "../schema";
-import { InvoiceRepository } from "../repository";
-import { Invoice } from "../entities/Invoice";
+import { db } from "../../../db/index.js";
+import { payment, walletTransaction, invoice } from "../schema.js";
+import { InvoiceRepository } from "../repository.js";
+import { Invoice } from "../entities/Invoice.js";
 import { eq, sql } from "drizzle-orm";
-import { wallet } from "../../../db/schema";
+import { wallet } from "../../../db/schema.js";
 
 const invoiceRepo = new InvoiceRepository();
 

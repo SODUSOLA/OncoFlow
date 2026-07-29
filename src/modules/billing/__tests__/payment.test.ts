@@ -1,12 +1,12 @@
 import { describe, it, expect, beforeAll } from "vitest";
 import crypto from "node:crypto";
 import { eq, sql } from "drizzle-orm";
-import { PaymentService } from "../services/PaymentService";
-import { db } from "../../../db";
-import { payment, walletTransaction } from "../schema";
-import { facility } from "../../facility/schema";
-import { patient, wallet } from "../../patient/schema";
-import { invoice, serviceClassification, tariff } from "../schema";
+import { PaymentService } from "../services/PaymentService.js";
+import { db } from "../../../db/index.js";
+import { payment, walletTransaction } from "../schema.js";
+import { facility } from "../../facility/schema.js";
+import { patient, wallet } from "../../patient/schema.js";
+import { invoice, serviceClassification, tariff } from "../schema.js";
 
 const paySvc = new PaymentService();
 

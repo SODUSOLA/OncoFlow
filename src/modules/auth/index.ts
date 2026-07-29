@@ -1,4 +1,4 @@
-export { authRoutes } from "./routes";
-export { AuthService } from "./service";
-export { UserRepository, SessionRepository, RoleRepository, UserRoleRepository, PermissionRepository, AccountLockRepository } from "./repository";
-export { User } from "./entities/User";
+export { authRoutes } from "./routes.js";
+export { AuthService } from "./service.js";
+export { UserRepository, SessionRepository, RoleRepository, UserRoleRepository, PermissionRepository, AccountLockRepository } from "./repository.js";
+export { User } from "./entities/User.js";
