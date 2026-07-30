@@ -1,11 +1,10 @@
 import { Redis } from "ioredis";
-
-const redisUrl = process.env.REDIS_URL ?? "redis://localhost:6379";
+import { config } from "../config.js";
 
 let client: Redis | null = null;
 
 export function getRedis(): Redis {
-  client ??= new Redis(redisUrl, {
+  client ??= new Redis(config.redisUrl, {
     lazyConnect: true,
     keyPrefix: "oncoflow:",
   });

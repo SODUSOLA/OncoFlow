@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeAll, afterAll } from "vitest";
 import request from "supertest";
 import express from "express";
-import { requirePermission, invalidatePermissionCache } from "./rbac.js";
+import { requirePermission, requireRole, invalidatePermissionCache } from "./rbac.js";
 import { db } from "../db/index.js";
 import { closeRedis, connectRedis } from "./redis.js";
 import { sql, eq } from "drizzle-orm";
@@ -15,6 +15,20 @@ function createTestApp() {
     }
     next();
   }, requirePermission("test.resource", "read"), (_req, res) => {
+    res.json({ ok: true });
+  });
+  return app;
+}
+
+function createRoleTestApp() {
+  const app = express();
+  app.get("/role-test", (req, _res, next) => {
+    const userId = req.headers["x-test-user"];
+    if (typeof userId === "string") {
+      (req as unknown as { userId: string }).userId = userId;
+    }
+    next();
+  }, requireRole("VIRTUAL_MEDICAL_OFFICER"), (_req, res) => {
     res.json({ ok: true });
   });
   return app;
@@ -111,4 +125,31 @@ it("cache invalidation reflects role revocation", async () => {
   expect(res2.status).toBe(403);
 
   await db.delete(user).where(eq(user.id, uid)).catch(() => {});
+});
+
+describe("requireRole", () => {
+  it("returns 401 when no userId is set", async () => {
+    const res = await request(createRoleTestApp()).get("/role-test");
+    expect(res.status).toBe(401);
+  });
+
+  it("returns 403 for a user with the wrong role", async () => {
+    const { user } = await import("../modules/auth/schema.js");
+    const uid = crypto.randomUUID();
+    await db.insert(user).values({ id: uid, email: `role-wrong-${Date.now()}@example.com`, passwordHash: "test" });
+    const res = await request(createRoleTestApp()).get("/role-test").set("x-test-user", uid);
+    expect(res.status).toBe(403);
+    await db.delete(user).where(eq(user.id, uid)).catch(() => {});
+  });
+
+  it("returns 200 for a user with the required role", async () => {
+    const { user, userRole } = await import("../modules/auth/schema.js");
+    const uid = crypto.randomUUID();
+    await db.insert(user).values({ id: uid, email: `role-right-${Date.now()}@example.com`, passwordHash: "test" });
+    await db.insert(userRole).values({ userId: uid, roleId });
+    const res = await request(createRoleTestApp()).get("/role-test").set("x-test-user", uid);
+    expect(res.status).toBe(200);
+    await db.delete(userRole).where(eq(userRole.userId, uid)).catch(() => {});
+    await db.delete(user).where(eq(user.id, uid)).catch(() => {});
+  });
 });

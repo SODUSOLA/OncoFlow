@@ -1,9 +1,7 @@
 import type { Request, Response } from "express";
 import { FileService } from "./service.js";
-import { FileRepository } from "./repository.js";
 
 const fileSvc = new FileService();
-const fileRepo = new FileRepository();
 
 export async function uploadFileHandler(req: Request, res: Response) {
   try {

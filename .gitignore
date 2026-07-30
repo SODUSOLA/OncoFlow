@@ -1,3 +1,4 @@
+# Applies at any depth — covers apps/api, apps/dashboard, apps/web, packages/ui alike.
 node_modules/
 dist/
 .env
@@ -5,4 +6,5 @@ dist/
 *.tsbuildinfo
 coverage/
 .turbo/
+.wrangler/
 AGENTS.md

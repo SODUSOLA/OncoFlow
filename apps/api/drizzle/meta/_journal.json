@@ -15,6 +15,27 @@
       "when": 1785307209214,
       "tag": "0001_smart_earthquake",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1785407651976,
+      "tag": "0002_chief_moon_knight",
+      "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "7",
+      "when": 1785443320766,
+      "tag": "0003_majestic_maginty",
+      "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1785449504719,
+      "tag": "0004_modern_living_tribunal",
+      "breakpoints": true
     }
   ]
 }

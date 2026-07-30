@@ -3,6 +3,7 @@ import {
 } from "drizzle-orm/pg-core";
 import {
   conversationTypeEnum, conversationStatusEnum, messageTypeEnum, messageStatusEnum, meetingStatusEnum,
+  transcriptionAssignmentStatusEnum,
 } from "../../db/enums.js";
 import { patient } from "../patient/schema.js";
 import { user } from "../auth/schema.js";
@@ -48,6 +49,17 @@ export const meeting = pgTable("meeting", {
   provider: varchar("provider", { length: 100 }).notNull(),
   roomId: varchar("room_id", { length: 255 }).notNull(),
   status: meetingStatusEnum("status").notNull().default("SCHEDULED"),
+  // F3.11 two-stage sign-off, mirrors ClinicalDecision's qa_*/director_* pattern (ADR-0012).
+  // Lives on Meeting (not per Transcript row) because "has this meeting's transcript been
+  // reviewed" is a meeting-level state, and a meeting typically has many transcript segments.
+  // Stage 1: the Scribe completing corrections on every segment.
+  transcriptCorrectedAt: timestamp("transcript_corrected_at"),
+  transcriptCorrectedBy: uuid("transcript_corrected_by").references(() => user.id),
+  // Stage 2: the respective consultant (the appointment's assigned oncologist) signing off —
+  // this, not stage 1, is what makes the transcript eligible to be referenced from a
+  // ClinicalNote (Sprint 4).
+  transcriptSignedOffAt: timestamp("transcript_signed_off_at"),
+  transcriptSignedOffBy: uuid("transcript_signed_off_by").references(() => user.id),
   createdAt: timestamp("created_at").notNull().defaultNow(),
   updatedAt: timestamp("updated_at").notNull().defaultNow(),
 }, (t) => ({
@@ -63,3 +75,25 @@ export const transcript = pgTable("transcript", {
   editedAt: timestamp("edited_at"),
   createdAt: timestamp("created_at").notNull().defaultNow(),
 });
+
+// F3.11 (docs/build-plan/13-scribe-role-definition.md §3) — deliberately its own aggregate,
+// not fields bolted onto Transcript or Meeting: assignment/workflow state (who's working on
+// it, by when) is a different concern from the transcript content itself, same reasoning as
+// keeping Transcript separate from Meeting.
+export const transcriptionAssignment = pgTable("transcription_assignment", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  meetingId: uuid("meeting_id").notNull().references(() => meeting.id),
+  scribeId: uuid("scribe_id").references(() => user.id),
+  status: transcriptionAssignmentStatusEnum("status").notNull().default("QUEUED"),
+  queuedAt: timestamp("queued_at").notNull().defaultNow(),
+  claimedAt: timestamp("claimed_at"),
+  completedAt: timestamp("completed_at"),
+  slaDeadline: timestamp("sla_deadline"),
+  slaBreached: boolean("sla_breached").notNull().default(false),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+}, (t) => ({
+  meetingIdUnique: uniqueIndex("transcription_assignment_meeting_id_unique").on(t.meetingId),
+  scribeStatusIdx: index("transcription_assignment_scribe_status_idx").on(t.scribeId, t.status),
+  slaIdx: index("transcription_assignment_sla_idx").on(t.slaDeadline),
+}));

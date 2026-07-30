@@ -1,5 +1,6 @@
 import type { Request, Response } from "express";
 import crypto from "node:crypto";
+import type { AuthenticatedRequest } from "../../lib/rbac.js";
 import { PatientService } from "./service.js";
 import { PatientRepository, AddressRepository, EmergencyContactRepository, WalletRepository } from "./repository.js";
 import { Patient } from "./entities/Patient.js";
@@ -37,8 +38,8 @@ export async function registerPatientHandler(req: Request, res: Response) {
     });
   } catch (err) {
     const message = err instanceof Error ? err.message : "Internal server error";
-    const status = message === "Patient with this ID already exists" ? 409 : 400;
-    res.status(status).json({ error: message });
+    const isDuplicate = message === "Patient with this ID already exists" || message === "It looks like you may already have an account";
+    res.status(isDuplicate ? 409 : 400).json({ error: message });
   }
 }
 
@@ -60,10 +61,17 @@ export async function getPatientHandler(req: Request, res: Response) {
     const contacts = await contactRepo.findByPatient(patientRow.id);
     const wallet = await walletRepo.findByPatient(patientRow.id);
 
+    // FR-04: raw phone (own or an emergency contact's) only ever goes back to the patient
+    // themselves — every staff role gets it masked, with no exception based on permissions.
+    const isSelf = patientRow.userId !== null && patientRow.userId === (req as AuthenticatedRequest).userId;
+
     res.json({
-      patient: entity.toJSON(),
+      patient: isSelf ? entity.toOwnJSON() : entity.toJSON(),
       addresses: addresses.map((a) => ({ id: a.id, country: a.country, state: a.state, city: a.city, address: a.address })),
-      emergencyContacts: contacts.map((c) => ({ id: c.id, name: c.name, relationship: c.relationship, phone: c.phone })),
+      emergencyContacts: contacts.map((c) => ({
+        id: c.id, name: c.name, relationship: c.relationship,
+        ...(isSelf ? { phone: c.phone } : {}),
+      })),
       wallet: wallet ? new Wallet(wallet).toJSON() : null,
     });
   } catch {
@@ -85,12 +93,14 @@ export async function searchPatientsHandler(req: Request, res: Response) {
     let filtered = patients;
     if (q) {
       const query = q.toLowerCase();
+      // Deliberately no phone match here — this is a staff-facing search (FR-04), and even
+      // using phone as a search key without displaying it back is a side-channel for staff
+      // to probe for/confirm a patient's number.
       filtered = patients.filter(
         (p) =>
           p.firstName.toLowerCase().includes(query) ||
           p.lastName.toLowerCase().includes(query) ||
-          p.uniquePatientId.toLowerCase().includes(query) ||
-          p.phone.includes(query),
+          p.uniquePatientId.toLowerCase().includes(query),
       );
     }
 

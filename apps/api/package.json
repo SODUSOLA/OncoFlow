@@ -15,10 +15,10 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "test:coverage": "vitest run --coverage",
-    "db:generate": "drizzle-kit generate",
+    "db:generate": "tsc --outDir dist && drizzle-kit generate",
     "db:migrate": "drizzle-kit migrate",
-    "db:push": "drizzle-kit push",
-    "db:studio": "drizzle-kit studio",
+    "db:push": "tsc --outDir dist && drizzle-kit push",
+    "db:studio": "tsc --outDir dist && drizzle-kit studio",
     "depcruise": "depcruise src --config .dependency-cruiser.js",
     "ci": "npm run typecheck && npm run lint && npm run depcruise && npm run test"
   },

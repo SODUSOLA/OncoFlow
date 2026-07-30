@@ -5,10 +5,21 @@ dist/
 .env.local
 *.tsbuildinfo
 coverage/
+.wrangler/
 
-# Frontend is a separate deploy target (Cloudflare Pages) — not part of the backend image.
-frontend/
+# apps/dashboard and apps/web are separate deploy targets (Cloudflare Pages), not part of
+# this backend image. infra/Dockerfile still COPYs their package.json individually so npm
+# can resolve the workspace graph against the root lockfile — keep those two exceptions in
+# sync with the Dockerfile's COPY lines if either changes.
+apps/dashboard/**
+!apps/dashboard/package.json
+apps/web/**
+!apps/web/package.json
 
-# Not needed inside the build context; docs/tests don't affect the compiled output.
+# packages/ui: same story — only its package.json is needed for workspace resolution.
+packages/ui/**
+!packages/ui/package.json
+
+# Not needed inside the build context; docs/tests/migrations don't affect the compiled output.
 docs/
-drizzle/
+apps/api/drizzle/

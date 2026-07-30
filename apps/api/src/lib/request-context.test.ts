@@ -3,7 +3,7 @@ import request from "supertest";
 import express from "express";
 import cookieParser from "cookie-parser";
 import crypto from "node:crypto";
-import { eq } from "drizzle-orm";
+import { eq, sql } from "drizzle-orm";
 import { db } from "../db/index.js";
 import { attachRequestContext } from "./request-context.js";
 import { requirePermissionScoped } from "./rbac.js";
@@ -37,8 +37,16 @@ beforeAll(async () => {
   const { role, permission, rolePermission, user, userRole, session } = await import("../modules/auth/schema.js");
   const { facility } = await import("../modules/facility/schema.js");
 
-  roleId = crypto.randomUUID();
-  await db.insert(role).values({ id: roleId, name: "ONSITE_NURSING_OFFICER", description: "Test" });
+  // SELECT-then-insert, not a blind insert: re-running this suite against a persistent
+  // (non-ephemeral) local Postgres — as opposed to CI's fresh-container-per-run — would
+  // otherwise collide on role_name_unique on the second run.
+  const existingRole = await db.execute<{ id: string }>(sql`SELECT id FROM "role" WHERE name = 'ONSITE_NURSING_OFFICER' LIMIT 1`);
+  if (existingRole.length > 0) {
+    roleId = existingRole[0]!.id;
+  } else {
+    roleId = crypto.randomUUID();
+    await db.insert(role).values({ id: roleId, name: "ONSITE_NURSING_OFFICER", description: "Test" });
+  }
 
   permissionId = crypto.randomUUID();
   await db.insert(permission).values({ id: permissionId, resource: "test.scoped", action: "read", description: "Test" });

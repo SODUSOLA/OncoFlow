@@ -29,6 +29,8 @@ export class Patient {
   get status() { return this.data.status; }
   get facilityId() { return this.data.facilityId; }
 
+  // FR-04 / Data Classification §8: phone is Restricted — never rendered to a staff-facing
+  // response, under any circumstance, regardless of that staff member's role or permissions.
   toJSON() {
     return {
       id: this.data.id,
@@ -42,5 +44,11 @@ export class Patient {
       status: this.data.status,
       facilityId: this.data.facilityId,
     };
+  }
+
+  // Only for the patient viewing their own record (PRD §7.1: "Own PII & Contact" = Own for
+  // Patient, None/masked for every staff role) — callers must verify identity before using this.
+  toOwnJSON() {
+    return { ...this.toJSON(), phone: this.data.phone };
   }
 }

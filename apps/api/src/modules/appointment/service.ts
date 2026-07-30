@@ -1,6 +1,7 @@
 import type { AppointmentStatus } from "./entities/Appointment.js";
 import { Appointment } from "./entities/Appointment.js";
 import { canConfirmOnDay } from "./entities/cutoff.js";
+import { checkWeeklyStructure } from "./entities/weekly-structure.js";
 import { AppointmentRepository, AppointmentParticipantRepository } from "./repository.js";
 import { appointmentTypeEnum } from "../../db/enums.js";
 
@@ -16,9 +17,16 @@ export class AppointmentService {
     facilityId: string;
     appointmentType: string;
     scheduledAt: string;
+    overrideWeeklyStructure?: boolean;
   }) {
     if (!appointmentTypeEnum.enumValues.includes(data.appointmentType as AppointmentType)) {
       throw new Error("Unsupported appointment type");
+    }
+
+    const scheduledAt = new Date(data.scheduledAt);
+    if (!data.overrideWeeklyStructure) {
+      const structure = checkWeeklyStructure(data.appointmentType, scheduledAt);
+      if (!structure.allowed) throw new Error(structure.reason);
     }
 
     const row = await repo.create({
@@ -26,7 +34,7 @@ export class AppointmentService {
       oncologistId: data.oncologistId ?? null,
       facilityId: data.facilityId,
       appointmentType: data.appointmentType as AppointmentType,
-      scheduledAt: new Date(data.scheduledAt),
+      scheduledAt,
     });
     return new Appointment(row).toJSON();
   }

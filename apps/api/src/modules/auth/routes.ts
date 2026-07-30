@@ -6,7 +6,7 @@ import {
   verifyMfaHandler,
   profileHandler,
 } from "./controller.js";
-import { requirePermission } from "../../lib/rbac.js";
+import { requirePermission, requireAuthenticated } from "../../lib/rbac.js";
 import { validateBody } from "../../lib/validation.js";
 import { createRateLimiter } from "../../lib/rate-limit.js";
 import { z } from "zod";
@@ -43,9 +43,14 @@ const mfaRateLimiter = createRateLimiter({
 
 const router = Router();
 
+// public — pre-authentication by definition, rate-limited above instead of permission-gated
 router.post("/auth/register", authRateLimiter, validateBody(authRegisterSchema), registerHandler);
+// public — same
 router.post("/auth/login", authRateLimiter, validateBody(authLoginSchema), loginHandler);
-router.post("/auth/logout", requirePermission("auth", "update"), logoutHandler);
+// Logging yourself out shouldn't require a role-specific permission grant — any authenticated
+// account can revoke its own session. (This bug was masked in tests until request-context.ts's
+// TEST_USER_ID override was fixed to defer to a real session cookie when one is present.)
+router.post("/auth/logout", requireAuthenticated(), logoutHandler);
 router.post("/auth/mfa/verify", mfaRateLimiter, requirePermission("auth", "update"), validateBody(verifyMfaSchema), verifyMfaHandler);
 router.get("/auth/profile", requirePermission("user", "read"), profileHandler);
 

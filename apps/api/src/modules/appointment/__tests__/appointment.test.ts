@@ -204,3 +204,54 @@ describe("AppointmentService — status update with cutoff", () => {
     // if before 2PM, we can't test the rejection case naturally — skip
   });
 });
+
+describe("AppointmentService — weekly structure (FR-20)", () => {
+  const monday = "2026-08-10T10:00:00Z";
+  const tuesday = "2026-08-11T10:00:00Z";
+  const wednesday = "2026-08-12T10:00:00Z";
+
+  it("allows a virtual consult on Monday", async () => {
+    const result = await apptSvc.createAppointment({
+      patientId: testPatientId, facilityId: testFacilityId, appointmentType: "VIRTUAL", scheduledAt: monday,
+    });
+    expect(result.id).toBeDefined();
+  });
+
+  it("allows chemotherapy on Wednesday", async () => {
+    const result = await apptSvc.createAppointment({
+      patientId: testPatientId, facilityId: testFacilityId, appointmentType: "CHEMOTHERAPY", scheduledAt: wednesday,
+    });
+    expect(result.id).toBeDefined();
+  });
+
+  it("rejects a virtual consult on Tuesday", async () => {
+    await expect(
+      apptSvc.createAppointment({
+        patientId: testPatientId, facilityId: testFacilityId, appointmentType: "VIRTUAL", scheduledAt: tuesday,
+      }),
+    ).rejects.toThrow("Mon/Wed/Fri");
+  });
+
+  it("allows a physical consult on Tuesday", async () => {
+    const result = await apptSvc.createAppointment({
+      patientId: testPatientId, facilityId: testFacilityId, appointmentType: "PHYSICAL", scheduledAt: tuesday,
+    });
+    expect(result.id).toBeDefined();
+  });
+
+  it("rejects a procedure on Monday", async () => {
+    await expect(
+      apptSvc.createAppointment({
+        patientId: testPatientId, facilityId: testFacilityId, appointmentType: "PROCEDURE", scheduledAt: monday,
+      }),
+    ).rejects.toThrow("Tue/Thu");
+  });
+
+  it("allows an off-structure booking when overrideWeeklyStructure is set", async () => {
+    const result = await apptSvc.createAppointment({
+      patientId: testPatientId, facilityId: testFacilityId, appointmentType: "PROCEDURE", scheduledAt: monday,
+      overrideWeeklyStructure: true,
+    });
+    expect(result.id).toBeDefined();
+  });
+});

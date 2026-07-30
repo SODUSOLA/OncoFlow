@@ -59,6 +59,7 @@ const walletQuerySchema = z.object({
 
 const router = Router();
 
+// public — patient self-registration from the marketing site (Design Spec §6.1 Registration Flow)
 router.post("/patients", validateBody(registerPatientSchema), registerPatientHandler);
 router.get("/patients", requirePermission("patient", "read"), validateQuery(patientSearchQuerySchema), searchPatientsHandler);
 router.get("/patients/:id", requirePermission("patient", "read"), validateParams(patientIdParamSchema), getPatientHandler);

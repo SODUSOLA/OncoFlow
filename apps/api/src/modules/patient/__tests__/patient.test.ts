@@ -72,6 +72,60 @@ describe("PatientService — registerPatient", () => {
       }),
     ).rejects.toThrow("Patient with this ID already exists");
   });
+
+  it("rejects a second active ID for the same person (name+DOB+facility) — FR-01", async () => {
+    const fac = await createFacility();
+    await patientSvc.registerPatient({
+      uniquePatientId: "OC-" + crypto.randomUUID().slice(0, 8).toUpperCase(),
+      firstName: "Ngozi",
+      lastName: "Adeyemi",
+      dob: "1992-07-04",
+      gender: "Female",
+      phone: "+2348033333333",
+      email: "ngozi." + crypto.randomUUID().slice(0, 4) + "@example.com",
+      facilityId: fac.id,
+    });
+
+    await expect(
+      patientSvc.registerPatient({
+        uniquePatientId: "OC-" + crypto.randomUUID().slice(0, 8).toUpperCase(),
+        firstName: "ngozi", // case-insensitive match on purpose
+        lastName: "ADEYEMI",
+        dob: "1992-07-04",
+        gender: "Female",
+        phone: "+2348044444444",
+        email: "ngozi2." + crypto.randomUUID().slice(0, 4) + "@example.com",
+        facilityId: fac.id,
+      }),
+    ).rejects.toThrow("It looks like you may already have an account");
+  });
+
+  it("allows the same name+DOB at a different facility (no cross-facility false positive)", async () => {
+    const facA = await createFacility();
+    const facB = await createFacility();
+    await patientSvc.registerPatient({
+      uniquePatientId: "OC-" + crypto.randomUUID().slice(0, 8).toUpperCase(),
+      firstName: "Tunde",
+      lastName: "Bello",
+      dob: "1988-11-20",
+      gender: "Male",
+      phone: "+2348055555555",
+      email: "tunde." + crypto.randomUUID().slice(0, 4) + "@example.com",
+      facilityId: facA.id,
+    });
+
+    const second = await patientSvc.registerPatient({
+      uniquePatientId: "OC-" + crypto.randomUUID().slice(0, 8).toUpperCase(),
+      firstName: "Tunde",
+      lastName: "Bello",
+      dob: "1988-11-20",
+      gender: "Male",
+      phone: "+2348066666666",
+      email: "tunde2." + crypto.randomUUID().slice(0, 4) + "@example.com",
+      facilityId: facB.id,
+    });
+    expect(second.patient).toBeDefined();
+  });
 });
 
 describe("PatientRepository — CRUD", () => {

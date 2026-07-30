@@ -5,13 +5,26 @@ export const roleNameEnum = pgEnum("role_name", [
   "PATIENT",
   "REGIONAL_ADMIN",
   "VIRTUAL_MEDICAL_OFFICER",
+  // Consultant specialties (PRD v3 §18.1's "Consultation" classification: Oncologist,
+  // Surgeon, Psycho-Oncologist, Nutritionist) — one shared frontend view for all of them
+  // (apps/dashboard's consultant page), but distinct roles here so a logged-in consultant's
+  // actual specialty is visible on their own page and can be used for scheduling/matching.
+  // All four carry identical permissions (RBAC seed grants the set once, to every CONSULTING_*
+  // role) — this is a display/matching distinction, not an access-control one.
   "CONSULTING_ONCOLOGIST",
+  "CONSULTING_SURGEON",
+  "CONSULTING_NUTRITIONIST",
+  "CONSULTING_PSYCHO_ONCOLOGIST",
   "STATE_CLINICAL_DIRECTOR",
   "QUALITY_ASSURANCE_OFFICER",
   "ONSITE_NURSING_OFFICER",
   "NATIONAL_CLINICAL_DIRECTOR",
   "STATE_DIRECTOR_OF_NURSING_SERVICES",
   "NATIONAL_DIRECTOR_OF_NURSING_SERVICES",
+  // F3.11 (docs/build-plan/13-scribe-role-definition.md): a real, independently-assignable
+  // role rather than a tag on an existing one — editing Transcript content is distinct
+  // authority that shouldn't be conflated with any clinical role's own permission set.
+  "SCRIBE",
   "SUPER_ADMIN",
 ]);
 export const accountLockTypeEnum = pgEnum("account_lock_type", ["24H_ADMIN", "MISCONDUCT"]);
@@ -40,6 +53,9 @@ export const conversationStatusEnum = pgEnum("conversation_status", ["OPEN", "CL
 export const messageTypeEnum = pgEnum("message_type", ["TEXT", "IMAGE", "VOICE", "SYSTEM"]);
 export const messageStatusEnum = pgEnum("message_status", ["SENT", "DELIVERED", "READ"]);
 export const meetingStatusEnum = pgEnum("meeting_status", ["SCHEDULED", "IN_PROGRESS", "ENDED"]);
+export const transcriptionAssignmentStatusEnum = pgEnum("transcription_assignment_status", [
+  "QUEUED", "CLAIMED", "IN_PROGRESS", "COMPLETED", "RELEASED",
+]);
 
 export const serviceClassificationNameEnum = pgEnum("service_classification_name", [
   "SUBSCRIPTION", "CONSULTATION", "DRUG_ADMINISTRATION", "CHEMOTHERAPY", "GENERAL_ADMISSION", "PROCEDURE",

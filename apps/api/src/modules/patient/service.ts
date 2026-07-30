@@ -25,6 +25,13 @@ export class PatientService {
       throw new Error("Patient with this ID already exists");
     }
 
+    // FR-01: same person, same facility, already has an active ID — reject before issuance
+    // rather than creating a second ID and splitting their care timeline.
+    const duplicate = await patientRepo.findPotentialDuplicate(data.firstName, data.lastName, data.dob, data.facilityId);
+    if (duplicate) {
+      throw new Error("It looks like you may already have an account");
+    }
+
     const result = await db.transaction(async (tx) => {
       const patientRows = await tx.insert(patient).values({
         id: crypto.randomUUID(),

@@ -23,6 +23,23 @@ export class PatientRepository {
     return row[0] ?? null;
   }
 
+  // FR-01: reject a second active ID for a matched patient (name+DOB+facility). Case-insensitive
+  // on name since "Jane"/"jane" typed at two different registration times is still one person.
+  async findPotentialDuplicate(firstName: string, lastName: string, dob: string, facilityId: string) {
+    const row = await db
+      .select()
+      .from(patient)
+      .where(sql`
+        lower(${patient.firstName}) = lower(${firstName})
+        AND lower(${patient.lastName}) = lower(${lastName})
+        AND ${patient.dob} = ${dob}
+        AND ${patient.facilityId} = ${facilityId}
+        AND ${patient.isDeleted} = false
+      `)
+      .limit(1);
+    return row[0] ?? null;
+  }
+
   async findByUserId(userId: string) {
     const row = await db
       .select()

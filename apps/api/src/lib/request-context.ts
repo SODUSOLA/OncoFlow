@@ -2,6 +2,7 @@ import crypto from "node:crypto";
 import type { Request, Response, NextFunction } from "express";
 import { SessionRepository, UserRepository } from "../modules/auth/index.js";
 import { SESSION_COOKIE_NAME } from "./session-cookie.js";
+import { config } from "../config.js";
 
 const sessionRepo = new SessionRepository();
 const userRepo = new UserRepository();
@@ -16,25 +17,27 @@ export async function attachRequestContext(req: Request, _res: Response, next: N
   contextReq.requestId = requestId;
   _res.setHeader("x-request-id", requestId);
 
-  const isTest = process.env.NODE_ENV === "test";
+  const isTest = config.isTest;
 
-  if (isTest && process.env.TEST_USER_ID) {
+  // Real session cookie takes priority over the TEST_USER_ID/TEST_FACILITY_ID shortcut below —
+  // a test that deliberately sets up its own cookie session (e.g. request-context.test.ts)
+  // means to exercise that real path, not have it silently pre-empted by unrelated global
+  // test scaffolding (src/test/setup.ts sets TEST_USER_ID for every test file unconditionally).
+  const sessionIdFromCookie = typeof req.cookies?.[SESSION_COOKIE_NAME] === "string"
+    ? req.cookies[SESSION_COOKIE_NAME]
+    : undefined;
+  if (typeof sessionIdFromCookie === "string" && sessionIdFromCookie.length > 0) {
+    const session = await sessionRepo.findById(sessionIdFromCookie);
+    if (session && !session.revokedAt && session.expiresAt > new Date()) {
+      authed.userId = session.userId;
+    }
+  }
+
+  if (!authed.userId && isTest && process.env.TEST_USER_ID) {
     authed.userId = process.env.TEST_USER_ID;
   }
-  if (isTest && process.env.TEST_FACILITY_ID) {
+  if (!authed.facilityId && isTest && process.env.TEST_FACILITY_ID) {
     authed.facilityId = process.env.TEST_FACILITY_ID;
-  }
-
-  if (!authed.userId) {
-    const sessionIdFromCookie = typeof req.cookies?.[SESSION_COOKIE_NAME] === "string"
-      ? req.cookies[SESSION_COOKIE_NAME]
-      : undefined;
-    if (typeof sessionIdFromCookie === "string" && sessionIdFromCookie.length > 0) {
-      const session = await sessionRepo.findById(sessionIdFromCookie);
-      if (session && !session.revokedAt && session.expiresAt > new Date()) {
-        authed.userId = session.userId;
-      }
-    }
   }
 
   // Facility-scoped RBAC (rbac.ts requirePermissionScoped) needs the requesting user's own

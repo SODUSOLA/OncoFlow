@@ -2,6 +2,7 @@ import { Router } from "express";
 import {
   createAppointmentHandler, getAppointmentHandler, listAppointmentsHandler,
   updateAppointmentStatusHandler, addParticipantHandler, deleteAppointmentHandler,
+  getUnifiedCalendarHandler,
 } from "./controller.js";
 import { requirePermission } from "../../lib/rbac.js";
 import { validateBody, validateParams, validateQuery } from "../../lib/validation.js";
@@ -18,6 +19,9 @@ const createAppointmentSchema = z.object({
   facilityId: z.string().uuid(),
   appointmentType: z.enum(appointmentTypeEnum.enumValues),
   scheduledAt: z.string().trim().min(1).max(64),
+  // FR-20: only takes effect if the caller also holds appointment:override (checked in the
+  // controller, not here) — requesting it without that permission is silently ignored, not an error.
+  override: z.boolean().optional(),
 });
 
 const listAppointmentsQuerySchema = z.object({
@@ -45,5 +49,6 @@ router.get("/appointments/:id", requirePermission("appointment", "read"), valida
 router.patch("/appointments/:id/status", requirePermission("appointment", "update"), validateParams(appointmentIdParamSchema), validateBody(updateAppointmentStatusSchema), updateAppointmentStatusHandler);
 router.post("/appointments/:id/participants", requirePermission("appointment", "update"), validateParams(appointmentIdParamSchema), validateBody(addParticipantSchema), addParticipantHandler);
 router.delete("/appointments/:id", requirePermission("appointment", "delete"), validateParams(appointmentIdParamSchema), deleteAppointmentHandler);
+router.get("/calendar", requirePermission("calendar", "read"), getUnifiedCalendarHandler);
 
 export { router as appointmentRoutes };

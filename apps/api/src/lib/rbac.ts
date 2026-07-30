@@ -24,7 +24,7 @@ export interface AuthenticatedRequest extends Request {
   permissions: string[];
 }
 
-export type PermissionAction = "create" | "read" | "update" | "delete" | "approve" | "export";
+export type PermissionAction = "create" | "read" | "update" | "delete" | "approve" | "export" | "override" | "claim";
 export type FacilityComparator = (userFacilityId: string, resourceFacilityId: string) => boolean;
 
 const PERMISSION_CACHE_TTL = 900;
@@ -55,7 +55,10 @@ async function resolveUserPermissions(userId: string): Promise<string[]> {
   return perms;
 }
 
-async function userHasRole(userId: string, roleName: string): Promise<boolean> {
+// Exported for service-layer role checks that are conditional, not a blanket route gate —
+// e.g. "require triage_checklist_id only when the prescriber is specifically an MO" can't be
+// expressed as route middleware since the same route legitimately serves multiple roles.
+export async function userHasRole(userId: string, roleName: string): Promise<boolean> {
   const rows = await db.execute<{ matched: boolean }>(sql`
     SELECT EXISTS(
       SELECT 1
@@ -69,6 +72,19 @@ async function userHasRole(userId: string, roleName: string): Promise<boolean> {
 
 function userHasPermission(perms: string[], resource: string, action: PermissionAction): boolean {
   return perms.includes(`${resource}:${action}`);
+}
+
+// For self-service actions (logout, viewing/editing your own profile) that should work for
+// any authenticated account regardless of role/permission grants — not everything behind
+// auth is a permission check. Deliberately does not touch req.permissions.
+export function requireAuthenticated() {
+  return (req: Request, _res: Response, next: NextFunction): void => {
+    if (!(req as AuthenticatedRequest).userId) {
+      next(new UnauthorizedError());
+      return;
+    }
+    next();
+  };
 }
 
 export function requirePermission(resource: string, action: PermissionAction) {
@@ -96,6 +112,40 @@ export function requirePermission(resource: string, action: PermissionAction) {
       }
       (req as AuthenticatedRequest).permissions = perms;
       next();
+    } catch {
+      next(new AppError(500, "INTERNAL_ERROR", "Internal server error"));
+    }
+  };
+}
+
+// For actions restricted to specific roles regardless of the generic resource:action permission
+// model — e.g. "only a Virtual Medical Officer can complete a triage checklist," "only an
+// Onsite Nursing Officer can open a physical case." requirePermission's resource:action grants
+// don't express "and it must specifically be role X, not just anyone with this permission" —
+// use this alongside requirePermission (both as separate middleware) when that distinction matters.
+export function requireRole(...roleNames: string[]) {
+  return async (req: Request, _res: Response, next: NextFunction): Promise<void> => {
+    const userId = (req as AuthenticatedRequest).userId;
+    if (!userId) {
+      next(new UnauthorizedError());
+      return;
+    }
+
+    try {
+      if (await userHasRole(userId, "SUPER_ADMIN")) {
+        next();
+        return;
+      }
+      for (const roleName of roleNames) {
+        if (await userHasRole(userId, roleName)) {
+          next();
+          return;
+        }
+      }
+      await safeAuditLog({
+        actorId: userId, action: "ACCESS_DENIED", resource: `role:${roleNames.join("|")}`, result: "DENIED", ip: req.ip,
+      });
+      next(new ForbiddenError());
     } catch {
       next(new AppError(500, "INTERNAL_ERROR", "Internal server error"));
     }

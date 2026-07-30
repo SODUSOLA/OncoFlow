@@ -10,26 +10,22 @@ import { billingRoutes } from "./modules/billing/index.js";
 import { appointmentRoutes } from "./modules/appointment/index.js";
 import { clinicalRoutes } from "./modules/clinical/index.js";
 import { documentRoutes } from "./modules/documents/index.js";
-
-function resolveCorsOrigins(): string[] {
-  const raw = process.env.CORS_ORIGIN;
-  if (raw && raw.length > 0) {
-    return raw.split(",").map((origin) => origin.trim()).filter(Boolean);
-  }
-  // Wildcard + credentials is both rejected by browsers and a real access-control gap —
-  // fail loudly in production instead of silently falling back to it (sprint2-hardening-checklist.md).
-  if (process.env.NODE_ENV === "production") {
-    throw new Error("CORS_ORIGIN must be set (comma-separated allowlist) in production");
-  }
-  return ["http://localhost:5173"];
-}
+import { messagingRoutes } from "./modules/messaging/index.js";
+import { config } from "./config.js";
 
 export function createApp() {
   const app = express();
 
   app.use(helmet());
-  app.use(cors({ origin: resolveCorsOrigins(), credentials: true }));
-  app.use(express.json());
+  app.use(cors({ origin: config.corsOrigins, credentials: true }));
+  // Captures the raw body alongside normal JSON parsing — webhook signature verification
+  // (Daily.co, and eventually Monnify) has to HMAC the exact bytes as sent, and by the time
+  // req.body exists as a parsed object that's already lost.
+  app.use(express.json({
+    verify: (req, _res, buf) => {
+      (req as express.Request & { rawBody?: Buffer }).rawBody = buf;
+    },
+  }));
   app.use(cookieParser());
   app.use(attachRequestContext);
 
@@ -43,6 +39,7 @@ export function createApp() {
   app.use(appointmentRoutes);
   app.use(clinicalRoutes);
   app.use(documentRoutes);
+  app.use(messagingRoutes);
 
   app.use(notFoundHandler);
   app.use(errorHandler);

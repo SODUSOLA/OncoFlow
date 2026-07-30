@@ -36,7 +36,7 @@ export async function loginHandler(req: Request, res: Response) {
       roles: result.roles,
       user: result.user,
     });
-  } catch (err) {
+  } catch {
     res.status(401).json({ error: "Invalid email or password" });
   }
 }

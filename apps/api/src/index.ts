@@ -1,10 +1,9 @@
 import "dotenv/config";
 import { createApp } from "./app.js";
-
-const port = parseInt(process.env.PORT ?? "3000", 10);
+import { config } from "./config.js";
 
 const app = createApp();
 
-app.listen(port, () => {
-  console.log(`oncoflow api listening on :${String(port)}`);
+app.listen(config.port, () => {
+  console.log(`oncoflow api listening on :${String(config.port)}`);
 });
