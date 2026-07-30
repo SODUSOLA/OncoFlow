@@ -3,19 +3,26 @@ FROM node:22-alpine AS builder
 
 WORKDIR /build
 
-# Install dependencies (layer cached unless lockfile changes)
+# Install dependencies scoped to apps/api only (--workspace), so the runtime image doesn't
+# pick up apps/web or apps/dashboard's React/Vite dependency tree. npm still needs every
+# workspace's package.json present to resolve the workspace graph against the lockfile,
+# even though only apps/api's deps actually get installed.
 COPY package.json package-lock.json ./
-RUN npm ci --omit=optional
+COPY apps/api/package.json apps/api/package.json
+COPY apps/web/package.json apps/web/package.json
+COPY apps/dashboard/package.json apps/dashboard/package.json
+COPY packages/ui/package.json packages/ui/package.json
+RUN npm ci --workspace=apps/api --include-workspace-root --omit=optional
 
 # Copy source
-COPY tsconfig.json ./
-COPY src/ ./src/
+COPY apps/api/tsconfig.json apps/api/tsconfig.json
+COPY apps/api/src/ apps/api/src/
 
-# Type-check and compile
-RUN npx tsc --noEmit && npx tsc --outDir dist
+# Type-check and compile (outDir relative to cwd /build, so downstream COPY paths stay the same)
+RUN npx tsc --noEmit -p apps/api && npx tsc -p apps/api --outDir dist
 
 # Prune dev dependencies for smaller runtime size
-RUN npm prune --omit=dev
+RUN npm prune --omit=dev --workspace=apps/api --include-workspace-root
 
 # ── Stage 2: Runtime with nginx reverse proxy ──
 FROM node:22-alpine
@@ -38,7 +45,7 @@ WORKDIR /app
 # Copy only what's needed for production from builder
 COPY --from=builder /build/node_modules ./node_modules
 COPY --from=builder /build/dist ./dist
-COPY package.json ./
+COPY apps/api/package.json ./
 COPY infra/entrypoint.sh /app/entrypoint.sh
 RUN chmod +x /app/entrypoint.sh && chown oncoflow:oncoflow /app/entrypoint.sh
 

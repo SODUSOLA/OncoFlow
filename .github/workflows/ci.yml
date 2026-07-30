@@ -49,7 +49,7 @@ jobs:
 
       - run: npm ci
 
-      - run: npx drizzle-kit migrate
+      - run: npm run db:migrate
         name: Run migrations
 
       - run: npm run typecheck
@@ -61,8 +61,14 @@ jobs:
       - run: npm run depcruise
         name: Module boundary check
 
-      - run: node scripts/check-rbac-coverage.mjs
+      - run: node apps/api/scripts/check-rbac-coverage.mjs
         name: RBAC coverage check
 
       - run: npm test
         name: Tests
+
+      - run: npm run build -w apps/dashboard
+        name: Build dashboard (sanity check)
+
+      - run: npm run build -w apps/web
+        name: Build public site (sanity check)

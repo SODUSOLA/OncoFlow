@@ -1,0 +1,10 @@
+{
+  "name": "@oncoflow/ui",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "main": "./tailwind-preset.js",
+  "exports": {
+    "./tailwind-preset": "./tailwind-preset.js"
+  }
+}
