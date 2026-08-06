@@ -15,6 +15,15 @@ module.exports = {
           800: "#166534",
           900: "#14532d",
         },
+        // OncoFlow's canonical clinical brand identity, per the OncoFlow Design System v2.0 spec
+        // and the ONCOFLOW LIMITED logo — distinct from the dashboard's placeholder `brand` green.
+        ink: {
+          DEFAULT: "#173A5E",
+          600: "#0F2A46",
+        },
+        gold: {
+          DEFAULT: "#E9B21A",
+        },
       },
     },
   },

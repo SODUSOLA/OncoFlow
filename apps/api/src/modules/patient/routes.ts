@@ -1,11 +1,11 @@
 import { Router } from "express";
 import {
-  registerPatientHandler, getPatientHandler, searchPatientsHandler,
+  registerPatientHandler, getPatientHandler, getMyPatientHandler, searchPatientsHandler,
   updatePatientHandler, deletePatientHandler,
   createAddressHandler, createEmergencyContactHandler,
-  getWalletHandler,
+  getWalletHandler, getPatientTimelineHandler, listPendingRegistrationsHandler,
 } from "./controller.js";
-import { requirePermission } from "../../lib/rbac.js";
+import { requirePermission, requireAuthenticated } from "../../lib/rbac.js";
 import { validateBody, validateParams, validateQuery } from "../../lib/validation.js";
 import { z } from "zod";
 
@@ -33,6 +33,10 @@ const updatePatientSchema = z.object({
   phone: z.string().trim().min(1).max(32).optional(),
   email: z.string().trim().email().optional(),
   status: z.string().trim().min(1).max(32).optional(),
+  // Self-editable only (see controller.ts SELF_EDITABLE_FIELDS) — accepted here regardless
+  // of caller, the controller decides which fields actually apply.
+  secondaryEmail: z.string().trim().email().optional(),
+  profilePictureFileId: z.string().uuid().optional(),
 });
 
 const createAddressSchema = z.object({
@@ -49,7 +53,10 @@ const createEmergencyContactSchema = z.object({
 });
 
 const patientSearchQuerySchema = z.object({
-  facilityId: z.string().uuid(),
+  // "all" is the frontend's own sentinel for "no facility filter" (dashboard-wide pickers,
+  // e.g. linking a public inquiry to a patient) — accepted alongside a real facility UUID
+  // rather than requiring callers to omit the param entirely.
+  facilityId: z.union([z.string().uuid(), z.literal("all")]).optional(),
   q: z.string().trim().min(1).max(128).optional(),
 });
 
@@ -59,14 +66,27 @@ const walletQuerySchema = z.object({
 
 const router = Router();
 
-// public — patient self-registration from the marketing site (Design Spec §6.1 Registration Flow)
-router.post("/patients", validateBody(registerPatientSchema), registerPatientHandler);
+// Not public: the only real caller (RegisterWizard, apps/web) creates a login account via
+// POST /auth/register only — a Regional Admin reviews that submission and issues the Unique
+// Patient ID from here (Design Spec §6.1's "confirm facility and issue ID" step). Letting any
+// caller hit this directly would let a patient self-assign their own ID, bypassing approval.
+router.post("/patients", requirePermission("patient", "create"), validateBody(registerPatientSchema), registerPatientHandler);
+router.get("/patients/pending-registrations", requirePermission("patient", "create"), listPendingRegistrationsHandler);
 router.get("/patients", requirePermission("patient", "read"), validateQuery(patientSearchQuerySchema), searchPatientsHandler);
-router.get("/patients/:id", requirePermission("patient", "read"), validateParams(patientIdParamSchema), getPatientHandler);
-router.put("/patients/:id", requirePermission("patient", "update"), validateParams(patientIdParamSchema), validateBody(updatePatientSchema), updatePatientHandler);
+// Must come before /patients/:id — otherwise Express would try to match "me" against the
+// :id param (and validateParams' uuid check would reject it with a 400 before it ever reaches
+// the handler that actually means to treat "me" specially).
+router.get("/patients/me", requireAuthenticated(), getMyPatientHandler);
+// requireAuthenticated, not requirePermission: reading/updating one's OWN record is a right,
+// not a grant — the ownership-or-permission check lives in the controller (needs the record
+// loaded first to know if it's "own"). See getPatientHandler/updatePatientHandler.
+router.get("/patients/:id", requireAuthenticated(), validateParams(patientIdParamSchema), getPatientHandler);
+router.put("/patients/:id", requireAuthenticated(), validateParams(patientIdParamSchema), validateBody(updatePatientSchema), updatePatientHandler);
+router.get("/patients/:id/timeline", requireAuthenticated(), validateParams(patientIdParamSchema), getPatientTimelineHandler);
 router.delete("/patients/:id", requirePermission("patient", "delete"), validateParams(patientIdParamSchema), deletePatientHandler);
 router.post("/patients/:id/addresses", requirePermission("patient", "update"), validateParams(patientIdParamSchema), validateBody(createAddressSchema), createAddressHandler);
 router.post("/patients/:id/emergency-contacts", requirePermission("patient", "update"), validateParams(patientIdParamSchema), validateBody(createEmergencyContactSchema), createEmergencyContactHandler);
-router.get("/wallet", requirePermission("wallet", "read"), validateQuery(walletQuerySchema), getWalletHandler);
+// Same reasoning as GET /patients/:id — ownership-or-permission check lives in getWalletHandler.
+router.get("/wallet", requireAuthenticated(), validateQuery(walletQuerySchema), getWalletHandler);
 
 export { router as patientRoutes };

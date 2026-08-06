@@ -7,23 +7,40 @@ const messagingSvc = new MessagingService();
 const meetingSvc = new MeetingService();
 const transcriptionAssignmentSvc = new TranscriptionAssignmentService();
 
+function messagingErrorStatus(message: string): number {
+  if (message === "Conversation not found" || message === "Appointment not found" || message === "Patient not found") return 404;
+  // Checked before the broader "You can only" 403 prefix below, since these are more specific
+  // and would otherwise be shadowed by it.
+  if (
+    message.startsWith("You already have an open")
+    || message === "This conversation has been closed"
+    || message.startsWith("Feedback can only be left")
+    || message.startsWith("You've already submitted feedback")
+  ) return 409;
+  if (message === "Forbidden" || message.startsWith("You can only") || message.startsWith("Reporting a side effect requires")) return 403;
+  return 500;
+}
+
 export async function startConversationHandler(req: Request, res: Response) {
   try {
     const { patientId, conversationType, assignedTo } = req.body;
-    const result = await messagingSvc.startConversation({ patientId, conversationType, assignedTo });
+    const callerId = (req as AuthenticatedRequest).userId;
+    const result = await messagingSvc.startConversation({ patientId, conversationType, assignedTo }, callerId);
     res.status(201).json({ conversation: result });
   } catch (err) {
-    res.status(500).json({ error: err instanceof Error ? err.message : "Internal server error" });
+    const message = err instanceof Error ? err.message : "Internal server error";
+    res.status(messagingErrorStatus(message)).json({ error: message });
   }
 }
 
 export async function getConversationHandler(req: Request, res: Response) {
   try {
-    const result = await messagingSvc.getConversation(String(req.params.id));
+    const callerId = (req as AuthenticatedRequest).userId;
+    const result = await messagingSvc.getConversation(String(req.params.id), callerId);
     res.json({ conversation: result });
   } catch (err) {
     const message = err instanceof Error ? err.message : "Internal server error";
-    res.status(message === "Conversation not found" ? 404 : 500).json({ error: message });
+    res.status(messagingErrorStatus(message)).json({ error: message });
   }
 }
 
@@ -35,44 +52,89 @@ export async function listConversationsHandler(req: Request, res: Response) {
       res.status(400).json({ error: "Provide patientId or assignedTo" });
       return;
     }
+    const callerId = (req as AuthenticatedRequest).userId;
     const result = patientId
-      ? await messagingSvc.listByPatient(patientId)
-      : await messagingSvc.listByAssignee(assignedTo!);
+      ? await messagingSvc.listByPatient(patientId, callerId)
+      : await messagingSvc.listByAssignee(assignedTo!, callerId);
     res.json({ conversations: result });
-  } catch {
-    res.status(500).json({ error: "Internal server error" });
+  } catch (err) {
+    const message = err instanceof Error ? err.message : "Internal server error";
+    res.status(messagingErrorStatus(message)).json({ error: message });
   }
 }
 
 export async function postMessageHandler(req: Request, res: Response) {
   try {
     const { senderId, type, content } = req.body;
+    const callerId = (req as AuthenticatedRequest).userId;
     const result = await messagingSvc.postMessage({
       conversationId: String(req.params.id), senderId, type, content,
-    });
+    }, callerId);
     res.status(201).json({ message: result });
   } catch (err) {
     const message = err instanceof Error ? err.message : "Internal server error";
-    res.status(message === "Conversation not found" ? 404 : 500).json({ error: message });
+    res.status(messagingErrorStatus(message)).json({ error: message });
+  }
+}
+
+export async function startSideEffectReportHandler(req: Request, res: Response) {
+  try {
+    const { patientId, message } = req.body;
+    const callerId = (req as AuthenticatedRequest).userId;
+    const result = await messagingSvc.startSideEffectReport(patientId, message, callerId);
+    if (!result.paid) {
+      res.status(402).json({ error: "Insufficient wallet balance", invoice: result.invoice });
+      return;
+    }
+    res.status(201).json({ conversation: result.conversation, message: result.message, invoice: result.invoice });
+  } catch (err) {
+    const message = err instanceof Error ? err.message : "Internal server error";
+    res.status(messagingErrorStatus(message)).json({ error: message });
   }
 }
 
 export async function listMessagesHandler(req: Request, res: Response) {
   try {
-    const result = await messagingSvc.listMessages(String(req.params.id));
+    const callerId = (req as AuthenticatedRequest).userId;
+    const result = await messagingSvc.listMessages(String(req.params.id), callerId);
     res.json({ messages: result });
-  } catch {
-    res.status(500).json({ error: "Internal server error" });
+  } catch (err) {
+    const message = err instanceof Error ? err.message : "Internal server error";
+    res.status(messagingErrorStatus(message)).json({ error: message });
   }
 }
 
 export async function closeConversationHandler(req: Request, res: Response) {
   try {
-    const result = await messagingSvc.closeConversation(String(req.params.id));
+    const callerId = (req as AuthenticatedRequest).userId;
+    const result = await messagingSvc.closeConversation(String(req.params.id), callerId);
     res.json({ conversation: result });
   } catch (err) {
     const message = err instanceof Error ? err.message : "Internal server error";
-    res.status(message === "Conversation not found" ? 404 : 500).json({ error: message });
+    res.status(messagingErrorStatus(message)).json({ error: message });
+  }
+}
+
+export async function submitFeedbackHandler(req: Request, res: Response) {
+  try {
+    const { rating, review } = req.body;
+    const callerId = (req as AuthenticatedRequest).userId;
+    const result = await messagingSvc.submitFeedback(String(req.params.id), rating, review, callerId);
+    res.status(201).json({ feedback: result });
+  } catch (err) {
+    const message = err instanceof Error ? err.message : "Internal server error";
+    res.status(messagingErrorStatus(message)).json({ error: message });
+  }
+}
+
+export async function listFeedbackHandler(req: Request, res: Response) {
+  try {
+    const callerId = (req as AuthenticatedRequest).userId;
+    const result = await messagingSvc.listFeedback(String(req.params.id), callerId);
+    res.json({ feedback: result });
+  } catch (err) {
+    const message = err instanceof Error ? err.message : "Internal server error";
+    res.status(messagingErrorStatus(message)).json({ error: message });
   }
 }
 
@@ -95,14 +157,16 @@ export async function getMeetingHandler(req: Request, res: Response) {
       res.status(400).json({ error: "appointmentId query parameter required" });
       return;
     }
-    const result = await meetingSvc.getByAppointment(appointmentId);
+    const callerId = (req as AuthenticatedRequest).userId;
+    const result = await meetingSvc.getByAppointment(appointmentId, callerId);
     if (!result) {
       res.status(404).json({ error: "No meeting for this appointment" });
       return;
     }
     res.json({ meeting: result });
-  } catch {
-    res.status(500).json({ error: "Internal server error" });
+  } catch (err) {
+    const message = err instanceof Error ? err.message : "Internal server error";
+    res.status(messagingErrorStatus(message)).json({ error: message });
   }
 }
 

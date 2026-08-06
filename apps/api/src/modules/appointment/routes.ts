@@ -4,7 +4,7 @@ import {
   updateAppointmentStatusHandler, addParticipantHandler, deleteAppointmentHandler,
   getUnifiedCalendarHandler,
 } from "./controller.js";
-import { requirePermission } from "../../lib/rbac.js";
+import { requirePermission, requireAuthenticated } from "../../lib/rbac.js";
 import { validateBody, validateParams, validateQuery } from "../../lib/validation.js";
 import { appointmentStatusEnum, appointmentTypeEnum } from "../../db/enums.js";
 import { z } from "zod";
@@ -44,8 +44,11 @@ const addParticipantSchema = z.object({
 const router = Router();
 
 router.post("/appointments", requirePermission("appointment", "create"), validateBody(createAppointmentSchema), createAppointmentHandler);
-router.get("/appointments", requirePermission("appointment", "read"), validateQuery(listAppointmentsQuerySchema), listAppointmentsHandler);
-router.get("/appointments/:id", requirePermission("appointment", "read"), validateParams(appointmentIdParamSchema), getAppointmentHandler);
+// requireAuthenticated: a patient listing/reading their OWN appointments (e.g. to join a
+// scheduled video consult) is a right, not a grant — ownership-or-permission check lives in
+// the controller (callerOwnsPatient).
+router.get("/appointments", requireAuthenticated(), validateQuery(listAppointmentsQuerySchema), listAppointmentsHandler);
+router.get("/appointments/:id", requireAuthenticated(), validateParams(appointmentIdParamSchema), getAppointmentHandler);
 router.patch("/appointments/:id/status", requirePermission("appointment", "update"), validateParams(appointmentIdParamSchema), validateBody(updateAppointmentStatusSchema), updateAppointmentStatusHandler);
 router.post("/appointments/:id/participants", requirePermission("appointment", "update"), validateParams(appointmentIdParamSchema), validateBody(addParticipantSchema), addParticipantHandler);
 router.delete("/appointments/:id", requirePermission("appointment", "delete"), validateParams(appointmentIdParamSchema), deleteAppointmentHandler);

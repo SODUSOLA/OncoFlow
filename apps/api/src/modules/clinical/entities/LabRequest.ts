@@ -13,6 +13,7 @@ export interface LabRequestData {
   patientId: string;
   requestedBy: string;
   status: LabRequestStatus;
+  createdAt: Date;
 }
 
 export class LabRequest {
@@ -45,6 +46,7 @@ export class LabRequest {
       patientId: this.data.patientId,
       requestedBy: this.data.requestedBy,
       status: this.data.status,
+      createdAt: this.data.createdAt,
     };
   }
 }

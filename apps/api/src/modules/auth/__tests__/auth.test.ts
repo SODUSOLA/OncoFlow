@@ -6,6 +6,12 @@ import { eq } from "drizzle-orm";
 
 const app = createApp();
 
+function sessionIdFrom(loginRes: { headers: { "set-cookie"?: string[] } }): string {
+  const cookies = loginRes.headers["set-cookie"] ?? [];
+  const cookieStr = cookies.find((c) => c.startsWith("oncoflow_session="));
+  return cookieStr!.split(";")[0]!.split("=")[1]!;
+}
+
 let createdUserId: string | null = null;
 let sessionCookie: string | null = null;
 
@@ -27,6 +33,64 @@ it("register creates a user", async () => {
   expect(res.body.user.email).toBe(email);
   expect(res.body.user.passwordHash).toBeUndefined();
   createdUserId = res.body.user.id;
+});
+
+it("register grants the PATIENT role — the only real caller of this endpoint today", async () => {
+  const email = `patient-${Date.now()}@example.com`;
+  const res = await request(app)
+    .post("/auth/register")
+    .send({ email, password: "Password123!" });
+
+  expect(res.status).toBe(201);
+  const userId: string = res.body.user.id;
+
+  const { user, userRole, role } = await import("../schema.js");
+  const rows = await db
+    .select({ roleName: role.name })
+    .from(userRole)
+    .innerJoin(role, eq(userRole.roleId, role.id))
+    .where(eq(userRole.userId, userId));
+
+  expect(rows.some((r) => r.roleName === "PATIENT")).toBe(true);
+
+  await db.delete(user).where(eq(user.id, userId)).catch(() => {});
+});
+
+it("register with fullName/dob/phone creates a pending patient_registration_request", async () => {
+  const email = `intake-${Date.now()}@example.com`;
+  const res = await request(app)
+    .post("/auth/register")
+    .send({
+      email, password: "Password123!",
+      fullName: "Test Intake Patient", dob: "1990-01-01", phone: "+2348000000000",
+    });
+
+  expect(res.status).toBe(201);
+  const userId: string = res.body.user.id;
+
+  const { patientRegistrationRequest } = await import("../../patient/schema.js");
+  const rows = await db.select().from(patientRegistrationRequest).where(eq(patientRegistrationRequest.userId, userId));
+  expect(rows).toHaveLength(1);
+  expect(rows[0]!.fullName).toBe("Test Intake Patient");
+  expect(rows[0]!.email).toBe(email);
+
+  const { user } = await import("../schema.js");
+  await db.delete(patientRegistrationRequest).where(eq(patientRegistrationRequest.userId, userId)).catch(() => {});
+  await db.delete(user).where(eq(user.id, userId)).catch(() => {});
+});
+
+it("register without fullName/dob/phone does not create a registration request (bare email+password still works)", async () => {
+  const email = `bare-${Date.now()}@example.com`;
+  const res = await request(app).post("/auth/register").send({ email, password: "Password123!" });
+  expect(res.status).toBe(201);
+  const userId: string = res.body.user.id;
+
+  const { patientRegistrationRequest } = await import("../../patient/schema.js");
+  const rows = await db.select().from(patientRegistrationRequest).where(eq(patientRegistrationRequest.userId, userId));
+  expect(rows).toHaveLength(0);
+
+  const { user } = await import("../schema.js");
+  await db.delete(user).where(eq(user.id, userId)).catch(() => {});
 });
 
 it("register rejects duplicate email", async () => {
@@ -95,6 +159,102 @@ it("logout revokes session", async () => {
   const { session: sessionTbl } = await import("../schema.js");
   const row = await db.select().from(sessionTbl).where(eq(sessionTbl.id, sid)).limit(1);
   expect(row[0]?.revokedAt).not.toBeNull();
+});
+
+it("GET /auth/profile works for a plain PATIENT account with no permission grants", async () => {
+  // Regression test: this endpoint was previously gated by requirePermission("user", "read"),
+  // which a freshly-registered PATIENT account never has (seed/identity.ts deliberately grants
+  // it none) — every such account got a 403 here, breaking any client's "am I logged in" check.
+  const email = `profile-${Date.now()}@example.com`;
+  await request(app).post("/auth/register").send({ email, password: "Password123!" });
+
+  const login = await request(app).post("/auth/login").send({ email, password: "Password123!" });
+  const cookieHeader = login.headers["set-cookie"];
+  const cookies = Array.isArray(cookieHeader) ? cookieHeader : cookieHeader ? [cookieHeader] : [];
+  const sessionCookieStr = cookies.find((c: string) => c.startsWith("oncoflow_session="));
+  const sid = sessionCookieStr!.split(";")[0]!.split("=")[1]!;
+
+  const res = await request(app).get("/auth/profile").set("Cookie", `oncoflow_session=${sid}`);
+  expect(res.status).toBe(200);
+  expect(res.body.user.email).toBe(email);
+  expect(res.body.roles.some((r: { roleName: string }) => r.roleName === "PATIENT")).toBe(true);
+});
+
+it("GET /auth/sessions lists the caller's own sessions and flags the current one", async () => {
+  const email = `sessions-${Date.now()}@example.com`;
+  await request(app).post("/auth/register").send({ email, password: "Password123!" });
+
+  const loginA = await request(app).post("/auth/login").send({ email, password: "Password123!" });
+  const sidA = sessionIdFrom(loginA);
+  const loginB = await request(app).post("/auth/login").send({ email, password: "Password123!" });
+  const sidB = sessionIdFrom(loginB);
+
+  const res = await request(app).get("/auth/sessions").set("Cookie", `oncoflow_session=${sidA}`);
+  expect(res.status).toBe(200);
+  const ids = res.body.sessions.map((s: { id: string }) => s.id);
+  expect(ids).toEqual(expect.arrayContaining([sidA, sidB]));
+  const current = res.body.sessions.find((s: { id: string }) => s.id === sidA);
+  expect(current.isCurrent).toBe(true);
+  const other = res.body.sessions.find((s: { id: string }) => s.id === sidB);
+  expect(other.isCurrent).toBe(false);
+});
+
+it("GET /auth/sessions does not leak another user's sessions", async () => {
+  const emailA = `sessions-a-${Date.now()}@example.com`;
+  await request(app).post("/auth/register").send({ email: emailA, password: "Password123!" });
+  const loginA = await request(app).post("/auth/login").send({ email: emailA, password: "Password123!" });
+  const sidA = sessionIdFrom(loginA);
+
+  const emailB = `sessions-b-${Date.now()}@example.com`;
+  await request(app).post("/auth/register").send({ email: emailB, password: "Password123!" });
+  const loginB = await request(app).post("/auth/login").send({ email: emailB, password: "Password123!" });
+  const sidB = sessionIdFrom(loginB);
+
+  const res = await request(app).get("/auth/sessions").set("Cookie", `oncoflow_session=${sidA}`);
+  const ids = res.body.sessions.map((s: { id: string }) => s.id);
+  expect(ids).not.toContain(sidB);
+});
+
+it("POST /auth/sessions/:id/revoke revokes a different session belonging to the same user", async () => {
+  const email = `revoke-${Date.now()}@example.com`;
+  await request(app).post("/auth/register").send({ email, password: "Password123!" });
+
+  const loginA = await request(app).post("/auth/login").send({ email, password: "Password123!" });
+  const sidA = sessionIdFrom(loginA);
+  const loginB = await request(app).post("/auth/login").send({ email, password: "Password123!" });
+  const sidB = sessionIdFrom(loginB);
+
+  const res = await request(app).post(`/auth/sessions/${sidB}/revoke`).set("Cookie", `oncoflow_session=${sidA}`);
+  expect(res.status).toBe(200);
+
+  const { session: sessionTbl } = await import("../schema.js");
+  const row = await db.select().from(sessionTbl).where(eq(sessionTbl.id, sidB)).limit(1);
+  expect(row[0]?.revokedAt).not.toBeNull();
+});
+
+it("POST /auth/sessions/:id/revoke rejects revoking another user's session", async () => {
+  const emailA = `revoke-a-${Date.now()}@example.com`;
+  await request(app).post("/auth/register").send({ email: emailA, password: "Password123!" });
+  const loginA = await request(app).post("/auth/login").send({ email: emailA, password: "Password123!" });
+  const sidA = sessionIdFrom(loginA);
+
+  const emailB = `revoke-b-${Date.now()}@example.com`;
+  await request(app).post("/auth/register").send({ email: emailB, password: "Password123!" });
+  const loginB = await request(app).post("/auth/login").send({ email: emailB, password: "Password123!" });
+  const sidB = sessionIdFrom(loginB);
+
+  const res = await request(app).post(`/auth/sessions/${sidB}/revoke`).set("Cookie", `oncoflow_session=${sidA}`);
+  expect(res.status).toBe(404);
+});
+
+it("POST /auth/sessions/:id/revoke rejects revoking the caller's own current session", async () => {
+  const email = `revoke-self-${Date.now()}@example.com`;
+  await request(app).post("/auth/register").send({ email, password: "Password123!" });
+  const login = await request(app).post("/auth/login").send({ email, password: "Password123!" });
+  const sid = sessionIdFrom(login);
+
+  const res = await request(app).post(`/auth/sessions/${sid}/revoke`).set("Cookie", `oncoflow_session=${sid}`);
+  expect(res.status).toBe(400);
 });
 
 it("password hash never appears in response", async () => {

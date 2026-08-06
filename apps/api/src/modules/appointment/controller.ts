@@ -1,5 +1,6 @@
 import type { Request, Response } from "express";
 import type { AuthenticatedRequest } from "../../lib/rbac.js";
+import { userHasPermission } from "../../lib/rbac.js";
 import { appointmentStatusEnum } from "../../db/enums.js";
 import { AppointmentService } from "./service.js";
 import { AppointmentRepository } from "./repository.js";
@@ -10,6 +11,14 @@ const apptSvc = new AppointmentService();
 const apptRepo = new AppointmentRepository();
 const calendarSvc = new CalendarService();
 const patientRepoForCalendar = new PatientRepository();
+
+// Patient role spec: "can join own scheduled video consults" — a patient needs to discover
+// and read their own appointments without a blanket appointment:read grant. Ownership-or-
+// permission, same pattern as patient/clinical/billing/documents controllers.
+async function callerOwnsPatient(callerId: string, patientId: string): Promise<boolean> {
+  const patientRow = await patientRepoForCalendar.findById(patientId);
+  return !!patientRow?.userId && patientRow.userId === callerId;
+}
 
 export async function createAppointmentHandler(req: Request, res: Response) {
   try {
@@ -40,6 +49,14 @@ export async function getAppointmentHandler(req: Request, res: Response) {
       res.status(404).json({ error: "Appointment not found" });
       return;
     }
+
+    const callerId = (req as AuthenticatedRequest).userId;
+    const isSelf = await callerOwnsPatient(callerId, result.patientId);
+    if (!isSelf && !(await userHasPermission(callerId, "appointment", "read"))) {
+      res.status(403).json({ error: "Forbidden" });
+      return;
+    }
+
     res.json({ appointment: result });
   } catch {
     res.status(500).json({ error: "Internal server error" });
@@ -53,6 +70,20 @@ export async function listAppointmentsHandler(req: Request, res: Response) {
     const status = typeof req.query.status === "string" && appointmentStatusEnum.enumValues.includes(req.query.status as never)
       ? req.query.status
       : undefined;
+
+    const callerId = (req as AuthenticatedRequest).userId;
+    if (patientId) {
+      const isSelf = await callerOwnsPatient(callerId, patientId);
+      if (!isSelf && !(await userHasPermission(callerId, "appointment", "read"))) {
+        res.status(403).json({ error: "Forbidden" });
+        return;
+      }
+    } else if (!(await userHasPermission(callerId, "appointment", "read"))) {
+      // facilityId/status-only queries are inherently staff/facility-wide — no "self" concept.
+      res.status(403).json({ error: "Forbidden" });
+      return;
+    }
+
     const results = await apptSvc.listAppointments({
       patientId,
       facilityId,

@@ -3,6 +3,17 @@ import { sql } from "drizzle-orm";
 import crypto from "node:crypto";
 import { role, permission, rolePermission } from "../db/schema.js";
 
+// PATIENT deliberately receives NO permission grants below, and that's correct, not an
+// oversight: every "view/edit own X" capability in the Patient role spec (profile, timeline,
+// invoices, wallet, lab results, lab requests, files, conversations, messages, meetings) is
+// enforced via an ownership check in the relevant controller/service (callerOwnsPatient —
+// patient/controller.ts, clinical/controller.ts, documents/controller.ts, billing/controller.ts,
+// messaging/service.ts), not a resource:action grant. Granting PATIENT a blanket permission
+// like patient:read or invoice:read here would let any patient read every OTHER patient's
+// data too — permissions in this system aren't scoped to "own records only," ownership checks
+// are what make self-service safe. If a genuinely role-wide (not per-record) PATIENT capability
+// is ever needed, that's the case to add a real grant for — self-access to one's own records
+// should keep going through ownership, not a permission.
 const ROLES = [
   "PATIENT",
   "REGIONAL_ADMIN",
@@ -27,6 +38,7 @@ const PERMISSIONS: { resource: string; action: string; description: string }[] =
   { resource: "user", action: "update", description: "Update own user profile" },
   { resource: "auth", action: "update", description: "Auth session management" },
   { resource: "patient", action: "read", description: "Read patient records" },
+  { resource: "patient", action: "create", description: "Register a new patient record and issue a Unique Patient ID (Regional Admin approval of a self-registration)" },
   { resource: "patient", action: "update", description: "Update patient records" },
   { resource: "patient", action: "delete", description: "Delete patient records" },
   { resource: "wallet", action: "read", description: "Read wallet records" },
@@ -46,6 +58,8 @@ const PERMISSIONS: { resource: string; action: string; description: string }[] =
   { resource: "conversation", action: "update", description: "Update/close conversations" },
   { resource: "message", action: "create", description: "Post a message" },
   { resource: "message", action: "read", description: "Read messages" },
+  { resource: "publicInquiry", action: "read", description: "Read public (pre-registration) chat-widget inquiries from the marketing site" },
+  { resource: "publicInquiry", action: "update", description: "Reply to, link-to-patient, or close a public inquiry" },
   { resource: "triageChecklist", action: "create", description: "Complete a triage checklist (Virtual Medical Officer only, requireRole)" },
   { resource: "triageChecklist", action: "read", description: "Read a triage checklist" },
   { resource: "prescription", action: "create", description: "Create a prescription (MO or Consultant)" },
@@ -93,6 +107,7 @@ export async function seedIdentity() {
   const roleMap = new Map(allRoles.map((r) => [r.name, r.id]));
 
   const superAdminRoleId = roleMap.get("SUPER_ADMIN")!;
+  const permMap = new Map<string, string>();
 
   for (const p of PERMISSIONS) {
     const existingPerm = await db.execute<{ id: string }>(
@@ -112,6 +127,7 @@ export async function seedIdentity() {
     } else {
       permId = existingPerm[0]!.id;
     }
+    permMap.set(`${p.resource}:${p.action}`, permId);
 
     const existingRp = await db.execute(
       sql`SELECT id FROM role_permission WHERE role_id = ${superAdminRoleId} AND permission_id = ${permId} LIMIT 1`,
@@ -125,7 +141,50 @@ export async function seedIdentity() {
     }
   }
 
+  async function grantPermissionsToRole(roleName: string, keys: string[]) {
+    const roleId = roleMap.get(roleName)!;
+    for (const key of keys) {
+      const permId = permMap.get(key);
+      if (!permId) continue;
+      const existingRp = await db.execute(
+        sql`SELECT id FROM role_permission WHERE role_id = ${roleId} AND permission_id = ${permId} LIMIT 1`,
+      );
+      if (existingRp.length === 0) {
+        await db.insert(rolePermission).values({ id: crypto.randomUUID(), roleId, permissionId: permId });
+        console.log(`  Granted ${key} to ${roleName}`);
+      }
+    }
+  }
+
+  // First real (non-SUPER_ADMIN) per-role grant in this seed — scoped tightly to what
+  // apps/dashboard's Regional Admin view actually exercises today: patient search + the new
+  // registration-approval flow (patient:create), invoice generation/listing, the 7-day
+  // countdown table, and lab results (labResult:read's own description above already
+  // documents "Regional Admin gets the scoped view" as the intent).
+  await grantPermissionsToRole("REGIONAL_ADMIN", [
+    "patient:read", "patient:create",
+    "invoice:create", "invoice:read",
+    "countdownCase:read",
+    "labResult:read",
+    "publicInquiry:read", "publicInquiry:update",
+  ]);
+
+  // Second real per-role grant — the Virtual Medical Officer handling MO_SIDE_EFFECT reports:
+  // reading/replying to conversations they're assigned, and closing one once the encounter is
+  // resolved (closeConversation's ownership-or-permission check needs conversation:update here).
+  await grantPermissionsToRole("VIRTUAL_MEDICAL_OFFICER", [
+    "conversation:create", "conversation:read", "conversation:update",
+    "message:create", "message:read",
+  ]);
+
+  // Every other role still has zero grants — that real RBAC pass is still pending.
+
   console.log("Identity seed complete.");
 }
 
-seedIdentity().catch(console.error);
+// Only self-invoke when run directly (`npx tsx src/seed/identity.ts`) — seed/index.ts also
+// imports and awaits this export, and without this guard both invocations would race on the
+// same "does this role exist yet?" check against an empty database (23505 duplicate key).
+if (import.meta.url === `file://${process.argv[1]}`) {
+  seedIdentity().catch(console.error);
+}

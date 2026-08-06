@@ -1,6 +1,6 @@
 import { db } from "../../db/index.js";
-import { eq, sql, and } from "drizzle-orm";
-import { serviceClassification, tariff, invoice, invoiceItem, subscription } from "./schema.js";
+import { eq, sql, and, desc } from "drizzle-orm";
+import { serviceClassification, tariff, invoice, invoiceItem, subscription, walletTransaction } from "./schema.js";
 
 export class ServiceClassificationRepository {
   async findById(id: string) {
@@ -134,6 +134,16 @@ export class InvoiceItemRepository {
   async create(data: typeof invoiceItem.$inferInsert) {
     const row = await db.insert(invoiceItem).values(data).returning();
     return row[0]!;
+  }
+}
+
+export class WalletTransactionRepository {
+  async findByWallet(walletId: string) {
+    return db
+      .select()
+      .from(walletTransaction)
+      .where(eq(walletTransaction.walletId, walletId))
+      .orderBy(desc(walletTransaction.createdAt));
   }
 }
 

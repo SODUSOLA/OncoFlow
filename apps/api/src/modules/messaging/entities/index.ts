@@ -3,3 +3,4 @@ export { Message, type MessageData } from "./Message.js";
 export { Meeting, type MeetingData } from "./Meeting.js";
 export { Transcript, type TranscriptData } from "./Transcript.js";
 export { TranscriptionAssignment, type TranscriptionAssignmentData } from "./TranscriptionAssignment.js";
+export { ConversationFeedback, type ConversationFeedbackData } from "./ConversationFeedback.js";

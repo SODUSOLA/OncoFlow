@@ -2,9 +2,9 @@ import { Router } from "express";
 import {
   createInvoiceHandler, getInvoiceHandler, listInvoicesHandler,
   sendInvoiceHandler, payInvoiceHandler, voidInvoiceHandler,
-  listClassificationsHandler,
+  listClassificationsHandler, listWalletTransactionsHandler,
 } from "./controller.js";
-import { requirePermission } from "../../lib/rbac.js";
+import { requirePermission, requireAuthenticated } from "../../lib/rbac.js";
 import { validateBody, validateParams, validateQuery } from "../../lib/validation.js";
 import { z } from "zod";
 
@@ -26,14 +26,24 @@ const listInvoicesQuerySchema = z.object({
   message: "Provide patientId or facilityId query parameter",
 });
 
+const walletTransactionsQuerySchema = z.object({
+  patientId: z.string().uuid(),
+});
+
 const router = Router();
 
+// requireAuthenticated on read/pay: a patient reading or paying their OWN invoice is a right,
+// not a grant — ownership-or-permission check lives in the controller (callerOwnsPatient).
+// create/send/void stay staff-only — "cannot generate or edit invoices" is a hard rule.
 router.post("/invoices", requirePermission("invoice", "create"), validateBody(createInvoiceSchema), createInvoiceHandler);
-router.get("/invoices", requirePermission("invoice", "read"), validateQuery(listInvoicesQuerySchema), listInvoicesHandler);
-router.get("/invoices/:id", requirePermission("invoice", "read"), validateParams(invoiceIdParamSchema), getInvoiceHandler);
+router.get("/invoices", requireAuthenticated(), validateQuery(listInvoicesQuerySchema), listInvoicesHandler);
+router.get("/invoices/:id", requireAuthenticated(), validateParams(invoiceIdParamSchema), getInvoiceHandler);
 router.post("/invoices/:id/send", requirePermission("invoice", "update"), validateParams(invoiceIdParamSchema), sendInvoiceHandler);
-router.post("/invoices/:id/pay", requirePermission("invoice", "update"), validateParams(invoiceIdParamSchema), payInvoiceHandler);
+router.post("/invoices/:id/pay", requireAuthenticated(), validateParams(invoiceIdParamSchema), payInvoiceHandler);
 router.post("/invoices/:id/void", requirePermission("invoice", "update"), validateParams(invoiceIdParamSchema), voidInvoiceHandler);
-router.get("/classifications", requirePermission("serviceClassification", "read"), listClassificationsHandler);
+// Reference/lookup data (category names, not scoped to any one patient) — every authenticated
+// user reasonably needs this to render invoice titles, same reasoning as the facility list.
+router.get("/classifications", requireAuthenticated(), listClassificationsHandler);
+router.get("/wallet/transactions", requireAuthenticated(), validateQuery(walletTransactionsQuerySchema), listWalletTransactionsHandler);
 
 export { router as billingRoutes };

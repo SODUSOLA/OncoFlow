@@ -1,9 +1,9 @@
 import {
-  pgTable, uuid, varchar, text, boolean, timestamp, uniqueIndex, index,
+  pgTable, uuid, varchar, text, boolean, timestamp, uniqueIndex, index, smallint,
 } from "drizzle-orm/pg-core";
 import {
   conversationTypeEnum, conversationStatusEnum, messageTypeEnum, messageStatusEnum, meetingStatusEnum,
-  transcriptionAssignmentStatusEnum,
+  transcriptionAssignmentStatusEnum, conversationFeedbackRaterRoleEnum,
 } from "../../db/enums.js";
 import { patient } from "../patient/schema.js";
 import { user } from "../auth/schema.js";
@@ -42,6 +42,21 @@ export const message = pgTable("message", {
   status: messageStatusEnum("status").notNull().default("SENT"),
   createdAt: timestamp("created_at").notNull().defaultNow(),
 });
+
+// One row per rater per conversation — a patient's rating of the care they received and a
+// staff member's rating of the encounter are independent perspectives, not one shared score.
+// Only submittable once the conversation is CLOSED (rating an ongoing interaction is premature).
+export const conversationFeedback = pgTable("conversation_feedback", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  conversationId: uuid("conversation_id").notNull().references(() => conversation.id),
+  raterId: uuid("rater_id").notNull().references(() => user.id),
+  raterRole: conversationFeedbackRaterRoleEnum("rater_role").notNull(),
+  rating: smallint("rating").notNull(),
+  review: text("review"),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+}, (t) => ({
+  conversationRaterUnique: uniqueIndex("conversation_feedback_conversation_rater_unique").on(t.conversationId, t.raterId),
+}));
 
 export const meeting = pgTable("meeting", {
   id: uuid("id").primaryKey().defaultRandom(),

@@ -1,12 +1,16 @@
 import type { Request, Response } from "express";
 import type { AuthenticatedRequest } from "../../lib/rbac.js";
-import { userHasRole } from "../../lib/rbac.js";
+import { userHasRole, userHasPermission } from "../../lib/rbac.js";
 import { CountdownCaseRepository } from "./repository.js";
 import { CountdownCase } from "./entities/CountdownCase.js";
 import {
   TriageChecklistService, PrescriptionService, LabRequestService, LabResultService,
   ClinicalDecisionService, CountdownCaseService,
 } from "./service.js";
+// Cross-module read (same pattern as messaging/service.ts importing PatientRepository) —
+// needed to check "is this lab result's/query's patientId the caller's own patient record"
+// before falling back to the staff-level labResult:read permission.
+import { PatientRepository } from "../patient/index.js";
 
 const caseRepo = new CountdownCaseRepository();
 const triageSvc = new TriageChecklistService();
@@ -15,9 +19,37 @@ const labRequestSvc = new LabRequestService();
 const labResultSvc = new LabResultService();
 const clinicalDecisionSvc = new ClinicalDecisionService();
 const countdownCaseSvc = new CountdownCaseService();
+const patientRepo = new PatientRepository();
 
-export async function listCountdownCasesHandler(_req: Request, res: Response) {
+async function callerOwnsPatient(callerId: string, patientId: string): Promise<boolean> {
+  const patientRow = await patientRepo.findById(patientId);
+  return !!patientRow?.userId && patientRow.userId === callerId;
+}
+
+// patientId query: own-record path (Patient role — "view own 7-day countdown status"), no
+// blanket countdownCase:read grant needed. No patientId: unchanged staff-wide listing.
+export async function listCountdownCasesHandler(req: Request, res: Response) {
   try {
+    const patientId = typeof req.query.patientId === "string" ? req.query.patientId : undefined;
+    const callerId = (req as AuthenticatedRequest).userId;
+
+    if (patientId) {
+      const isSelf = await callerOwnsPatient(callerId, patientId);
+      if (!isSelf && !(await userHasPermission(callerId, "countdownCase", "read"))) {
+        res.status(403).json({ error: "Forbidden" });
+        return;
+      }
+      const rows = await caseRepo.findByPatient(patientId);
+      res.json({ cases: rows.map((r) => new CountdownCase(r).toJSON()) });
+      return;
+    }
+
+    // Unchanged staff-wide listing (every active case, not scoped to one patient) — still needs
+    // the blanket permission grant, now checked here since the route itself only requires auth.
+    if (!(await userHasPermission(callerId, "countdownCase", "read"))) {
+      res.status(403).json({ error: "Forbidden" });
+      return;
+    }
     const rows = await caseRepo.findActive();
     res.json({ cases: rows.map((r) => new CountdownCase(r).toJSON()) });
   } catch {
@@ -108,6 +140,14 @@ export async function listLabRequestsHandler(req: Request, res: Response) {
       res.status(400).json({ error: "patientId query parameter required" });
       return;
     }
+
+    const callerId = (req as AuthenticatedRequest).userId;
+    const isSelf = await callerOwnsPatient(callerId, patientId);
+    if (!isSelf && !(await userHasPermission(callerId, "labRequest", "read"))) {
+      res.status(403).json({ error: "Forbidden" });
+      return;
+    }
+
     const result = await labRequestSvc.listByPatient(patientId);
     res.json({ labRequests: result });
   } catch {
@@ -137,10 +177,20 @@ export async function markLabRequestReviewedHandler(req: Request, res: Response)
   }
 }
 
+// Patient role spec: "can... upload own labs" — fulfilling an existing LabRequest with the
+// actual file is the patient self-upload path (a LabRequest must already exist; this doesn't
+// let a patient invent one). Staff (uploading on a patient's behalf) still need labResult:create.
 export async function uploadLabResultHandler(req: Request, res: Response) {
   try {
     const uploadedBy = (req as AuthenticatedRequest).userId;
     const { patientId, requestId, fileId, testDate, fileHash } = req.body;
+
+    const isSelf = await callerOwnsPatient(uploadedBy, patientId);
+    if (!isSelf && !(await userHasPermission(uploadedBy, "labResult", "create"))) {
+      res.status(403).json({ error: "Forbidden" });
+      return;
+    }
+
     const result = await labResultSvc.upload({ patientId, requestId, uploadedBy, fileId, testDate, fileHash });
     res.status(201).json({ labResult: result });
   } catch {
@@ -154,9 +204,21 @@ export async function getLabResultHandler(req: Request, res: Response) {
   try {
     const userId = (req as AuthenticatedRequest).userId;
     const isAdmin = await userHasRole(userId, "REGIONAL_ADMIN");
-    const result = isAdmin
-      ? await labResultSvc.getForAdmin(String(req.params.id))
-      : await labResultSvc.get(String(req.params.id));
+
+    if (isAdmin) {
+      const result = await labResultSvc.getForAdmin(String(req.params.id));
+      res.json({ labResult: result });
+      return;
+    }
+
+    // Own-record check happens after the fetch (need the result's patientId) — mirrors
+    // getPatientHandler's isSelf pattern.
+    const result = await labResultSvc.get(String(req.params.id));
+    const isSelf = await callerOwnsPatient(userId, result.patientId);
+    if (!isSelf && !(await userHasPermission(userId, "labResult", "read"))) {
+      res.status(403).json({ error: "Forbidden" });
+      return;
+    }
     res.json({ labResult: result });
   } catch (err) {
     const message = err instanceof Error ? err.message : "Internal server error";
@@ -173,6 +235,15 @@ export async function listLabResultsHandler(req: Request, res: Response) {
     }
     const userId = (req as AuthenticatedRequest).userId;
     const isAdmin = await userHasRole(userId, "REGIONAL_ADMIN");
+
+    if (!isAdmin) {
+      const isSelf = await callerOwnsPatient(userId, patientId);
+      if (!isSelf && !(await userHasPermission(userId, "labResult", "read"))) {
+        res.status(403).json({ error: "Forbidden" });
+        return;
+      }
+    }
+
     const result = isAdmin
       ? await labResultSvc.listByPatientForAdmin(patientId)
       : await labResultSvc.listByPatient(patientId);

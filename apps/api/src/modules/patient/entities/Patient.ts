@@ -12,6 +12,8 @@ export interface PatientData {
   gender: string;
   phone: string;
   email: string;
+  secondaryEmail: string | null;
+  profilePictureFileId: string | null;
   status: PatientStatus;
   facilityId: string;
 }
@@ -31,6 +33,8 @@ export class Patient {
 
   // FR-04 / Data Classification §8: phone is Restricted — never rendered to a staff-facing
   // response, under any circumstance, regardless of that staff member's role or permissions.
+  // secondaryEmail follows the same rule (it's PII contact info the patient added themselves).
+  // profilePictureFileId isn't PII in the same sense, so it stays in the base view.
   toJSON() {
     return {
       id: this.data.id,
@@ -41,6 +45,7 @@ export class Patient {
       dob: this.data.dob,
       gender: this.data.gender,
       email: this.data.email,
+      profilePictureFileId: this.data.profilePictureFileId,
       status: this.data.status,
       facilityId: this.data.facilityId,
     };
@@ -49,6 +54,6 @@ export class Patient {
   // Only for the patient viewing their own record (PRD §7.1: "Own PII & Contact" = Own for
   // Patient, None/masked for every staff role) — callers must verify identity before using this.
   toOwnJSON() {
-    return { ...this.toJSON(), phone: this.data.phone };
+    return { ...this.toJSON(), phone: this.data.phone, secondaryEmail: this.data.secondaryEmail };
   }
 }

@@ -143,9 +143,28 @@ describe("GET /patients — search by facility", () => {
     expect(res.body.patients[0]!.firstName).toBe("QueryFilter");
   });
 
-  it("returns 400 without facilityId", async () => {
-    const res = await request(app).get(base);
-    expect(res.status).toBe(400);
+  it("searches across all facilities when facilityId is omitted", async () => {
+    const uid = "ALLFAC-" + crypto.randomUUID().slice(0, 8).toUpperCase();
+    await request(app).post(base).send({
+      uniquePatientId: uid,
+      firstName: "AllFacilities",
+      lastName: "Test",
+      dob: "1998-03-03",
+      gender: "Male",
+      phone: "+2348088889999",
+      email: "allfac." + crypto.randomUUID().slice(0, 4) + "@test.com",
+      facilityId: testFacilityId,
+    });
+
+    const res = await request(app).get(`${base}?q=AllFacilities`);
+    expect(res.status).toBe(200);
+    expect(res.body.patients.some((p: { firstName: string }) => p.firstName === "AllFacilities")).toBe(true);
+  });
+
+  it("treats facilityId=all the same as omitting it", async () => {
+    const res = await request(app).get(`${base}?facilityId=all`);
+    expect(res.status).toBe(200);
+    expect(Array.isArray(res.body.patients)).toBe(true);
   });
 });
 

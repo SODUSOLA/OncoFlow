@@ -125,6 +125,19 @@ describe("Invoice lifecycle via API", () => {
     expect(res.status).toBe(200);
     expect(res.body.invoice.status).toBe("VOID");
   });
+
+  it("GET /invoices/:id returns the itemized breakdown (FR-51/§18.1)", async () => {
+    const created = await request(app).post(base).send({
+      patientId: testPatientId, facilityId: testFacilityId, classificationId: testClassificationId,
+    });
+    const res = await request(app).get(`${base}/${created.body.invoiceId}`);
+    expect(res.status).toBe(200);
+    expect(res.body.invoice.items).toHaveLength(3);
+    const components = res.body.invoice.items.map((item: { component: string }) => item.component).sort();
+    expect(components).toEqual(["DRUG_COST", "FACILITY_FEE", "NETWORK_FEE"]);
+    const networkFeeItem = res.body.invoice.items.find((item: { component: string }) => item.component === "NETWORK_FEE");
+    expect(networkFeeItem.amountKobo).toBe("100000");
+  });
 });
 
 describe("InvoiceItem — append-only guard", () => {

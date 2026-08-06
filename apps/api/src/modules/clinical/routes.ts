@@ -7,12 +7,16 @@ import {
   uploadLabResultHandler, getLabResultHandler, listLabResultsHandler,
   recordQaRecommendationHandler, recordFinalDecisionHandler, getClinicalDecisionHandler, sendResultsToQaHandler,
 } from "./controller.js";
-import { requirePermission, requireRole } from "../../lib/rbac.js";
+import { requirePermission, requireRole, requireAuthenticated } from "../../lib/rbac.js";
 import { validateBody, validateParams, validateQuery } from "../../lib/validation.js";
 import { z } from "zod";
 
 const conversationIdParamSchema = z.object({
   conversationId: z.string().uuid(),
+});
+
+const listCountdownCasesQuerySchema = z.object({
+  patientId: z.string().uuid().optional(),
 });
 
 const completeTriageChecklistSchema = z.object({
@@ -85,7 +89,9 @@ const sendResultsToQaSchema = z.object({
 
 const router = Router();
 
-router.get("/countdown-cases", requirePermission("countdownCase", "read"), listCountdownCasesHandler);
+// requireAuthenticated: ?patientId= is a self-service "my own countdown status" read (Patient
+// role); no patientId is the unchanged staff-wide listing, ownership-checked in the handler.
+router.get("/countdown-cases", requireAuthenticated(), validateQuery(listCountdownCasesQuerySchema), listCountdownCasesHandler);
 
 // F3.2: only a Virtual Medical Officer can complete a triage checklist — requireRole enforces
 // the specific role on top of requirePermission's generic resource:action grant.
@@ -125,9 +131,11 @@ router.post(
   validateBody(createLabRequestSchema),
   createLabRequestHandler,
 );
+// requireAuthenticated: a patient listing their OWN lab requests (to know what to upload
+// against) is a right, not a grant — see listLabRequestsHandler's callerOwnsPatient check.
 router.get(
   "/lab-requests",
-  requirePermission("labRequest", "read"),
+  requireAuthenticated(),
   validateQuery(listLabRequestsQuerySchema),
   listLabRequestsHandler,
 );
@@ -150,21 +158,25 @@ router.post(
   markLabRequestReviewedHandler,
 );
 
+// requireAuthenticated: a patient uploading their OWN lab result is a right, not a grant —
+// see uploadLabResultHandler's callerOwnsPatient check.
 router.post(
   "/lab-results",
-  requirePermission("labResult", "create"),
+  requireAuthenticated(),
   validateBody(uploadLabResultSchema),
   uploadLabResultHandler,
 );
+// requireAuthenticated, not requirePermission: a patient reading their OWN lab results is a
+// right, not a grant — the ownership-or-permission check lives in the controller (callerOwnsPatient).
 router.get(
   "/lab-results",
-  requirePermission("labResult", "read"),
+  requireAuthenticated(),
   validateQuery(listLabResultsQuerySchema),
   listLabResultsHandler,
 );
 router.get(
   "/lab-results/:id",
-  requirePermission("labResult", "read"),
+  requireAuthenticated(),
   validateParams(labResultIdParamSchema),
   getLabResultHandler,
 );

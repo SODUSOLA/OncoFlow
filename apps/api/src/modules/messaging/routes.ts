@@ -1,7 +1,8 @@
 import { Router } from "express";
 import {
   startConversationHandler, getConversationHandler, listConversationsHandler,
-  postMessageHandler, listMessagesHandler, closeConversationHandler,
+  postMessageHandler, listMessagesHandler, closeConversationHandler, startSideEffectReportHandler,
+  submitFeedbackHandler, listFeedbackHandler,
   provisionMeetingHandler, getMeetingHandler,
   dailyMeetingStatusWebhookHandler, dailyTranscriptionWebhookHandler,
   listTranscriptHandler, editTranscriptEntryHandler, signOffTranscriptHandler,
@@ -9,7 +10,7 @@ import {
   claimTranscriptionAssignmentHandler, releaseTranscriptionAssignmentHandler,
   finalizeTranscriptionAssignmentHandler,
 } from "./controller.js";
-import { requirePermission, requireRole } from "../../lib/rbac.js";
+import { requirePermission, requireRole, requireAuthenticated } from "../../lib/rbac.js";
 import { validateBody, validateParams, validateQuery } from "../../lib/validation.js";
 import { conversationTypeEnum, messageTypeEnum } from "../../db/enums.js";
 import { z } from "zod";
@@ -35,6 +36,16 @@ const postMessageSchema = z.object({
   senderId: z.string().uuid(),
   type: z.enum(messageTypeEnum.enumValues),
   content: z.string().trim().min(1).max(4000),
+});
+
+const startSideEffectReportSchema = z.object({
+  patientId: z.string().uuid(),
+  message: z.string().trim().min(1).max(4000),
+});
+
+const submitFeedbackSchema = z.object({
+  rating: z.number().int().min(1).max(5),
+  review: z.string().trim().max(2000).optional(),
 });
 
 const provisionMeetingSchema = z.object({
@@ -63,15 +74,28 @@ const transcriptionAssignmentIdParamSchema = z.object({
 
 const router = Router();
 
-router.post("/conversations", requirePermission("conversation", "create"), validateBody(startConversationSchema), startConversationHandler);
-router.get("/conversations", requirePermission("conversation", "read"), validateQuery(listConversationsQuerySchema), listConversationsHandler);
-router.get("/conversations/:id", requirePermission("conversation", "read"), validateParams(conversationIdParamSchema), getConversationHandler);
-router.post("/conversations/:id/close", requirePermission("conversation", "update"), validateParams(conversationIdParamSchema), closeConversationHandler);
-router.post("/conversations/:id/messages", requirePermission("message", "create"), validateParams(conversationIdParamSchema), validateBody(postMessageSchema), postMessageHandler);
-router.get("/conversations/:id/messages", requirePermission("message", "read"), validateParams(conversationIdParamSchema), listMessagesHandler);
+// requireAuthenticated, not requirePermission, on the routes where a patient acting on their
+// own conversation/meeting is legitimate — the ownership-or-permission check lives in the
+// service layer (callerOwnsPatient), which needs the record loaded first to know if it's "own".
+router.post("/conversations", requireAuthenticated(), validateBody(startConversationSchema), startConversationHandler);
+// Patient role spec: side-effect reports carry a real, per-report fee — this is the only
+// path a patient can use to start an MO_SIDE_EFFECT conversation (startConversation rejects
+// it for self-service callers). Ownership + payment are both checked inside the service.
+router.post("/conversations/side-effect-report", requireAuthenticated(), validateBody(startSideEffectReportSchema), startSideEffectReportHandler);
+router.get("/conversations", requireAuthenticated(), validateQuery(listConversationsQuerySchema), listConversationsHandler);
+router.get("/conversations/:id", requireAuthenticated(), validateParams(conversationIdParamSchema), getConversationHandler);
+// requireAuthenticated: a patient closing their OWN report, or staff with conversation:update
+// closing one they're handling — the ownership-or-permission check lives in the service.
+router.post("/conversations/:id/close", requireAuthenticated(), validateParams(conversationIdParamSchema), closeConversationHandler);
+router.post("/conversations/:id/messages", requireAuthenticated(), validateParams(conversationIdParamSchema), validateBody(postMessageSchema), postMessageHandler);
+router.get("/conversations/:id/messages", requireAuthenticated(), validateParams(conversationIdParamSchema), listMessagesHandler);
+// Ownership-or-permission (same as everything else on this conversation) — mutual rating, one
+// per rater, only once the conversation is CLOSED. Enforced in the service.
+router.post("/conversations/:id/feedback", requireAuthenticated(), validateParams(conversationIdParamSchema), validateBody(submitFeedbackSchema), submitFeedbackHandler);
+router.get("/conversations/:id/feedback", requireAuthenticated(), validateParams(conversationIdParamSchema), listFeedbackHandler);
 
 router.post("/meetings", requirePermission("meeting", "create"), validateBody(provisionMeetingSchema), provisionMeetingHandler);
-router.get("/meetings", requirePermission("meeting", "read"), validateQuery(meetingQuerySchema), getMeetingHandler);
+router.get("/meetings", requireAuthenticated(), validateQuery(meetingQuerySchema), getMeetingHandler);
 router.get("/meetings/:meetingId/transcript", requirePermission("transcript", "read"), validateParams(meetingIdParamSchema), listTranscriptHandler);
 // F3.11: editing transcript content is the Scribe's job specifically — requireRole enforces
 // the specific role on top of requirePermission's generic resource:action grant, same pattern

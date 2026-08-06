@@ -48,6 +48,36 @@ export class InvoiceService {
     return { invoice: entity.toJSON(), invoiceId: invoiceRow.id };
   }
 
+  // For fees that aren't a static per-facility tariff lookup — e.g. the side-effect report fee,
+  // which varies by time of day. Caller computes the amount; this just records it as a single
+  // NETWORK_FEE line item (no facility/drug component, matching a pure chat-based consult).
+  async createInvoiceWithFixedFee(data: {
+    patientId: string;
+    facilityId: string;
+    classificationId: string;
+    feeKobo: bigint;
+  }) {
+    const invoiceRow = await db.transaction(async (tx) => {
+      const created = await tx.insert(invoice).values({
+        id: crypto.randomUUID(),
+        patientId: data.patientId,
+        facilityId: data.facilityId,
+        classificationId: data.classificationId,
+        status: "DRAFT",
+        totalKobo: data.feeKobo,
+      }).returning();
+
+      const row = created[0]!;
+      await tx.insert(invoiceItem).values([
+        { id: crypto.randomUUID(), invoiceId: row.id, component: "NETWORK_FEE", amountKobo: data.feeKobo },
+      ]);
+      return row;
+    });
+
+    const entity = new Invoice(invoiceRow);
+    return { invoice: entity.toJSON(), invoiceId: invoiceRow.id };
+  }
+
   async sendInvoice(invoiceId: string) {
     const row = await invoiceRepo.findById(invoiceId);
     if (!row) throw new Error("Invoice not found");

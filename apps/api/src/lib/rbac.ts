@@ -70,8 +70,18 @@ export async function userHasRole(userId: string, roleName: string): Promise<boo
   return Boolean(rows[0]?.matched);
 }
 
-function userHasPermission(perms: string[], resource: string, action: PermissionAction): boolean {
+function permsInclude(perms: string[], resource: string, action: PermissionAction): boolean {
   return perms.includes(`${resource}:${action}`);
+}
+
+// Exported for the same reason as userHasRole: service/controller-layer ownership-or-permission
+// checks (e.g. "allow if this is the caller's own patient record, otherwise require staff
+// patient:read") can't be expressed as route middleware, since the "own record" half of the
+// check needs the resource loaded first.
+export async function userHasPermission(userId: string, resource: string, action: PermissionAction): Promise<boolean> {
+  if (await userHasRole(userId, "SUPER_ADMIN")) return true;
+  const perms = await resolveUserPermissions(userId);
+  return permsInclude(perms, resource, action);
 }
 
 // For self-service actions (logout, viewing/editing your own profile) that should work for
@@ -103,7 +113,7 @@ export function requirePermission(resource: string, action: PermissionAction) {
       }
 
       const perms = await resolveUserPermissions(userId);
-      if (!userHasPermission(perms, resource, action)) {
+      if (!permsInclude(perms, resource, action)) {
         await safeAuditLog({
           actorId: userId, action: "ACCESS_DENIED", resource, result: "DENIED", ip: req.ip,
         });
@@ -173,7 +183,7 @@ export function requirePermissionScoped(
       }
 
       const perms = await resolveUserPermissions(authed.userId);
-      if (!userHasPermission(perms, resource, action)) {
+      if (!permsInclude(perms, resource, action)) {
         await safeAuditLog({
           actorId: authed.userId, action: "ACCESS_DENIED", resource, result: "DENIED", ip: req.ip,
         });

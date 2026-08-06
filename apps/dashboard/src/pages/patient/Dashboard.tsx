@@ -1,38 +1,45 @@
 import { useEffect, useState } from "react";
 import { api } from "../../lib/api";
-import type { Invoice, Wallet } from "../../lib/types";
+import { useMyPatient } from "../../features/patient/useMyPatient";
+import { ProfilePanel } from "../../features/patient/ProfilePanel";
+import { TimelinePanel } from "../../features/patient/TimelinePanel";
+import { LabResultsPanel } from "../../features/patient/LabResultsPanel";
+import { VideoConsultPanel } from "../../features/patient/VideoConsultPanel";
+import { MessagesPanel } from "../../features/messaging/MessagesPanel";
+import type { Invoice } from "../../lib/types";
 
-export default function PatientDashboard() {
-  const [patientId, setPatientId] = useState("");
-  const [loadedPatientId, setLoadedPatientId] = useState<string | null>(null);
-  const [wallet, setWallet] = useState<Wallet | null>(null);
+const TABS = ["Overview", "Profile", "Timeline", "Lab Results", "Messages", "Video Consults"] as const;
+type Tab = (typeof TABS)[number];
+
+function koboToNaira(k: number) {
+  return `₦${(k / 100).toLocaleString("en-NG", { minimumFractionDigits: 2 })}`;
+}
+
+function OverviewPanel({ patientId, balanceKobo, onPaid }: { patientId: string; balanceKobo: number; onPaid: () => void }) {
   const [invoices, setInvoices] = useState<Invoice[]>([]);
   const [topUpAmount, setTopUpAmount] = useState("");
   const [topUpLoading, setTopUpLoading] = useState(false);
   const [topUpResult, setTopUpResult] = useState<string | null>(null);
   const [payResult, setPayResult] = useState<string | null>(null);
 
-  async function loadData(pid: string) {
-    setLoadedPatientId(pid);
-    try {
-      const [walletRes, invoicesRes] = await Promise.all([
-        api.get<{ wallet: Wallet }>(`/wallet?patientId=${pid}`).catch(() => null),
-        api.get<{ invoices: Invoice[] }>(`/invoices?patientId=${pid}`).catch(() => ({ invoices: [] })),
-      ]);
-      if (walletRes) setWallet(walletRes.wallet);
-      setInvoices(invoicesRes.invoices);
-    } catch { /* ignore */ }
+  async function loadInvoices() {
+    const res = await api.get<{ invoices: Invoice[] }>(`/invoices?patientId=${patientId}`).catch(() => ({ invoices: [] }));
+    setInvoices(res.invoices);
   }
+
+  useEffect(() => {
+    loadInvoices();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [patientId]);
 
   async function handleTopUp() {
     const amount = Number(topUpAmount);
-    if (!amount || amount <= 0 || !loadedPatientId) return;
+    if (!amount || amount <= 0) return;
     setTopUpLoading(true);
     setTopUpResult(null);
     try {
       const res = await api.post<{ checkoutUrl: string }>("/wallet/top-up", {
-        patientId: loadedPatientId,
-        amountKobo: amount * 100,
+        patientId, amountKobo: amount * 100,
       });
       setTopUpResult("Redirecting to payment...");
       window.location.href = res.checkoutUrl;
@@ -48,53 +55,21 @@ export default function PatientDashboard() {
     try {
       await api.post(`/invoices/${invoiceId}/pay`);
       setPayResult("Invoice paid successfully");
-      if (loadedPatientId) loadData(loadedPatientId);
+      await loadInvoices();
+      onPaid();
     } catch (err) {
       setPayResult(err instanceof Error ? err.message : "Payment failed");
     }
   }
 
-  function koboToNaira(k: number) {
-    return `₦${(k / 100).toLocaleString("en-NG", { minimumFractionDigits: 2 })}`;
-  }
-
-  if (!loadedPatientId) {
-    return (
-      <div className="space-y-6">
-        <h2 className="text-2xl font-bold text-gray-800">Patient Dashboard</h2>
-        <div className="bg-white rounded-xl border border-gray-200 p-6 space-y-4">
-          <p className="text-sm text-gray-600">Enter your Patient ID to view your wallet and invoices.</p>
-          <div className="flex gap-3">
-            <input
-              type="text"
-              value={patientId}
-              onChange={(e) => setPatientId(e.target.value)}
-              placeholder="Patient ID"
-              className="border border-gray-300 rounded-lg px-3 py-2 text-sm w-64"
-            />
-            <button
-              onClick={() => patientId && loadData(patientId)}
-              className="px-4 py-2 bg-brand-600 text-white rounded-lg hover:bg-brand-700 text-sm font-medium"
-            >
-              Load
-            </button>
-          </div>
-        </div>
-      </div>
-    );
-  }
-
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <h2 className="text-2xl font-bold text-gray-800">Patient Dashboard</h2>
-        <button onClick={() => setLoadedPatientId(null)} className="text-sm text-gray-500 hover:text-gray-700">Switch Patient</button>
-      </div>
+      <h2 className="text-2xl font-bold text-gray-800">Overview</h2>
 
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
         <div className="bg-white rounded-xl border border-gray-200 p-6">
           <p className="text-sm text-gray-500 mb-1">Wallet Balance</p>
-          <p className="text-3xl font-bold text-brand-700">{wallet ? koboToNaira(wallet.balanceKobo) : "₦0.00"}</p>
+          <p className="text-3xl font-bold text-brand-700">{koboToNaira(balanceKobo)}</p>
         </div>
         <div className="bg-white rounded-xl border border-gray-200 p-6">
           <p className="text-sm text-gray-500 mb-1">Pending Invoices</p>
@@ -181,6 +156,53 @@ export default function PatientDashboard() {
           </div>
         )}
       </div>
+    </div>
+  );
+}
+
+export default function PatientDashboard() {
+  const { patient, wallet, loading, error, reload } = useMyPatient();
+  const [tab, setTab] = useState<Tab>("Overview");
+
+  if (loading) {
+    return <div className="p-8 text-center text-gray-400">Loading your dashboard...</div>;
+  }
+
+  if (error || !patient) {
+    return (
+      <div className="p-8 text-center">
+        <p className="text-gray-700 font-medium">No patient record linked to your account yet</p>
+        <p className="text-sm text-gray-400 mt-2">
+          {error ?? "Once your care team confirms your facility and issues your Unique Patient ID, it'll show up here."}
+        </p>
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-6">
+      <nav className="flex gap-1 border-b border-gray-200">
+        {TABS.map((t) => (
+          <button
+            key={t}
+            onClick={() => setTab(t)}
+            className={`px-4 py-2 text-sm font-medium border-b-2 -mb-px transition-colors ${
+              tab === t ? "border-brand-600 text-brand-700" : "border-transparent text-gray-500 hover:text-gray-700"
+            }`}
+          >
+            {t}
+          </button>
+        ))}
+      </nav>
+
+      {tab === "Overview" && (
+        <OverviewPanel patientId={patient.id} balanceKobo={Number(wallet?.balanceKobo ?? 0)} onPaid={reload} />
+      )}
+      {tab === "Profile" && <ProfilePanel patient={patient} onUpdated={() => reload()} />}
+      {tab === "Timeline" && <TimelinePanel patientId={patient.id} />}
+      {tab === "Lab Results" && <LabResultsPanel patientId={patient.id} />}
+      {tab === "Messages" && <MessagesPanel patientId={patient.id} />}
+      {tab === "Video Consults" && <VideoConsultPanel patientId={patient.id} />}
     </div>
   );
 }

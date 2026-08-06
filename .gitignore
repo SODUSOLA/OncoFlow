@@ -8,3 +8,7 @@ coverage/
 .turbo/
 .wrangler/
 AGENTS.md
+
+# apps/web (Next.js)
+.next/
+next-env.d.ts

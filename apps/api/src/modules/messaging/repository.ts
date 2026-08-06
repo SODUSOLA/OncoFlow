@@ -1,6 +1,8 @@
 import { db } from "../../db/index.js";
-import { eq, sql, and, isNull, lt } from "drizzle-orm";
-import { conversation, participant, message, meeting, transcript, transcriptionAssignment } from "./schema.js";
+import { eq, ne, sql, and, isNull, lt } from "drizzle-orm";
+import {
+  conversation, participant, message, meeting, transcript, transcriptionAssignment, conversationFeedback,
+} from "./schema.js";
 
 export class ConversationRepository {
   async findById(id: string) {
@@ -99,7 +101,32 @@ export class MessageRepository {
     return row[0] ?? null;
   }
 
-  // [append-only] — no update()/delete() methods; a correction is a new message, never an edit.
+  // [append-only for content] — the two methods below only ever touch `status`, never
+  // `content`; a correction is still a new message, never an edit of an existing one.
+
+  // WhatsApp-style delivery: fires when the OTHER party's client fetches the conversation
+  // list, i.e. their app now knows this message exists. viewerIsPatient picks which side's
+  // messages count as "the other party" — a patient viewer delivers staff messages, a staff
+  // viewer delivers the patient's messages.
+  async markDeliveredForViewer(conversationId: string, patientUserId: string | null, viewerIsPatient: boolean) {
+    if (!patientUserId) return;
+    const senderMatch = viewerIsPatient ? ne(message.senderId, patientUserId) : eq(message.senderId, patientUserId);
+    await db
+      .update(message)
+      .set({ status: "DELIVERED" })
+      .where(and(eq(message.conversationId, conversationId), eq(message.status, "SENT"), senderMatch));
+  }
+
+  // WhatsApp-style read receipt: fires when the OTHER party opens this specific thread.
+  async markReadForViewer(conversationId: string, patientUserId: string | null, viewerIsPatient: boolean) {
+    if (!patientUserId) return;
+    const senderMatch = viewerIsPatient ? ne(message.senderId, patientUserId) : eq(message.senderId, patientUserId);
+    await db
+      .update(message)
+      .set({ status: "READ" })
+      .where(and(eq(message.conversationId, conversationId), ne(message.status, "READ"), senderMatch));
+  }
+
   async create(data: typeof message.$inferInsert) {
     const row = await db.insert(message).values(data).returning();
     return row[0]!;
@@ -233,5 +260,25 @@ export class TranscriptionAssignmentRepository {
       .where(eq(transcriptionAssignment.id, id))
       .returning();
     return row[0] ?? null;
+  }
+}
+
+export class ConversationFeedbackRepository {
+  async findByConversation(conversationId: string) {
+    return db.select().from(conversationFeedback).where(eq(conversationFeedback.conversationId, conversationId));
+  }
+
+  async findByConversationAndRater(conversationId: string, raterId: string) {
+    const row = await db
+      .select()
+      .from(conversationFeedback)
+      .where(and(eq(conversationFeedback.conversationId, conversationId), eq(conversationFeedback.raterId, raterId)))
+      .limit(1);
+    return row[0] ?? null;
+  }
+
+  async create(data: typeof conversationFeedback.$inferInsert) {
+    const row = await db.insert(conversationFeedback).values(data).returning();
+    return row[0]!;
   }
 }

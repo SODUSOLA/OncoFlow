@@ -72,5 +72,8 @@ export async function seedFacilities() {
   console.log(`Seeded ${FACILITIES.length} facilities with ${DEPARTMENTS.length} departments each`);
 }
 
-// Run directly: npx tsx src/seed/facility.ts
-seedFacilities().catch(console.error);
+// Run directly: npx tsx src/seed/facility.ts — guarded so importing this from seed/index.ts
+// doesn't also trigger a second, racing invocation (see identity.ts's own comment on this).
+if (import.meta.url === `file://${process.argv[1]}`) {
+  seedFacilities().catch(console.error);
+}

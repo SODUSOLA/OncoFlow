@@ -1,9 +1,12 @@
 import { describe, it, expect } from "vitest";
+import request from "supertest";
 import crypto from "node:crypto";
 import { FacilityRepository, DepartmentRepository } from "../repository.js";
+import { createApp } from "../../../app.js";
 
 const facRepo = new FacilityRepository();
 const deptRepo = new DepartmentRepository();
+const app = createApp();
 
 describe("FacilityRepository", () => {
   it("creates and finds a facility", async () => {
@@ -89,5 +92,24 @@ describe("DepartmentRepository", () => {
     await deptRepo.softDelete(deptId);
     const found = await deptRepo.findById(deptId);
     expect(found).toBeNull();
+  });
+});
+
+describe("GET /facilities — public reference data", () => {
+  it("is readable with no session cookie at all, and excludes inactive facilities", async () => {
+    const activeId = crypto.randomUUID();
+    await facRepo.create({
+      id: activeId, name: "Public List Active Hospital", region: "Lagos", address: "Pub St", status: "ACTIVE",
+    });
+    const inactiveId = crypto.randomUUID();
+    await facRepo.create({
+      id: inactiveId, name: "Public List Inactive Hospital", region: "Lagos", address: "Pub St", status: "INACTIVE",
+    });
+
+    const res = await request(app).get("/facilities");
+    expect(res.status).toBe(200);
+    const ids = res.body.facilities.map((f: { id: string }) => f.id);
+    expect(ids).toContain(activeId);
+    expect(ids).not.toContain(inactiveId);
   });
 });

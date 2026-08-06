@@ -1,6 +1,6 @@
 import { Router } from "express";
 import { uploadFileHandler, getFileHandler, listPatientFilesHandler } from "./controller.js";
-import { requirePermission } from "../../lib/rbac.js";
+import { requireAuthenticated } from "../../lib/rbac.js";
 import { validateBody, validateParams, validateQuery } from "../../lib/validation.js";
 import { z } from "zod";
 
@@ -20,8 +20,11 @@ const listFilesQuerySchema = z.object({
 
 const router = Router();
 
-router.post("/files/upload", requirePermission("file", "create"), validateBody(uploadSchema), uploadFileHandler);
-router.get("/files/:id", requirePermission("file", "read"), validateParams(fileIdParamSchema), getFileHandler);
-router.get("/files", requirePermission("file", "read"), validateQuery(listFilesQuerySchema), listPatientFilesHandler);
+// requireAuthenticated, not requirePermission: a patient uploading/reading their OWN files
+// (e.g. their own lab results) is a right, not a grant — the ownership-or-permission check
+// lives in the controller (callerOwnsPatient), which needs the record loaded first.
+router.post("/files/upload", requireAuthenticated(), validateBody(uploadSchema), uploadFileHandler);
+router.get("/files/:id", requireAuthenticated(), validateParams(fileIdParamSchema), getFileHandler);
+router.get("/files", requireAuthenticated(), validateQuery(listFilesQuerySchema), listPatientFilesHandler);
 
 export { router as documentRoutes };

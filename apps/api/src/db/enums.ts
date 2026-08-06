@@ -59,6 +59,9 @@ export const transcriptionAssignmentStatusEnum = pgEnum("transcription_assignmen
 
 export const serviceClassificationNameEnum = pgEnum("service_classification_name", [
   "SUBSCRIPTION", "CONSULTATION", "DRUG_ADMINISTRATION", "CHEMOTHERAPY", "GENERAL_ADMISSION", "PROCEDURE",
+  // A self-reported side-effect chat with a Virtual Medical Officer — its own fee, distinct
+  // from a general CONSULTATION (per-report, paid upfront before the conversation is created).
+  "SIDE_EFFECT_REPORT",
 ]);
 export const invoiceStatusEnum = pgEnum("invoice_status", ["DRAFT", "SENT", "PAID", "VOID", "OVERDUE"]);
 export const invoiceComponentEnum = pgEnum("invoice_component", ["NETWORK_FEE", "FACILITY_FEE", "PROFESSIONAL_FEE", "DRUG_COST"]);
@@ -89,3 +92,16 @@ export const auditActionEnum = pgEnum("audit_action", [
   "CREATE", "UPDATE", "DELETE", "LOGIN", "LOGOUT", "EXPORT", "APPROVE", "DECLINE", "ACCESS_DENIED",
 ]);
 export const auditResultEnum = pgEnum("audit_result", ["ALLOWED", "DENIED"]);
+
+// Public-inquiry chat widget (marketing site) — deliberately separate from conversation/message
+// (messaging module), which both require a real patientId/senderId. A site visitor asking a
+// question has neither yet: they may not be registered at all, or may be a registered patient
+// who just hasn't logged in. Staff can later link an inquiry to a patient record once identified.
+export const publicInquiryStatusEnum = pgEnum("public_inquiry_status", ["OPEN", "CLOSED"]);
+export const publicInquiryMessageSenderTypeEnum = pgEnum("public_inquiry_message_sender_type", ["VISITOR", "STAFF"]);
+
+// Mutual post-conversation rating — the patient rates the care they received, staff (typically
+// the Virtual Medical Officer) rates the encounter from their side. Two independent rows per
+// conversation (one per rater), not a single shared record — each side's rating/review stands
+// on its own regardless of what the other one said.
+export const conversationFeedbackRaterRoleEnum = pgEnum("conversation_feedback_rater_role", ["PATIENT", "STAFF"]);

@@ -2,11 +2,13 @@ import { seedIdentity } from "./identity.js";
 import { seedFacilities } from "./facility.js";
 import { seedPatients } from "./patient.js";
 import { seedBilling } from "./billing.js";
+import { seedDemoUsers } from "./demo-users.js";
 
 async function seed() {
   console.log("--- Seeding OncoFlow ---");
   await seedIdentity();
   await seedFacilities();
+  await seedDemoUsers();
   await seedPatients();
   await seedBilling();
   console.log("--- Seeding complete ---");

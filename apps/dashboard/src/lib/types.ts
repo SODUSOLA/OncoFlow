@@ -24,11 +24,36 @@ export interface CountdownCase {
 export interface Patient {
   id: string;
   uniquePatientId: string;
+  userId: string | null;
   firstName: string;
   lastName: string;
+  dob: string;
+  gender: string;
+  phone?: string;
+  email: string;
+  secondaryEmail?: string | null;
+  profilePictureFileId: string | null;
+  status: string;
+  facilityId: string;
+}
+
+export interface Facility {
+  id: string;
+  name: string;
+  region: string;
+  address: string;
+  status: "ACTIVE" | "INACTIVE";
+}
+
+export interface PendingRegistration {
+  id: string;
+  userId: string;
+  fullName: string;
+  dob: string;
   phone: string;
   email: string;
-  status: string;
+  preferredFacilityId: string | null;
+  createdAt: string;
 }
 
 export interface Wallet {
@@ -58,4 +83,102 @@ export interface Tariff {
   networkFeeKobo: number;
   facilityBedFeeKobo: number;
   drugPriceKobo: number;
+}
+
+export interface Conversation {
+  id: string;
+  patientId: string;
+  conversationType: "ADMIN_INQUIRY" | "MO_SIDE_EFFECT";
+  status: "OPEN" | "CLOSED";
+  slaDeadline: string | null;
+  firstResponseAt: string | null;
+  slaBreached: boolean;
+  assignedTo: string | null;
+}
+
+export interface Message {
+  id: string;
+  conversationId: string;
+  senderId: string;
+  type: "TEXT" | "IMAGE" | "VOICE" | "SYSTEM";
+  content: string;
+  status: "SENT" | "DELIVERED" | "READ";
+  createdAt: string;
+}
+
+export interface ConversationFeedback {
+  id: string;
+  conversationId: string;
+  raterId: string;
+  raterRole: "PATIENT" | "STAFF";
+  rating: number;
+  review: string | null;
+  createdAt: string;
+}
+
+export interface TimelineEvent {
+  id: string;
+  eventType: "REGISTRATION" | "STATUS_CHANGE" | "CONSULTATION" | "APPOINTMENT" | "INVOICE" | "WALLET";
+  referenceId: string;
+  createdAt: string;
+}
+
+export interface LabRequest {
+  id: string;
+  patientId: string;
+  requestedBy: string;
+  status: "PENDING" | "UPLOADED" | "REVIEWED";
+  createdAt: string;
+}
+
+export interface LabResult {
+  id: string;
+  patientId: string;
+  requestId: string;
+  uploadedBy: string;
+  reviewedBy: string | null;
+  status: "PENDING" | "UPLOADED" | "REVIEWED";
+  fileId: string;
+  testDate: string;
+  possibleDuplicate: boolean;
+  createdAt: string;
+}
+
+export interface Appointment {
+  id: string;
+  patientId: string;
+  oncologistId: string | null;
+  facilityId: string;
+  appointmentType: "VIRTUAL" | "PHYSICAL" | "CHEMOTHERAPY" | "PROCEDURE";
+  scheduledAt: string;
+  status: "PENDING" | "CONFIRMED" | "CHECKED_IN" | "IN_PROGRESS" | "COMPLETED" | "CANCELLED" | "MISSED";
+}
+
+export interface Meeting {
+  id: string;
+  appointmentId: string;
+  provider: string;
+  roomId: string;
+  status: "SCHEDULED" | "IN_PROGRESS" | "ENDED";
+}
+
+export interface PublicInquiry {
+  id: string;
+  name: string;
+  email: string | null;
+  phone: string | null;
+  status: "OPEN" | "CLOSED";
+  linkedPatientId: string | null;
+  assignedTo: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface PublicInquiryMessage {
+  id: string;
+  inquiryId: string;
+  senderType: "VISITOR" | "STAFF";
+  senderUserId: string | null;
+  content: string;
+  createdAt: string;
 }

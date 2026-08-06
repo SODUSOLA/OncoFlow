@@ -165,6 +165,17 @@ export class LabResultService {
       possibleDuplicate: existingMatches.length > 0,
     });
 
+    // Uploading a result IS the request becoming "uploaded" — no separate manual staff step
+    // needed for this to happen (that would otherwise strand a patient's own self-upload in
+    // PENDING forever, since mark-uploaded stays a staff-permission-gated action). Only fires
+    // from PENDING — a second/duplicate result against an already-UPLOADED request doesn't
+    // re-trigger the transition (LabRequest.markUploaded() would just throw).
+    const requestRow = await labRequestRepo.findById(data.requestId);
+    if (requestRow?.status === "PENDING") {
+      const updated = new LabRequest(requestRow).markUploaded();
+      await labRequestRepo.update(data.requestId, { status: updated.status });
+    }
+
     return new LabResult(row).toJSON();
   }
 

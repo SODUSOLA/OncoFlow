@@ -1,6 +1,9 @@
-import { lazy, Suspense } from "react";
-import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
+import { lazy, Suspense, type ReactNode } from "react";
+import { BrowserRouter, Routes, Route, Navigate, useLocation } from "react-router-dom";
 import { DashboardLayout } from "./components/DashboardLayout";
+import { AuthProvider, useAuth } from "./lib/auth";
+import { dashboardPathForRoles } from "./lib/roleRouting";
+import Login from "./pages/Login";
 
 const patient = lazy(() => import("./pages/patient/Dashboard"));
 const regionalAdmin = lazy(() => import("./pages/regional-admin/Dashboard"));
@@ -34,20 +37,73 @@ function SuspenseWrapper({ Component, label }: { Component: React.LazyExoticComp
   );
 }
 
+function FullScreenLoading() {
+  return <div className="min-h-screen flex items-center justify-center text-gray-400">Loading...</div>;
+}
+
+// Session check happens once at the top of the tree (AuthProvider's /auth/profile call) —
+// this just waits for that to settle and redirects to /login if it came back empty, remembering
+// where the user was headed so login can send them straight back.
+function RequireAuth({ children }: { children: ReactNode }) {
+  const { user, loading } = useAuth();
+  const location = useLocation();
+
+  if (loading) return <FullScreenLoading />;
+  if (!user) return <Navigate to="/login" replace state={{ from: location.pathname }} />;
+  return <>{children}</>;
+}
+
+function RootRedirect() {
+  const { user, roles: userRoles, loading } = useAuth();
+
+  if (loading) return <FullScreenLoading />;
+  if (!user) return <Navigate to="/login" replace />;
+
+  const path = dashboardPathForRoles(userRoles.map((r) => r.roleName));
+  return <Navigate to={path ? `/dashboard/${path}` : "/no-dashboard"} replace />;
+}
+
+function NoDashboard() {
+  const { roles: userRoles, logout } = useAuth();
+  return (
+    <div className="min-h-screen flex items-center justify-center text-center px-4">
+      <div>
+        <h2 className="text-xl font-semibold text-gray-700">No dashboard yet for your role</h2>
+        <p className="text-gray-400 mt-2 text-sm">
+          {userRoles.map((r) => r.roleName).join(", ") || "No roles assigned"}
+        </p>
+        <button onClick={() => logout()} className="mt-4 text-sm text-brand-700 hover:underline">
+          Sign out
+        </button>
+      </div>
+    </div>
+  );
+}
+
+function AppRoutes() {
+  return (
+    <Routes>
+      <Route path="/" element={<RootRedirect />} />
+      <Route path="/login" element={<Login />} />
+      <Route path="/no-dashboard" element={<RequireAuth><NoDashboard /></RequireAuth>} />
+      {roles.map(({ path, component: Component, label }) => (
+        <Route
+          key={path}
+          path={`dashboard/${path}`}
+          element={<RequireAuth><SuspenseWrapper Component={Component} label={label} /></RequireAuth>}
+        />
+      ))}
+      <Route path="*" element={<div className="p-8 text-center text-gray-500">404 — Page not found</div>} />
+    </Routes>
+  );
+}
+
 export function App() {
   return (
     <BrowserRouter>
-      <Routes>
-        <Route path="/" element={<Navigate to="/dashboard/patient" replace />} />
-        {roles.map(({ path, component: Component, label }) => (
-          <Route
-            key={path}
-            path={`dashboard/${path}`}
-            element={<SuspenseWrapper Component={Component} label={label} />}
-          />
-        ))}
-        <Route path="*" element={<div className="p-8 text-center text-gray-500">404 — Page not found</div>} />
-      </Routes>
+      <AuthProvider>
+        <AppRoutes />
+      </AuthProvider>
     </BrowserRouter>
   );
 }

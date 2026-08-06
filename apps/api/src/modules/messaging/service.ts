@@ -1,18 +1,23 @@
 import crypto from "node:crypto";
 import {
   ConversationRepository, ParticipantRepository, MessageRepository, MeetingRepository, TranscriptRepository,
-  TranscriptionAssignmentRepository,
+  TranscriptionAssignmentRepository, ConversationFeedbackRepository,
 } from "./repository.js";
 import { Conversation } from "./entities/Conversation.js";
 import { Message } from "./entities/Message.js";
 import { Meeting } from "./entities/Meeting.js";
 import { Transcript } from "./entities/Transcript.js";
 import { TranscriptionAssignment } from "./entities/TranscriptionAssignment.js";
+import { ConversationFeedback } from "./entities/ConversationFeedback.js";
 import { createDailyRoom } from "./services/DailyService.js";
 import { ConflictError, ForbiddenError, NotFoundError } from "../../lib/errors.js";
-import { userHasRole } from "../../lib/rbac.js";
+import { userHasRole, userHasPermission } from "../../lib/rbac.js";
 import { PatientRepository } from "../patient/index.js";
 import { AppointmentRepository } from "../appointment/index.js";
+import { InvoiceService, InvoiceRepository, ServiceClassificationRepository } from "../billing/index.js";
+import { Invoice } from "../billing/entities/Invoice.js";
+import { PaymentService } from "../billing/services/PaymentService.js";
+import { sideEffectReportFeeKobo } from "./entities/side-effect-pricing.js";
 import type { conversationTypeEnum, messageTypeEnum, meetingStatusEnum } from "../../db/enums.js";
 
 type ConversationType = (typeof conversationTypeEnum.enumValues)[number];
@@ -26,61 +31,187 @@ const patientRepo = new PatientRepository();
 const meetingRepo = new MeetingRepository();
 const transcriptRepo = new TranscriptRepository();
 const transcriptionAssignmentRepo = new TranscriptionAssignmentRepository();
+const feedbackRepo = new ConversationFeedbackRepository();
 const appointmentRepo = new AppointmentRepository();
+const invoiceSvc = new InvoiceService();
+const invoiceRepo = new InvoiceRepository();
+const classificationRepo = new ServiceClassificationRepository();
+const paymentSvc = new PaymentService();
 
 // F3.11 §5 — proposed default, not FR-pinned. A global constant for MVP; per-scribe override
 // is a reasonable later enhancement, not worth building now (no evidence yet of scribes
 // actually having different throughput).
 const TRANSCRIPTION_BACKLOG_CAP = 5;
 
+// Ownership-or-permission checks (Patient role spec: "can message assigned Admin/MO channels
+// ... cannot view any other patient's data, under any circumstance") — a patient participating
+// in their own conversation doesn't need a blanket conversation:*/message:* grant; anyone else
+// does.
+async function callerOwnsPatient(callerId: string, patientId: string): Promise<boolean> {
+  const patientRow = await patientRepo.findById(patientId);
+  return !!patientRow?.userId && patientRow.userId === callerId;
+}
+
 export class MessagingService {
-  async startConversation(data: { patientId: string; conversationType: ConversationType; assignedTo?: string }) {
+  async startConversation(
+    data: { patientId: string; conversationType: ConversationType; assignedTo?: string },
+    callerId: string,
+  ) {
+    const isSelf = await callerOwnsPatient(callerId, data.patientId);
+    // A patient reporting their own side effect carries a real fee (paid upfront, per report)
+    // — that path only exists through startSideEffectReport, which creates+pays the invoice
+    // before the conversation exists. Staff opening one on a patient's behalf (e.g. logging a
+    // call) still goes through the free permission-gated path below; only self-service is priced.
+    if (isSelf && data.conversationType === "MO_SIDE_EFFECT") {
+      throw new ForbiddenError("Reporting a side effect requires paying the report fee first");
+    }
+    if (!isSelf && !(await userHasPermission(callerId, "conversation", "create"))) {
+      throw new ForbiddenError("You can only start a conversation for your own patient record");
+    }
+
+    const row = await this.createConversationRecord(data.patientId, data.conversationType, data.assignedTo);
+    return new Conversation(row).toJSON();
+  }
+
+  private async createConversationRecord(patientId: string, conversationType: ConversationType, assignedTo?: string) {
     const now = new Date();
     const row = await conversationRepo.create({
       id: crypto.randomUUID(),
-      patientId: data.patientId,
-      conversationType: data.conversationType,
+      patientId,
+      conversationType,
       status: "OPEN",
-      slaDeadline: Conversation.slaDeadlineFor(data.conversationType, now),
-      assignedTo: data.assignedTo ?? null,
+      slaDeadline: Conversation.slaDeadlineFor(conversationType, now),
+      assignedTo: assignedTo ?? null,
     });
 
     // participant.user_id references User, not Patient — a patient only gets a participant
     // row if they have a linked user account (patient.user_id is nullable; not every patient
     // record has self-service login set up yet). conversation.patient_id already establishes
     // the patient side unambiguously either way.
-    const patientRow = await patientRepo.findById(data.patientId);
+    const patientRow = await patientRepo.findById(patientId);
     if (patientRow?.userId) {
       await participantRepo.create({ conversationId: row.id, userId: patientRow.userId });
     }
-    if (data.assignedTo) {
-      await participantRepo.create({ conversationId: row.id, userId: data.assignedTo });
+    if (assignedTo) {
+      await participantRepo.create({ conversationId: row.id, userId: assignedTo });
     }
 
-    return new Conversation(row).toJSON();
+    return row;
   }
 
-  async getConversation(id: string) {
+  // Patient role spec: side-effect reports carry a real, per-report fee paid upfront. Creates
+  // a fresh SIDE_EFFECT_REPORT invoice, sends it, and attempts payment from the patient's
+  // wallet in the same request — the conversation (and first message) only get created once
+  // that payment actually succeeds. On insufficient balance, returns the unpaid (SENT) invoice
+  // instead of throwing, so the caller can render the same Insufficient Balance state the
+  // Wallet page already uses, with real numbers.
+  async startSideEffectReport(patientId: string, message: string, callerId: string) {
+    const isSelf = await callerOwnsPatient(callerId, patientId);
+    if (!isSelf) {
+      throw new ForbiddenError("You can only report a side effect for your own patient record");
+    }
+
+    // Server-side backstop for the same rule the frontend enforces: an OPEN report is still
+    // live (follow-ups there are free) — a CLOSED one means the encounter is over and a new
+    // report, with a new fee, is what's actually being started.
+    const existingOpen = (await conversationRepo.findByPatient(patientId))
+      .find((c) => c.conversationType === "MO_SIDE_EFFECT" && c.status === "OPEN");
+    if (existingOpen) {
+      throw new ForbiddenError("You already have an open side-effect report — reply there instead");
+    }
+
+    const patientRow = await patientRepo.findById(patientId);
+    if (!patientRow) throw new NotFoundError("Patient not found");
+
+    const classificationRow = await classificationRepo.findByName("SIDE_EFFECT_REPORT");
+    if (!classificationRow) throw new Error("Side-effect report fee is not configured");
+
+    const { invoiceId } = await invoiceSvc.createInvoiceWithFixedFee({
+      patientId,
+      facilityId: patientRow.facilityId,
+      classificationId: classificationRow.id,
+      feeKobo: sideEffectReportFeeKobo(),
+    });
+    await invoiceSvc.sendInvoice(invoiceId);
+
+    try {
+      await paymentSvc.payInvoiceWithWallet(invoiceId);
+    } catch {
+      const unpaidRow = await invoiceRepo.findById(invoiceId);
+      return { paid: false as const, invoice: new Invoice(unpaidRow!).toJSON() };
+    }
+
+    const conversationRow = await this.createConversationRecord(patientId, "MO_SIDE_EFFECT");
+    const messageResult = await this.postMessage(
+      { conversationId: conversationRow.id, senderId: callerId, type: "TEXT", content: message },
+      callerId,
+    );
+
+    const paidRow = await invoiceRepo.findById(invoiceId);
+    return {
+      paid: true as const,
+      conversation: new Conversation(conversationRow).toJSON(),
+      message: messageResult,
+      invoice: new Invoice(paidRow!).toJSON(),
+    };
+  }
+
+  async getConversation(id: string, callerId: string) {
     const row = await conversationRepo.findById(id);
     if (!row) throw new NotFoundError("Conversation not found");
+
+    const isSelf = await callerOwnsPatient(callerId, row.patientId);
+    if (!isSelf && !(await userHasPermission(callerId, "conversation", "read"))) {
+      throw new ForbiddenError("Forbidden");
+    }
     return new Conversation(row).toJSON();
   }
 
-  async listByPatient(patientId: string) {
+  async listByPatient(patientId: string, callerId: string) {
+    const isSelf = await callerOwnsPatient(callerId, patientId);
+    if (!isSelf && !(await userHasPermission(callerId, "conversation", "read"))) {
+      throw new ForbiddenError("Forbidden");
+    }
     const rows = await conversationRepo.findByPatient(patientId);
+    // WhatsApp-style "delivered": the caller's client just fetched this list, so the other
+    // party's messages in each of these conversations have now reached them.
+    const patientRow = await patientRepo.findById(patientId);
+    for (const row of rows) {
+      await messageRepo.markDeliveredForViewer(row.id, patientRow?.userId ?? null, isSelf);
+    }
     return rows.map((r) => new Conversation(r).toJSON());
   }
 
-  async listByAssignee(assignedTo: string) {
+  // Staff-only path (a patient never has a conversation "assigned" to them) — no ownership
+  // branch, just the permission.
+  async listByAssignee(assignedTo: string, callerId: string) {
+    if (!(await userHasPermission(callerId, "conversation", "read"))) {
+      throw new ForbiddenError("Forbidden");
+    }
     const rows = await conversationRepo.findByAssignee(assignedTo);
+    for (const row of rows) {
+      const patientRow = await patientRepo.findById(row.patientId);
+      await messageRepo.markDeliveredForViewer(row.id, patientRow?.userId ?? null, false);
+    }
     return rows.map((r) => new Conversation(r).toJSON());
   }
 
   // Stamps first_response_at exactly once, only for a real (non-SYSTEM) message, and only
   // the first one — everything downstream (SLA breach sweep) reads that single stamp.
-  async postMessage(data: { conversationId: string; senderId: string; type: MessageType; content: string }) {
+  async postMessage(
+    data: { conversationId: string; senderId: string; type: MessageType; content: string },
+    callerId: string,
+  ) {
     const conversationRow = await conversationRepo.findById(data.conversationId);
     if (!conversationRow) throw new NotFoundError("Conversation not found");
+
+    const isSelf = await callerOwnsPatient(callerId, conversationRow.patientId);
+    if (!isSelf && !(await userHasPermission(callerId, "message", "create"))) {
+      throw new ForbiddenError("Forbidden");
+    }
+    if (conversationRow.status === "CLOSED") {
+      throw new ConflictError("This conversation has been closed");
+    }
 
     const messageRow = await messageRepo.create({
       id: crypto.randomUUID(),
@@ -103,17 +234,84 @@ export class MessagingService {
     return messageEntity.toJSON();
   }
 
-  async listMessages(conversationId: string) {
+  async listMessages(conversationId: string, callerId: string) {
+    const conversationRow = await conversationRepo.findById(conversationId);
+    if (!conversationRow) throw new NotFoundError("Conversation not found");
+
+    const isSelf = await callerOwnsPatient(callerId, conversationRow.patientId);
+    if (!isSelf && !(await userHasPermission(callerId, "message", "read"))) {
+      throw new ForbiddenError("Forbidden");
+    }
+
+    // WhatsApp-style "read": opening this specific thread is the read signal — mark the
+    // other party's messages read before returning, so this same response reflects it.
+    const patientRow = await patientRepo.findById(conversationRow.patientId);
+    await messageRepo.markReadForViewer(conversationId, patientRow?.userId ?? null, isSelf);
+
     const rows = await messageRepo.findByConversation(conversationId);
     return rows.map((r) => new Message(r).toJSON());
   }
 
-  async closeConversation(id: string) {
+  // Either side can end a side-effect report: the patient (it's their own record) or staff
+  // with conversation:update (typically the Virtual Medical Officer who handled it). Once
+  // closed, postMessage rejects further replies and startSideEffectReport treats it as no
+  // longer "open" — reopening isn't a thing; a new report is its own new invoice.
+  async closeConversation(id: string, callerId: string) {
     const row = await conversationRepo.findById(id);
     if (!row) throw new NotFoundError("Conversation not found");
+
+    const isSelf = await callerOwnsPatient(callerId, row.patientId);
+    if (!isSelf && !(await userHasPermission(callerId, "conversation", "update"))) {
+      throw new ForbiddenError("Forbidden");
+    }
+
     const updated = new Conversation(row).close();
     const saved = await conversationRepo.update(id, { status: updated.status });
     return new Conversation(saved!).toJSON();
+  }
+
+  // Mutual rating, submittable by either side once the encounter is over — rating an ongoing
+  // conversation is premature, and each rater gets exactly one say (the unique index on
+  // (conversationId, raterId) backs this up at the DB layer too).
+  async submitFeedback(conversationId: string, rating: number, review: string | undefined, callerId: string) {
+    const row = await conversationRepo.findById(conversationId);
+    if (!row) throw new NotFoundError("Conversation not found");
+
+    const isSelf = await callerOwnsPatient(callerId, row.patientId);
+    if (!isSelf && !(await userHasPermission(callerId, "conversation", "read"))) {
+      throw new ForbiddenError("Forbidden");
+    }
+    if (row.status !== "CLOSED") {
+      throw new ConflictError("Feedback can only be left once the conversation has ended");
+    }
+
+    const existing = await feedbackRepo.findByConversationAndRater(conversationId, callerId);
+    if (existing) {
+      throw new ConflictError("You've already submitted feedback for this conversation");
+    }
+
+    const feedbackRow = await feedbackRepo.create({
+      id: crypto.randomUUID(),
+      conversationId,
+      raterId: callerId,
+      raterRole: isSelf ? "PATIENT" : "STAFF",
+      rating,
+      review: review ?? null,
+    });
+    return new ConversationFeedback(feedbackRow).toJSON();
+  }
+
+  async listFeedback(conversationId: string, callerId: string) {
+    const row = await conversationRepo.findById(conversationId);
+    if (!row) throw new NotFoundError("Conversation not found");
+
+    const isSelf = await callerOwnsPatient(callerId, row.patientId);
+    if (!isSelf && !(await userHasPermission(callerId, "conversation", "read"))) {
+      throw new ForbiddenError("Forbidden");
+    }
+
+    const rows = await feedbackRepo.findByConversation(conversationId);
+    return rows.map((r) => new ConversationFeedback(r).toJSON());
   }
 }
 
@@ -241,7 +439,18 @@ export class MeetingService {
     return new Meeting(row).toJSON();
   }
 
-  async getByAppointment(appointmentId: string) {
+  // Lets a patient join their own scheduled video consult without a blanket meeting:read
+  // grant — ownership is resolved via the appointment's patientId, since Meeting itself has
+  // no patientId (it only knows appointmentId).
+  async getByAppointment(appointmentId: string, callerId: string) {
+    const appointmentRow = await appointmentRepo.findById(appointmentId);
+    if (!appointmentRow) throw new NotFoundError("Appointment not found");
+
+    const isSelf = await callerOwnsPatient(callerId, appointmentRow.patientId);
+    if (!isSelf && !(await userHasPermission(callerId, "meeting", "read"))) {
+      throw new ForbiddenError("Forbidden");
+    }
+
     const row = await meetingRepo.findByAppointment(appointmentId);
     return row ? new Meeting(row).toJSON() : null;
   }

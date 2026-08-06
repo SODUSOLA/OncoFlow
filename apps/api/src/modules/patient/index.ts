@@ -1,7 +1,7 @@
 export { PatientService } from "./service.js";
 export {
   PatientRepository, AddressRepository, EmergencyContactRepository, WalletRepository,
-  PatientTimelineRepository,
+  PatientTimelineRepository, PatientRegistrationRequestRepository,
 } from "./repository.js";
 export { timelineService, TimelineService } from "./services/TimelineService.js";
 export { Patient, type PatientData } from "./entities/Patient.js";

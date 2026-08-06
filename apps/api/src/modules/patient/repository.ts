@@ -1,7 +1,7 @@
 import { db } from "../../db/index.js";
-import { eq, sql, and } from "drizzle-orm";
+import { eq, sql, and, desc } from "drizzle-orm";
 import {
-  patient, patientAddress, emergencyContact, wallet, patientTimeline,
+  patient, patientAddress, emergencyContact, wallet, patientTimeline, patientRegistrationRequest,
 } from "./schema.js";
 
 export class PatientRepository {
@@ -54,6 +54,13 @@ export class PatientRepository {
       .select()
       .from(patient)
       .where(and(eq(patient.facilityId, facilityId), eq(patient.isDeleted, false)));
+  }
+
+  // Cross-facility search (e.g. Regional Admin linking a public inquiry to an existing
+  // patient, or the invoice generator's patient picker) — same permission gate as
+  // findByFacility (patient:read), just not scoped to one facility.
+  async findAll() {
+    return db.select().from(patient).where(eq(patient.isDeleted, false));
   }
 
   async create(data: typeof patient.$inferInsert) {
@@ -157,5 +164,37 @@ export class PatientTimelineRepository {
   async create(data: typeof patientTimeline.$inferInsert) {
     const row = await db.insert(patientTimeline).values(data).returning();
     return row[0]!;
+  }
+}
+
+export class PatientRegistrationRequestRepository {
+  async create(data: typeof patientRegistrationRequest.$inferInsert) {
+    const row = await db.insert(patientRegistrationRequest).values(data).returning();
+    return row[0]!;
+  }
+
+  async findByUserId(userId: string) {
+    const row = await db
+      .select()
+      .from(patientRegistrationRequest)
+      .where(eq(patientRegistrationRequest.userId, userId))
+      .limit(1);
+    return row[0] ?? null;
+  }
+
+  // Every remaining row here IS pending, by construction — approval deletes the row
+  // (see PatientService.registerPatient), so there's no separate status to filter on.
+  // Returns request rows only — the caller (controller) enriches each with the user's email
+  // via UserRepository, rather than this repository importing auth/schema.ts directly for a
+  // SQL join (forbidden cross-module schema import, .dependency-cruiser.js).
+  async findAllPending() {
+    return db
+      .select()
+      .from(patientRegistrationRequest)
+      .orderBy(desc(patientRegistrationRequest.createdAt));
+  }
+
+  async deleteByUserId(userId: string) {
+    await db.delete(patientRegistrationRequest).where(eq(patientRegistrationRequest.userId, userId));
   }
 }
