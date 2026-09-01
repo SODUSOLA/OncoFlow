@@ -86,6 +86,39 @@ export async function userHasPermission(userId: string, resource: string, action
   return permsInclude(perms, resource, action);
 }
 
+// Every route gate below funnels through this. It used to live inline in requireAuthenticated()
+// only, which meant MFA was silently unenforced on the 32 routes gated purely by
+// requirePermission/requireRole — including POST /invoices, appointment mutations and inventory
+// movements. That was a bypass available to *every* role, not just SUPER_ADMIN, so the check
+// belongs in one shared place that each gate must call rather than in a single middleware.
+//
+// Returns true when the request has been rejected (caller must stop); false to continue.
+async function rejectedForUnverifiedMfa(
+  req: Request,
+  next: NextFunction,
+  resource: string,
+): Promise<boolean> {
+  const authed = req as AuthenticatedRequest;
+  if (!authed.mfaRequired || authed.mfaVerified) return false;
+
+  await safeAuditLog({
+    actorId: authed.userId, action: "ACCESS_DENIED", resource, result: "DENIED", ip: req.ip,
+  });
+  next(new ForbiddenError("MFA required — complete verification via POST /auth/mfa/verify"));
+  return true;
+}
+
+// Routes that must stay reachable while a session is authenticated-but-not-yet-MFA-verified,
+// otherwise the user is deadlocked: they cannot complete MFA because completing MFA requires
+// passing the MFA gate. /auth/mfa/verify is gated by requirePermission("auth","update"), so
+// without this exemption enforcing MFA there would lock every MFA user out permanently.
+// Matched against req.path; routers mount at root (app.ts) so these are the full paths.
+const MFA_EXEMPT_PATHS = new Set(["/auth/mfa/verify", "/auth/logout"]);
+
+function isMfaExempt(req: Request): boolean {
+  return MFA_EXEMPT_PATHS.has(req.path);
+}
+
 // For self-service actions (logout, viewing/editing your own profile) that should work for
 // any authenticated account regardless of role/permission grants — not everything behind
 // auth is a permission check. Deliberately does not touch req.permissions.
@@ -97,14 +130,7 @@ export function requireAuthenticated() {
       return;
     }
 
-    // Enforce MFA: if MFA is required for this user and not yet verified, deny access
-    if (authed.mfaRequired && !authed.mfaVerified) {
-      await safeAuditLog({
-        actorId: authed.userId, action: "ACCESS_DENIED", resource: "auth", result: "DENIED", ip: req.ip,
-      });
-      next(new ForbiddenError("MFA required — complete verification via /auth/verify-mfa"));
-      return;
-    }
+    if (!isMfaExempt(req) && await rejectedForUnverifiedMfa(req, next, "auth")) return;
 
     next();
   };
@@ -117,6 +143,10 @@ export function requirePermission(resource: string, action: PermissionAction) {
       next(new UnauthorizedError());
       return;
     }
+
+    // Deliberately ahead of the SUPER_ADMIN short-circuit: that bypass is about *permissions*,
+    // and must never double as an MFA exemption for the most privileged role on the platform.
+    if (!isMfaExempt(req) && await rejectedForUnverifiedMfa(req, next, resource)) return;
 
     try {
       if (await userHasRole(userId, "SUPER_ADMIN")) {
@@ -154,6 +184,9 @@ export function requireRole(...roleNames: string[]) {
       return;
     }
 
+    // Ahead of the SUPER_ADMIN short-circuit, same reasoning as requirePermission.
+    if (!isMfaExempt(req) && await rejectedForUnverifiedMfa(req, next, `role:${roleNames.join("|")}`)) return;
+
     try {
       if (await userHasRole(userId, "SUPER_ADMIN")) {
         next();
@@ -187,6 +220,9 @@ export function requirePermissionScoped(
       next(new UnauthorizedError());
       return;
     }
+
+    // Ahead of the SUPER_ADMIN short-circuit, same reasoning as requirePermission.
+    if (!isMfaExempt(req) && await rejectedForUnverifiedMfa(req, next, resource)) return;
 
     try {
       if (await userHasRole(authed.userId, "SUPER_ADMIN")) {

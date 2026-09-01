@@ -127,7 +127,13 @@ router.post("/auth/login", authRateLimiter, validateBody(authLoginSchema), login
 // account can revoke its own session. (This bug was masked in tests until request-context.ts's
 // TEST_USER_ID override was fixed to defer to a real session cookie when one is present.)
 router.post("/auth/logout", requireAuthenticated(), logoutHandler);
-router.post("/auth/mfa/verify", mfaRateLimiter, requirePermission("auth", "update"), validateBody(verifyMfaSchema), verifyMfaHandler);
+// requireAuthenticated, not requirePermission("auth","update"): verifying your OWN second factor
+// is self-service, the same class as /auth/logout — not something that should need a role grant.
+// It previously required auth:update, which only SUPER_ADMIN implicitly has; that was harmless
+// while MFA went unenforced, but the moment MFA is actually enforced it locks every other role
+// out permanently (they can't reach the only route that would clear the MFA gate). The route is
+// also MFA-exempt in rbac.ts for the same deadlock reason.
+router.post("/auth/mfa/verify", mfaRateLimiter, requireAuthenticated(), validateBody(verifyMfaSchema), verifyMfaHandler);
 // public — the token itself (256-bit, hashed at rest) is the credential; no session required,
 // since the link may be opened on a different device than the one that registered.
 router.post("/auth/verify-email", verifyEmailRateLimiter, validateBody(verifyEmailSchema), verifyEmailHandler);
