@@ -41,11 +41,13 @@ const PERMISSIONS: { resource: string; action: string; description: string }[] =
   { resource: "patient", action: "create", description: "Register a new patient record and issue a Unique Patient ID (Regional Admin approval of a self-registration)" },
   { resource: "patient", action: "update", description: "Update patient records" },
   { resource: "patient", action: "delete", description: "Delete patient records" },
+  { resource: "patient", action: "call", description: "Place a masked call to a patient (Regional Admin / Onsite Nursing Officer only)" },
   { resource: "wallet", action: "read", description: "Read wallet records" },
   { resource: "invoice", action: "create", description: "Create invoices" },
   { resource: "invoice", action: "read", description: "Read invoices" },
   { resource: "invoice", action: "update", description: "Update invoices" },
   { resource: "serviceClassification", action: "read", description: "Read service classifications" },
+  { resource: "tariff", action: "read", description: "Read per-facility tariff rates (invoice fee-breakdown preview)" },
   { resource: "appointment", action: "create", description: "Create appointments" },
   { resource: "appointment", action: "read", description: "Read appointments" },
   { resource: "appointment", action: "update", description: "Update appointments" },
@@ -85,6 +87,12 @@ const PERMISSIONS: { resource: string; action: string; description: string }[] =
   // granted it for now; per-role grants are pending the same real RBAC-seeding pass the rest
   // of this file is waiting on.
   { resource: "calendar", action: "read", description: "Read the unified calendar (FR-24)" },
+  { resource: "staffing", action: "read", description: "Read the facility staffing/shift grid" },
+  { resource: "staffing", action: "update", description: "Assign nurses to shifts and publish a week's schedule" },
+  { resource: "inventory", action: "read", description: "Read regional drug stock levels and open reconciliation variances" },
+  { resource: "inventory", action: "update", description: "Record a purchase/dispatch movement and resolve a reconciliation variance" },
+  { resource: "transferRequest", action: "create", description: "Initiate a patient facility transfer request" },
+  { resource: "transferRequest", action: "read", description: "Read facility transfer requests" },
 ];
 
 export async function seedIdentity() {
@@ -162,11 +170,18 @@ export async function seedIdentity() {
   // countdown table, and lab results (labResult:read's own description above already
   // documents "Regional Admin gets the scoped view" as the intent).
   await grantPermissionsToRole("REGIONAL_ADMIN", [
-    "patient:read", "patient:create",
-    "invoice:create", "invoice:read",
+    // patient:update covers confirming/reassigning a new patient's facility
+    // (PATCH /patients/:id/confirm-facility) — the last step of onboarding now that the
+    // patient record itself is auto-created at email verification.
+    "patient:read", "patient:create", "patient:update", "patient:call",
+    "invoice:create", "invoice:read", "tariff:read",
+    "appointment:read", "appointment:update",
     "countdownCase:read",
     "labResult:read",
     "publicInquiry:read", "publicInquiry:update",
+    "staffing:read", "staffing:update",
+    "inventory:read", "inventory:update",
+    "transferRequest:create", "transferRequest:read",
   ]);
 
   // Second real per-role grant — the Virtual Medical Officer handling MO_SIDE_EFFECT reports:
@@ -176,6 +191,12 @@ export async function seedIdentity() {
     "conversation:create", "conversation:read", "conversation:update",
     "message:create", "message:read",
   ]);
+
+  // Third real per-role grant — Onsite Nursing Officer's first-ever grant in this seed.
+  // patient:call only, for now: click-to-call is the one capability confirmed for this role
+  // this round (docs/build-plan/08-stakeholder-role-matrix.md's Onsite Nursing Officer section
+  // doesn't otherwise scope a real permission grant yet — that broader pass is still pending).
+  await grantPermissionsToRole("ONSITE_NURSING_OFFICER", ["patient:call"]);
 
   // Every other role still has zero grants — that real RBAC pass is still pending.
 

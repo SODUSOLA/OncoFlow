@@ -18,13 +18,13 @@ const jakarta = Plus_Jakarta_Sans({
 export const metadata: Metadata = {
   metadataBase: new URL("https://oncoflow.health"),
   title: {
-    default: "OncoFlow — Secure Oncology Care Coordination",
+    default: "OncoFlow — Secure Oncology Care navigation",
     template: "%s | OncoFlow",
   },
   description:
-    "OncoFlow is a secure, role-based oncology care coordination platform that manages the full patient journey — from scheduling through chemotherapy administration and follow-up.",
+    "OncoFlow is a secure, role-based oncology care navigation platform that manages the full patient journey — from scheduling through chemotherapy administration and follow-up.",
   openGraph: {
-    title: "OncoFlow — Secure Oncology Care Coordination",
+    title: "OncoFlow — Secure Oncology Care navigation",
     description:
       "A secure, role-based platform that coordinates the full cancer care journey across hospitals, clinicians, and patients.",
     siteName: "OncoFlow",
@@ -32,7 +32,7 @@ export const metadata: Metadata = {
   },
   twitter: {
     card: "summary_large_image",
-    title: "OncoFlow — Secure Oncology Care Coordination",
+    title: "OncoFlow — Secure Oncology Care navigation",
     description:
       "A secure, role-based platform that coordinates the full cancer care journey across hospitals, clinicians, and patients.",
   },

@@ -119,7 +119,7 @@ function OverviewPanel({ patientId, balanceKobo, onPaid }: { patientId: string; 
               <tr>
                 <th className="text-left px-4 py-3 font-medium text-gray-600">Amount</th>
                 <th className="text-left px-4 py-3 font-medium text-gray-600">Status</th>
-                <th className="text-left px-4 py-3 font-medium text-gray-600">Due</th>
+                <th className="text-left px-4 py-3 font-medium text-gray-600">Issued</th>
                 <th className="text-left px-4 py-3 font-medium text-gray-600">Action</th>
               </tr>
             </thead>
@@ -134,7 +134,7 @@ function OverviewPanel({ patientId, balanceKobo, onPaid }: { patientId: string; 
                       inv.status === "DRAFT" ? "bg-gray-100 text-gray-600" : "bg-red-100 text-red-700"
                     }`}>{inv.status}</span>
                   </td>
-                  <td className="px-4 py-3 text-gray-500">{new Date(inv.dueDate).toLocaleDateString()}</td>
+                  <td className="px-4 py-3 text-gray-500">{inv.issuedAt ? new Date(inv.issuedAt).toLocaleDateString() : "—"}</td>
                   <td className="px-4 py-3">
                     {inv.status === "SENT" && (
                       <button

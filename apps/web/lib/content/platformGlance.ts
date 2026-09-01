@@ -18,7 +18,7 @@ export interface GlanceItem {
 /** Dense, scannable capability snapshot for executives who won't read paragraphs. */
 export const platformGlance: GlanceItem[] = [
   { icon: ShieldCheck, label: "Secure RBAC Architecture" },
-  { icon: GitBranch, label: "End-to-End Care Coordination" },
+  { icon: GitBranch, label: "End-to-End Care navigation" },
   { icon: Users, label: "Multi-Role Clinical Platform" },
   { icon: CalendarCheck, label: "Appointment Scheduling" },
   { icon: Video, label: "Video Consultation" },

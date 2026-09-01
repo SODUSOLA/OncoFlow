@@ -1,6 +1,7 @@
 import { db } from "../../db/index.js";
 import { eq, sql, and, desc } from "drizzle-orm";
-import { file } from "./schema.js";
+import { file, fileVerificationStep } from "./schema.js";
+import type { virusScanStatusEnum } from "../../db/enums.js";
 
 export class FileRepository {
   async findById(id: string) {
@@ -52,5 +53,25 @@ export class FileRepository {
       .where(and(eq(file.id, id), eq(file.isDeleted, false)))
       .returning();
     return row[0] ?? null;
+  }
+
+  async updateVirusScanStatus(id: string, status: (typeof virusScanStatusEnum.enumValues)[number]) {
+    const row = await db
+      .update(file)
+      .set({ virusScanStatus: status, updatedAt: new Date() })
+      .where(eq(file.id, id))
+      .returning();
+    return row[0] ?? null;
+  }
+}
+
+export class FileVerificationStepRepository {
+  async create(data: typeof fileVerificationStep.$inferInsert) {
+    const row = await db.insert(fileVerificationStep).values(data).returning();
+    return row[0]!;
+  }
+
+  async findByFile(fileId: string) {
+    return db.select().from(fileVerificationStep).where(eq(fileVerificationStep.fileId, fileId));
   }
 }

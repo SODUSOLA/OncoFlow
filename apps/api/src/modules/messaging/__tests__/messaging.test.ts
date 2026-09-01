@@ -7,11 +7,13 @@ import { db } from "../../../db/index.js";
 import { patient } from "../../patient/schema.js";
 import { facility } from "../../facility/schema.js";
 import { user } from "../../auth/schema.js";
+import { NotificationRepository } from "../../notification/index.js";
 
 const messagingSvc = new MessagingService();
 const jobSvc = new MessagingJobService();
 const conversationRepo = new ConversationRepository();
 const messageRepo = new MessageRepository();
+const notificationRepo = new NotificationRepository();
 
 let testPatientId: string;
 let testPatientUserId: string;
@@ -139,6 +141,58 @@ describe("MessagingJobService — SLA breach sweep (F3.1 DoD)", () => {
     await jobSvc.sweepSlaBreaches();
     const after = await conversationRepo.findById(row.id);
     expect(after!.slaBreached).toBe(false);
+  });
+
+  it("creates an SLA_BREACH notification for the conversation's assignee", async () => {
+    const row = await conversationRepo.create({
+      id: crypto.randomUUID(),
+      patientId: testPatientId,
+      conversationType: "MO_SIDE_EFFECT",
+      status: "OPEN",
+      slaDeadline: new Date(Date.now() - 1000),
+      assignedTo: testStaffId,
+    });
+
+    await jobSvc.sweepSlaBreaches();
+
+    const after = await conversationRepo.findById(row.id);
+    expect(after!.slaBreached).toBe(true);
+    const notifications = await notificationRepo.findByRecipient(testStaffId);
+    expect(notifications.some((n) => n.type === "SLA_BREACH")).toBe(true);
+  });
+
+  it("flips an unassigned overdue conversation without throwing (nothing to notify)", async () => {
+    const row = await conversationRepo.create({
+      id: crypto.randomUUID(),
+      patientId: testPatientId,
+      conversationType: "ADMIN_INQUIRY",
+      status: "OPEN",
+      slaDeadline: new Date(Date.now() - 1000),
+    });
+
+    await expect(jobSvc.sweepSlaBreaches()).resolves.toBeDefined();
+    const after = await conversationRepo.findById(row.id);
+    expect(after!.slaBreached).toBe(true);
+  });
+
+  it("MessagingService.listMessages triggers the sweep as a side effect (lazy-on-read)", async () => {
+    const overdue = await conversationRepo.create({
+      id: crypto.randomUUID(),
+      patientId: testPatientId,
+      conversationType: "ADMIN_INQUIRY",
+      status: "OPEN",
+      slaDeadline: new Date(Date.now() - 1000),
+    });
+    // A completely different, already-OPEN conversation is what gets read — the sweep it
+    // triggers is global, not scoped to the conversation being viewed.
+    const viewed = await messagingSvc.startConversation(
+      { patientId: testPatientId, conversationType: "ADMIN_INQUIRY" }, testPatientUserId,
+    );
+
+    await messagingSvc.listMessages(viewed.id, testPatientUserId);
+
+    const after = await conversationRepo.findById(overdue.id);
+    expect(after!.slaBreached).toBe(true);
   });
 });
 

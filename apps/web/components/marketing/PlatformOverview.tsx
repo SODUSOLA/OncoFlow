@@ -8,7 +8,7 @@ const overview = [
   },
   {
     title: "Why was it built?",
-    body: "Cancer care coordination has depended on manual phone calls, chat groups, paper lab slips, and spreadsheet tariffs — a workflow where a single missed step can delay treatment that can't afford to wait.",
+    body: "Cancer care navigation has depended on manual phone calls, chat groups, paper lab slips, and spreadsheet tariffs — a workflow where a single missed step can delay treatment that can't afford to wait.",
   },
   {
     title: "Problems it solves",

@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { Suspense } from "react";
 import Link from "next/link";
 import { AuthCard } from "@/components/auth/AuthCard";
 import { VerifyEmailPanel } from "@/components/auth/VerifyEmailPanel";
@@ -18,7 +19,9 @@ export default function VerifyEmailPage() {
         </Link>
       }
     >
-      <VerifyEmailPanel />
+      <Suspense fallback={<p className="text-center text-sm text-neutral-400">Loading…</p>}>
+        <VerifyEmailPanel />
+      </Suspense>
     </AuthCard>
   );
 }

@@ -122,11 +122,20 @@ export function LabResultsPanel({ patientId }: { patientId: string }) {
             ) : (
               <ul className="divide-y divide-gray-100">
                 {results.map((r) => (
-                  <li key={r.id} className="px-6 py-4 flex items-center justify-between">
+                  <li key={r.id} className="px-6 py-4 flex items-center justify-between gap-2">
                     <span className="text-sm text-gray-800">Test date: {new Date(r.testDate).toLocaleDateString()}</span>
-                    <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${
-                      r.status === "REVIEWED" ? "bg-green-100 text-green-700" : "bg-blue-100 text-blue-700"
-                    }`}>{r.status}</span>
+                    <div className="flex items-center gap-2">
+                      {r.fileStatus !== "CLEAN" && (
+                        <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${
+                          r.fileStatus === "INFECTED" ? "bg-red-100 text-red-700" : "bg-amber-100 text-amber-700"
+                        }`}>
+                          {r.fileStatus === "INFECTED" ? "Blocked: infected" : "Scan pending"}
+                        </span>
+                      )}
+                      <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${
+                        r.status === "REVIEWED" ? "bg-green-100 text-green-700" : "bg-blue-100 text-blue-700"
+                      }`}>{r.status}</span>
+                    </div>
                   </li>
                 ))}
               </ul>

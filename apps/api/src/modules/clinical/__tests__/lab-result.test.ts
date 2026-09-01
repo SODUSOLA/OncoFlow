@@ -122,13 +122,13 @@ describe("LabResultService — duplicate detection (F3.5 DoD)", () => {
 });
 
 describe("LabResultService — Admin-scoped view (F3.5 DoD)", () => {
-  it("Admin read returns only {fileId, testDate, possibleDuplicate}, nothing else", async () => {
+  it("Admin read returns only {fileId, testDate, possibleDuplicate} plus the derived fileStatus (F4.6), nothing else", async () => {
     const uploaded = await labResultSvc.upload({
       patientId: testPatientId, requestId: testRequestId, uploadedBy: testStaffId,
       fileId: testFileId, testDate: "2026-08-05", fileHash: crypto.randomUUID(),
     });
     const adminView = await labResultSvc.getForAdmin(uploaded.id);
-    expect(Object.keys(adminView).sort()).toEqual(["fileId", "possibleDuplicate", "testDate"]);
+    expect(Object.keys(adminView).sort()).toEqual(["fileId", "fileStatus", "possibleDuplicate", "testDate"]);
   });
 
   it("full (clinical) view includes fields the Admin view must never expose", async () => {
@@ -156,6 +156,6 @@ describe("LabResultService — Admin-scoped view (F3.5 DoD)", () => {
 
     expect(jsonBody).toBeDefined();
     const labResultBody = (jsonBody as { labResult: Record<string, unknown> }).labResult;
-    expect(Object.keys(labResultBody).sort()).toEqual(["fileId", "possibleDuplicate", "testDate"]);
+    expect(Object.keys(labResultBody).sort()).toEqual(["fileId", "fileStatus", "possibleDuplicate", "testDate"]);
   });
 });

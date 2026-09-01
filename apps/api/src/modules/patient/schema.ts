@@ -24,6 +24,11 @@ export const patient = pgTable("patient", {
   profilePictureFileId: uuid("profile_picture_file_id"),
   status: patientStatusEnum("status").notNull().default("ACTIVE"),
   facilityId: uuid("facility_id").notNull().references(() => facility.id),
+  // Null from the moment the patient record is auto-created at email verification (see
+  // patientRegistrationRequest's own comment) until a Regional Admin reviews and confirms —
+  // or reassigns — the facility. Not a gate on app access (the patient record already exists
+  // and is usable); purely drives the admin queue and the confirmation email.
+  facilityConfirmedAt: timestamp("facility_confirmed_at"),
   createdAt: timestamp("created_at").notNull().defaultNow(),
   updatedAt: timestamp("updated_at").notNull().defaultNow(),
   isDeleted: boolean("is_deleted").notNull().default(false),
@@ -72,8 +77,12 @@ export const patientTimeline = pgTable("patient_timeline", {
 // Captures what a self-registering patient submits in the wizard (name/DOB/phone/preferred
 // facility) before any staff member has reviewed it — deliberately separate from `patient`,
 // which is the authoritative, staff-issued clinical record. A row here means "awaiting Regional
-// Admin approval"; once approved, POST /patients creates the real `patient` row and this row
-// is deleted (see PatientService.registerPatient) — its absence for a given userId is what
+// Admin approval". The real `patient` row is now created automatically the moment the patient
+// verifies their email (AuthService.verifyEmail -> PatientService.registerPatient), not by
+// Admin — this row survives that and instead now represents "pending facility confirmation":
+// Admin still reviews it, but to confirm/reassign the already-live patient's facility
+// (PATCH /patients/:id/confirm-facility), not to create the record. Deleted on confirmation,
+// same as it was previously deleted on approval — its absence for a given userId is still what
 // "already handled" means, no separate status column needed.
 export const patientRegistrationRequest = pgTable("patient_registration_request", {
   id: uuid("id").primaryKey().defaultRandom(),
@@ -86,6 +95,7 @@ export const patientRegistrationRequest = pgTable("patient_registration_request"
   email: varchar("email", { length: 255 }).notNull(),
   fullName: varchar("full_name", { length: 255 }).notNull(),
   dob: date("dob").notNull(),
+  gender: varchar("gender", { length: 32 }).notNull(),
   phone: varchar("phone", { length: 32 }).notNull(),
   preferredFacilityId: uuid("preferred_facility_id").references(() => facility.id),
   createdAt: timestamp("created_at").notNull().defaultNow(),

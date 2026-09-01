@@ -6,7 +6,6 @@ import { dashboardPathForRoles } from "./lib/roleRouting";
 import Login from "./pages/Login";
 
 const patient = lazy(() => import("./pages/patient/Dashboard"));
-const regionalAdmin = lazy(() => import("./pages/regional-admin/Dashboard"));
 const vmo = lazy(() => import("./pages/virtual-medical-officer/Dashboard"));
 const oncologist = lazy(() => import("./pages/consulting-oncologist/Dashboard"));
 const scd = lazy(() => import("./pages/state-clinical-director/Dashboard"));
@@ -15,9 +14,22 @@ const ono = lazy(() => import("./pages/onsite-nursing-officer/Dashboard"));
 const sdns = lazy(() => import("./pages/state-director-of-nursing-services/Dashboard"));
 const superAdmin = lazy(() => import("./pages/super-admin/Dashboard"));
 
+// Regional Admin has its own sidebar+topbar shell and real sub-routes (see
+// pages/regional-admin/RegionalAdminLayout.tsx) instead of the generic single-page
+// DashboardLayout wrapper every other role below still uses — kept out of the `roles` loop.
+const RegionalAdminLayout = lazy(() =>
+  import("./pages/regional-admin/RegionalAdminLayout").then((m) => ({ default: m.RegionalAdminLayout })),
+);
+const RaRegionOverview = lazy(() => import("./pages/regional-admin/pages/RegionOverviewPage"));
+const RaPatientSearch = lazy(() => import("./pages/regional-admin/pages/PatientSearchPage"));
+const RaCountdown = lazy(() => import("./pages/regional-admin/pages/CountdownPage"));
+const RaScheduling = lazy(() => import("./pages/regional-admin/pages/SchedulingPage"));
+const RaBilling = lazy(() => import("./pages/regional-admin/pages/BillingPage"));
+const RaInventory = lazy(() => import("./pages/regional-admin/pages/InventoryPage"));
+const RaGeneralInquiry = lazy(() => import("./pages/regional-admin/pages/GeneralInquiryPage"));
+
 const roles = [
   { path: "patient", component: patient, label: "Patient" },
-  { path: "regional-admin", component: regionalAdmin, label: "Regional Admin" },
   { path: "virtual-medical-officer", component: vmo, label: "Virtual Medical Officer" },
   { path: "consulting-oncologist", component: oncologist, label: "Consulting Oncologist" },
   { path: "state-clinical-director", component: scd, label: "State Clinical Director" },
@@ -86,6 +98,24 @@ function AppRoutes() {
       <Route path="/" element={<RootRedirect />} />
       <Route path="/login" element={<Login />} />
       <Route path="/no-dashboard" element={<RequireAuth><NoDashboard /></RequireAuth>} />
+      <Route
+        path="dashboard/regional-admin"
+        element={
+          <RequireAuth>
+            <Suspense fallback={<FullScreenLoading />}>
+              <RegionalAdminLayout />
+            </Suspense>
+          </RequireAuth>
+        }
+      >
+        <Route index element={<Suspense fallback={<FullScreenLoading />}><RaRegionOverview /></Suspense>} />
+        <Route path="patient-search" element={<Suspense fallback={<FullScreenLoading />}><RaPatientSearch /></Suspense>} />
+        <Route path="countdown" element={<Suspense fallback={<FullScreenLoading />}><RaCountdown /></Suspense>} />
+        <Route path="scheduling" element={<Suspense fallback={<FullScreenLoading />}><RaScheduling /></Suspense>} />
+        <Route path="billing" element={<Suspense fallback={<FullScreenLoading />}><RaBilling /></Suspense>} />
+        <Route path="inventory" element={<Suspense fallback={<FullScreenLoading />}><RaInventory /></Suspense>} />
+        <Route path="inquiry" element={<Suspense fallback={<FullScreenLoading />}><RaGeneralInquiry /></Suspense>} />
+      </Route>
       {roles.map(({ path, component: Component, label }) => (
         <Route
           key={path}

@@ -11,13 +11,16 @@ import { serviceClassification } from "../../billing/schema.js";
 import { SESSION_COOKIE_NAME } from "../../../lib/session-cookie.js";
 import { sideEffectReportFeeKobo } from "../entities/side-effect-pricing.js";
 import { seedIdentity } from "../../../seed/identity.js";
+import { NotificationRepository } from "../../notification/index.js";
 
 const app = createApp();
 const base = "/conversations/side-effect-report";
+const notificationRepo = new NotificationRepository();
 
 let testFacilityId: string;
 
 let patientId: string;
+let patientUserId: string;
 let patientCookie: string;
 let vmoCookie: string;
 let otherCookie: string;
@@ -51,6 +54,7 @@ beforeAll(async () => {
 
   const patientOwner = await createSessionCookie();
   patientCookie = patientOwner.cookie;
+  patientUserId = patientOwner.userId;
   const patRows = await db.insert(patient).values({
     id: crypto.randomUUID(), uniquePatientId: "SEL-" + crypto.randomUUID().slice(0, 8).toUpperCase(),
     userId: patientOwner.userId,
@@ -176,6 +180,11 @@ describe("Conversation feedback — mutual, closed-only, one per rater", () => {
     });
     expect(res.status).toBe(201);
     expect(res.body.feedback.raterRole).toBe("STAFF");
+  });
+
+  it("notifies the patient once staff's feedback lands (patient's userId is always resolvable)", async () => {
+    const notifications = await notificationRepo.findByRecipient(patientUserId);
+    expect(notifications.some((n) => n.type === "CONVERSATION_FEEDBACK")).toBe(true);
   });
 
   it("lists both the patient's and staff's feedback together", async () => {

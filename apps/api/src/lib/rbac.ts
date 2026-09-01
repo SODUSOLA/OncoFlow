@@ -22,9 +22,11 @@ export interface AuthenticatedRequest extends Request {
   userId: string;
   facilityId?: string;
   permissions: string[];
+  mfaVerified?: boolean;
+  mfaRequired?: boolean;
 }
 
-export type PermissionAction = "create" | "read" | "update" | "delete" | "approve" | "export" | "override" | "claim";
+export type PermissionAction = "create" | "read" | "update" | "delete" | "approve" | "export" | "override" | "claim" | "call";
 export type FacilityComparator = (userFacilityId: string, resourceFacilityId: string) => boolean;
 
 const PERMISSION_CACHE_TTL = 900;
@@ -88,11 +90,22 @@ export async function userHasPermission(userId: string, resource: string, action
 // any authenticated account regardless of role/permission grants — not everything behind
 // auth is a permission check. Deliberately does not touch req.permissions.
 export function requireAuthenticated() {
-  return (req: Request, _res: Response, next: NextFunction): void => {
-    if (!(req as AuthenticatedRequest).userId) {
+  return async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+    const authed = req as AuthenticatedRequest;
+    if (!authed.userId) {
       next(new UnauthorizedError());
       return;
     }
+
+    // Enforce MFA: if MFA is required for this user and not yet verified, deny access
+    if (authed.mfaRequired && !authed.mfaVerified) {
+      await safeAuditLog({
+        actorId: authed.userId, action: "ACCESS_DENIED", resource: "auth", result: "DENIED", ip: req.ip,
+      });
+      next(new ForbiddenError("MFA required — complete verification via /auth/verify-mfa"));
+      return;
+    }
+
     next();
   };
 }

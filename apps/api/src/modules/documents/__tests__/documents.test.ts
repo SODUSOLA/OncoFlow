@@ -2,9 +2,28 @@ import { describe, it, expect, beforeAll, vi } from "vitest";
 import request from "supertest";
 import crypto from "node:crypto";
 import { createApp } from "../../../app.js";
+import { db } from "../../../db/index.js";
+import { facility } from "../../facility/schema.js";
+import { patient } from "../../patient/schema.js";
 import { FileRepository } from "../repository.js";
 import { File } from "../entities/File.js";
 import { computeFileHash, buildStorageKey } from "../services/StorageService.js";
+
+// file.patient_id has a real FK to patient.id — a bare crypto.randomUUID() with no matching
+// row (what several tests below used to pass) trips that constraint. This creates one real
+// patient row tests can share/reference instead.
+async function createTestPatient(): Promise<string> {
+  const facRows = await db.insert(facility).values({
+    id: crypto.randomUUID(), name: "Documents Test Facility", region: "Lagos", address: "D St", status: "ACTIVE",
+  }).returning();
+  const patRows = await db.insert(patient).values({
+    id: crypto.randomUUID(), uniquePatientId: "DOC-TEST-" + crypto.randomUUID().slice(0, 8).toUpperCase(),
+    firstName: "Doc", lastName: "Test", dob: "1990-01-01", gender: "Male",
+    phone: "+2348099993333", email: "doc." + crypto.randomUUID().slice(0, 4) + "@test.com",
+    facilityId: facRows[0]!.id, status: "ACTIVE",
+  }).returning();
+  return patRows[0]!.id;
+}
 
 vi.mock("@aws-sdk/client-s3", () => {
   const send = vi.fn().mockResolvedValue({});
@@ -80,7 +99,7 @@ describe("FileRepository", () => {
   let testUploadedBy: string;
 
   beforeAll(async () => {
-    testPatientId = crypto.randomUUID();
+    testPatientId = await createTestPatient();
     testUploadedBy = process.env.TEST_USER_ID!;
     const row = await repo.create({
       id: crypto.randomUUID(),
@@ -136,7 +155,7 @@ describe("FileRepository", () => {
 
 describe("FileService — upload", () => {
   it("uploads a file and returns a File record with virus_scan_status PENDING", async () => {
-    const pid = crypto.randomUUID();
+    const pid = await createTestPatient();
     const content = Buffer.from("upload test content");
     const b64 = content.toString("base64");
     const res = await request(app)
@@ -193,7 +212,7 @@ describe("FileService — list by patient", () => {
   let testPatientId: string;
 
   beforeAll(async () => {
-    testPatientId = crypto.randomUUID();
+    testPatientId = await createTestPatient();
     const content = Buffer.from("list-test").toString("base64");
     await request(app)
       .post("/files/upload")

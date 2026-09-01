@@ -1,7 +1,18 @@
 import { db } from "../../db/index.js";
-import { eq, and, sql } from "drizzle-orm";
-import { appointment, appointmentParticipant } from "./schema.js";
+import { eq, and, or, inArray, sql } from "drizzle-orm";
+import { appointment, appointmentParticipant, transferRequest } from "./schema.js";
 import type { AppointmentStatus } from "./entities/Appointment.js";
+// Cross-module read (same pattern as other modules' PatientRepository/FileRepository imports)
+// — the pending-confirmation queue is inherently a join between "appointment is still PENDING"
+// and "its invoice is already PAID," which no single module owns on its own.
+import { invoice } from "../billing/schema.js";
+
+function lagosDateString(timestamp: Date): string {
+  return new Intl.DateTimeFormat("en-CA", {
+    timeZone: "Africa/Lagos",
+    year: "numeric", month: "2-digit", day: "2-digit",
+  }).format(timestamp);
+}
 
 export class AppointmentRepository {
   async findById(id: string) {
@@ -59,6 +70,30 @@ export class AppointmentRepository {
       .returning();
     return row[0] ?? null;
   }
+
+  // Appointments paid for (invoice PAID) before the 2PM Lagos cutoff, still awaiting a staff
+  // member's same-day confirmation — the admin-facing queue this feeds. Day-matching happens
+  // in application code (Lagos calendar-day string comparison) rather than a timezone-aware SQL
+  // clause — row counts here are small (per-facility, per-day), same trade-off the rest of this
+  // repository already makes (plain filters, no raw SQL) elsewhere.
+  async findPendingConfirmationQueue(facilityId?: string) {
+    const conditions = [
+      eq(appointment.status, "PENDING"),
+      eq(appointment.isDeleted, false),
+      eq(invoice.status, "PAID"),
+    ];
+    if (facilityId) conditions.push(eq(appointment.facilityId, facilityId));
+
+    const rows = await db
+      .select({ appointment })
+      .from(appointment)
+      .innerJoin(invoice, eq(invoice.appointmentId, appointment.id))
+      .where(and(...conditions))
+      .orderBy(appointment.scheduledAt);
+
+    const today = lagosDateString(new Date());
+    return rows.map((r) => r.appointment).filter((a) => lagosDateString(a.scheduledAt) === today);
+  }
 }
 
 export class AppointmentParticipantRepository {
@@ -76,5 +111,28 @@ export class AppointmentParticipantRepository {
 
   async remove(id: string) {
     await db.delete(appointmentParticipant).where(eq(appointmentParticipant.id, id));
+  }
+}
+
+// Scoped to "either the origin or destination facility is in the region" per
+// 21-regional-admin-scope-definition.md's own framing of TransferRequest's region scope,
+// not just the origin (a Regional Admin should see a transfer routing a patient into their
+// region too, not only ones leaving it).
+export class TransferRequestRepository {
+  async create(data: typeof transferRequest.$inferInsert) {
+    const row = await db.insert(transferRequest).values(data).returning();
+    return row[0]!;
+  }
+
+  async findByFacilityIds(facilityIds: string[]) {
+    if (facilityIds.length === 0) return [];
+    return db
+      .select()
+      .from(transferRequest)
+      .where(and(
+        or(inArray(transferRequest.fromFacilityId, facilityIds), inArray(transferRequest.toFacilityId, facilityIds)),
+        eq(transferRequest.isDeleted, false),
+      ))
+      .orderBy(sql`${transferRequest.createdAt} desc`);
   }
 }

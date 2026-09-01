@@ -10,6 +10,8 @@ import {
 import { Patient } from "./entities/Patient.js";
 import { Wallet } from "./entities/Wallet.js";
 import { timelineService } from "./services/TimelineService.js";
+import { placeCall } from "./services/CallService.js";
+import { maskPhone } from "../../lib/maskPhone.js";
 
 const patientSvc = new PatientService();
 const patientRepo = new PatientRepository();
@@ -115,7 +117,7 @@ export async function getPatientHandler(req: Request, res: Response) {
     const wallet = await walletRepo.findByPatient(patientRow.id);
 
     res.json({
-      patient: isSelf ? entity.toOwnJSON() : entity.toJSON(),
+      patient: isSelf ? entity.toOwnJSON() : { ...entity.toJSON(), phoneMasked: maskPhone(patientRow.phone) },
       addresses: addresses.map((a) => ({ id: a.id, country: a.country, state: a.state, city: a.city, address: a.address })),
       emergencyContacts: contacts.map((c) => ({
         id: c.id, name: c.name, relationship: c.relationship,
@@ -159,6 +161,11 @@ export async function searchPatientsHandler(req: Request, res: Response) {
         lastName: p.lastName,
         gender: p.gender,
         status: p.status,
+        facilityId: p.facilityId,
+        // Masked, not omitted — safe for Admin-scoped staff to see enough to recognize a
+        // number without it becoming the side-channel the unmasked field would be (see the
+        // comment on the `q` filter above).
+        phoneMasked: maskPhone(p.phone),
       })),
     });
   } catch {
@@ -374,24 +381,76 @@ export async function getPatientTimelineHandler(req: Request, res: Response) {
   }
 }
 
-// Gated on patient:create, not patient:read — this is the queue that feeds the "issue a
-// Unique Patient ID" action (POST /patients), not general patient record browsing.
+// Route is already gated on patient:call (Regional Admin / Onsite Nursing Officer only, see
+// routes.ts + seed/identity.ts) — no further ownership/permission check needed here. The raw
+// phone number is read server-side to hand to CallService and is never put in the response
+// body (FR-04 / Data Classification §8 — same restriction Patient.toJSON() already enforces
+// for every other staff-facing response).
+export async function callPatientHandler(req: Request, res: Response) {
+  try {
+    const { id } = req.params;
+    if (!id) {
+      res.status(400).json({ error: "Patient ID required" });
+      return;
+    }
+    const patientRow = await patientRepo.findById(String(id));
+    if (!patientRow) {
+      res.status(404).json({ error: "Patient not found" });
+      return;
+    }
+
+    const result = await placeCall(patientRow.id, patientRow.phone);
+    res.status(201).json({ callSessionId: result.callSessionId });
+  } catch (err) {
+    const message = err instanceof Error ? err.message : "Internal server error";
+    const status = message.includes("not configured") ? 502 : 500;
+    res.status(status).json({ error: message });
+  }
+}
+
+// Gated on patient:create, not patient:read — this is the queue that feeds the facility
+// confirmation action (PATCH /patients/:id/confirm-facility), not general record browsing.
+// The patient record itself already exists by the time a row shows up here (auto-created at
+// email verification); `patientId` is included so the confirm action has something to target.
 export async function listPendingRegistrationsHandler(_req: Request, res: Response) {
   try {
     const rows = await registrationRequestRepo.findAllPending();
-    res.json({
-      registrations: rows.map((row) => ({
-        id: row.id,
-        userId: row.userId,
-        fullName: row.fullName,
-        dob: row.dob,
-        phone: row.phone,
-        email: row.email,
-        preferredFacilityId: row.preferredFacilityId,
-        createdAt: row.createdAt.toISOString(),
-      })),
-    });
+    const withPatientIds = await Promise.all(
+      rows.map(async (row) => {
+        const patientRow = await patientRepo.findByUserId(row.userId);
+        return {
+          id: row.id,
+          userId: row.userId,
+          patientId: patientRow?.id ?? null,
+          uniquePatientId: patientRow?.uniquePatientId ?? null,
+          fullName: row.fullName,
+          dob: row.dob,
+          gender: row.gender,
+          phone: row.phone,
+          email: row.email,
+          preferredFacilityId: row.preferredFacilityId,
+          createdAt: row.createdAt.toISOString(),
+        };
+      }),
+    );
+    res.json({ registrations: withPatientIds });
   } catch {
     res.status(500).json({ error: "Internal server error" });
+  }
+}
+
+export async function confirmFacilityHandler(req: Request, res: Response) {
+  try {
+    const { id } = req.params;
+    if (!id) {
+      res.status(400).json({ error: "Patient ID required" });
+      return;
+    }
+    const { facilityId } = req.body ?? {};
+    const updated = await patientSvc.confirmFacility(String(id), facilityId);
+    res.json({ patient: updated.toJSON() });
+  } catch (err) {
+    const message = err instanceof Error ? err.message : "Internal server error";
+    res.status(message === "Patient not found" ? 404 : 400).json({ error: message });
   }
 }

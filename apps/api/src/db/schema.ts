@@ -11,3 +11,4 @@ export * from "../modules/documents/schema.js";
 export * from "../modules/notification/schema.js";
 export * from "../modules/audit/schema.js";
 export * from "../modules/inquiry/schema.js";
+export * from "../modules/staffing/schema.js";

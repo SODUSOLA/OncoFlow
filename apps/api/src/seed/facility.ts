@@ -2,31 +2,43 @@ import { db } from "../db/index.js";
 import crypto from "node:crypto";
 import { facility, department } from "../db/schema.js";
 
+// Coordinates are the real-world locations of each hospital — used by the registration
+// wizard's client-side haversine distance sort (request #2), not just display data.
 const FACILITIES = [
   {
     name: "Lagos University Teaching Hospital Oncology Centre",
     region: "Lagos",
     address: "1-5 Ishaga Road, Idi-Araba, Lagos",
+    latitude: "6.5244",
+    longitude: "3.3792",
   },
   {
     name: "University College Hospital Ibadan Cancer Institute",
     region: "Oyo",
     address: "Queen Elizabeth Road, Ibadan",
+    latitude: "7.4041",
+    longitude: "3.9083",
   },
   {
     name: "National Hospital Abuja Oncology Unit",
     region: "FCT",
     address: "Plot 132, Central District, Abuja",
+    latitude: "9.0579",
+    longitude: "7.4951",
   },
   {
     name: "Aminu Kano Teaching Hospital Oncology Department",
     region: "Kano",
     address: "No. 1 Zaria Road, Kano",
+    latitude: "12.0022",
+    longitude: "8.5920",
   },
   {
     name: "University of Benin Teaching Hospital Cancer Centre",
     region: "Edo",
     address: "PMB 1111, Ugbowo, Benin City",
+    latitude: "6.4025",
+    longitude: "5.6206",
   },
 ];
 
@@ -57,6 +69,8 @@ export async function seedFacilities() {
       name: f.name,
       region: f.region,
       address: f.address,
+      latitude: f.latitude,
+      longitude: f.longitude,
       status: "ACTIVE",
     });
 

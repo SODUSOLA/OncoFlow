@@ -22,7 +22,7 @@ export class InvoiceService {
       throw new Error("No tariff found for this facility and classification combination");
     }
 
-    const total = tariff.networkFeeKobo + tariff.facilityBedFeeKobo + tariff.drugPriceKobo;
+    const total = tariff.networkFeeKobo + tariff.facilityBedFeeKobo + tariff.professionalFeeKobo + tariff.drugPriceKobo;
 
     const invoiceRow = await db.transaction(async (tx) => {
       const created = await tx.insert(invoice).values({
@@ -39,6 +39,7 @@ export class InvoiceService {
       await tx.insert(invoiceItem).values([
         { id: crypto.randomUUID(), invoiceId: row.id, component: "NETWORK_FEE", amountKobo: tariff.networkFeeKobo },
         { id: crypto.randomUUID(), invoiceId: row.id, component: "FACILITY_FEE", amountKobo: tariff.facilityBedFeeKobo },
+        { id: crypto.randomUUID(), invoiceId: row.id, component: "PROFESSIONAL_FEE", amountKobo: tariff.professionalFeeKobo },
         { id: crypto.randomUUID(), invoiceId: row.id, component: "DRUG_COST", amountKobo: tariff.drugPriceKobo },
       ]);
       return row;

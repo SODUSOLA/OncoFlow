@@ -2,13 +2,14 @@ import type { Request, Response } from "express";
 import type { AuthenticatedRequest } from "../../lib/rbac.js";
 import { userHasPermission } from "../../lib/rbac.js";
 import { appointmentStatusEnum } from "../../db/enums.js";
-import { AppointmentService } from "./service.js";
+import { AppointmentService, TransferRequestService } from "./service.js";
 import { AppointmentRepository } from "./repository.js";
 import { CalendarService } from "./services/CalendarService.js";
 import { PatientRepository } from "../patient/index.js";
 
 const apptSvc = new AppointmentService();
 const apptRepo = new AppointmentRepository();
+const transferSvc = new TransferRequestService();
 const calendarSvc = new CalendarService();
 const patientRepoForCalendar = new PatientRepository();
 
@@ -111,11 +112,36 @@ export async function updateAppointmentStatusHandler(req: Request, res: Response
   }
 }
 
+// Staff-only (appointment:read) — the queue of today's PENDING-but-already-PAID appointments
+// awaiting same-day confirmation before the 2PM cutoff. No ownership concept: a patient has no
+// reason to see a facility-wide confirmation queue.
+export async function listPendingConfirmationQueueHandler(req: Request, res: Response) {
+  try {
+    const facilityId = typeof req.query.facilityId === "string" ? req.query.facilityId : undefined;
+    const results = await apptSvc.listPendingConfirmationQueue(facilityId);
+    res.json({ appointments: results });
+  } catch {
+    res.status(500).json({ error: "Internal server error" });
+  }
+}
+
 export async function addParticipantHandler(req: Request, res: Response) {
   try {
     const { userId, role } = req.body;
     if (!userId || !role) {
       res.status(400).json({ error: "userId and role required" });
+      return;
+    }
+    const caller = req as AuthenticatedRequest;
+    const appt = await apptRepo.findById(String(req.params.id));
+    if (!appt) {
+      res.status(404).json({ error: "Appointment not found" });
+      return;
+    }
+    const resourceFacilityId = appt.facilityId;
+    const callerFacilityId = caller.facilityId;
+    if (resourceFacilityId && callerFacilityId && resourceFacilityId !== callerFacilityId) {
+      res.status(403).json({ error: "Forbidden — you can only add participants to appointments at your facility" });
       return;
     }
     const result = await apptSvc.addParticipant(String(req.params.id), userId, role);
@@ -166,6 +192,27 @@ export async function getUnifiedCalendarHandler(req: Request, res: Response) {
     }
 
     res.status(403).json({ error: "Unable to resolve a calendar scope for this account" });
+  } catch {
+    res.status(500).json({ error: "Internal server error" });
+  }
+}
+
+export async function initiateTransferHandler(req: Request, res: Response) {
+  try {
+    const { patientId, fromFacilityId, toFacilityId } = req.body;
+    const requestedBy = (req as AuthenticatedRequest).userId;
+    const transfer = await transferSvc.initiate({ patientId, fromFacilityId, toFacilityId, requestedBy });
+    res.status(201).json({ transfer });
+  } catch {
+    res.status(500).json({ error: "Internal server error" });
+  }
+}
+
+export async function listTransfersHandler(req: Request, res: Response) {
+  try {
+    const region = typeof req.query.region === "string" ? req.query.region : undefined;
+    const transfers = await transferSvc.listForRegion(region);
+    res.json({ transfers });
   } catch {
     res.status(500).json({ error: "Internal server error" });
   }

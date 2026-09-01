@@ -42,8 +42,15 @@ RUN mkdir -p /var/cache/nginx /var/log/nginx /var/lib/nginx/tmp /run/nginx && \
 # ── Application ──
 WORKDIR /app
 
-# Copy only what's needed for production from builder
+# Copy only what's needed for production from builder. The second COPY layers apps/api's own
+# nested node_modules on top of the hoisted root one — npm workspaces nests a package there
+# whenever apps/api needs a version that conflicts with what's hoisted for everyone else (e.g.
+# apps/api depends on cookie@^2.0.1 directly for Socket.IO's handshake parsing, while
+# cookie-parser's own internal dependency pins cookie@0.7.2 and wins the root hoist). Skipping
+# this second copy silently drops that override and the compiled app resolves the wrong version
+# at runtime.
 COPY --from=builder /build/node_modules ./node_modules
+COPY --from=builder /build/apps/api/node_modules ./node_modules
 COPY --from=builder /build/dist ./dist
 COPY apps/api/package.json ./
 COPY infra/entrypoint.sh /app/entrypoint.sh

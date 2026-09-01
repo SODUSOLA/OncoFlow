@@ -2,7 +2,8 @@ import { Router } from "express";
 import {
   createAppointmentHandler, getAppointmentHandler, listAppointmentsHandler,
   updateAppointmentStatusHandler, addParticipantHandler, deleteAppointmentHandler,
-  getUnifiedCalendarHandler,
+  getUnifiedCalendarHandler, listPendingConfirmationQueueHandler,
+  initiateTransferHandler, listTransfersHandler,
 } from "./controller.js";
 import { requirePermission, requireAuthenticated } from "../../lib/rbac.js";
 import { validateBody, validateParams, validateQuery } from "../../lib/validation.js";
@@ -41,6 +42,16 @@ const addParticipantSchema = z.object({
   role: z.string().trim().min(1).max(64),
 });
 
+const initiateTransferSchema = z.object({
+  patientId: z.string().uuid(),
+  fromFacilityId: z.string().uuid(),
+  toFacilityId: z.string().uuid(),
+});
+
+const listTransfersQuerySchema = z.object({
+  region: z.string().trim().min(1).optional(),
+});
+
 const router = Router();
 
 router.post("/appointments", requirePermission("appointment", "create"), validateBody(createAppointmentSchema), createAppointmentHandler);
@@ -48,10 +59,16 @@ router.post("/appointments", requirePermission("appointment", "create"), validat
 // scheduled video consult) is a right, not a grant — ownership-or-permission check lives in
 // the controller (callerOwnsPatient).
 router.get("/appointments", requireAuthenticated(), validateQuery(listAppointmentsQuerySchema), listAppointmentsHandler);
+// Must come before /appointments/:id — same "me"-style ordering reason as patients/:id vs
+// patients/me elsewhere in this codebase (validateParams' uuid check would otherwise 400 this).
+router.get("/appointments/pending-confirmation-queue", requirePermission("appointment", "read"), listPendingConfirmationQueueHandler);
 router.get("/appointments/:id", requireAuthenticated(), validateParams(appointmentIdParamSchema), getAppointmentHandler);
 router.patch("/appointments/:id/status", requirePermission("appointment", "update"), validateParams(appointmentIdParamSchema), validateBody(updateAppointmentStatusSchema), updateAppointmentStatusHandler);
 router.post("/appointments/:id/participants", requirePermission("appointment", "update"), validateParams(appointmentIdParamSchema), validateBody(addParticipantSchema), addParticipantHandler);
 router.delete("/appointments/:id", requirePermission("appointment", "delete"), validateParams(appointmentIdParamSchema), deleteAppointmentHandler);
 router.get("/calendar", requirePermission("calendar", "read"), getUnifiedCalendarHandler);
+
+router.post("/transfers", requirePermission("transferRequest", "create"), validateBody(initiateTransferSchema), initiateTransferHandler);
+router.get("/transfers", requirePermission("transferRequest", "read"), validateQuery(listTransfersQuerySchema), listTransfersHandler);
 
 export { router as appointmentRoutes };

@@ -7,6 +7,10 @@ export interface FacilityData {
   name: string;
   region: string;
   address: string;
+  // Drizzle's `numeric` columns come back as strings (arbitrary precision, not safe to widen
+  // to `number` implicitly) — null when a facility hasn't been given coordinates yet.
+  latitude: string | null;
+  longitude: string | null;
   status: FacilityStatus;
 }
 

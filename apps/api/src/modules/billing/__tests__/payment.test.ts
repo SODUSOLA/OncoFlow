@@ -7,11 +7,14 @@ import { payment, walletTransaction } from "../schema.js";
 import { facility } from "../../facility/schema.js";
 import { patient, wallet } from "../../patient/schema.js";
 import { invoice, serviceClassification, tariff } from "../schema.js";
+import { user } from "../../auth/schema.js";
+import { NotificationRepository } from "../../notification/index.js";
 
 const paySvc = new PaymentService();
 
 let testPatientId: string;
 let testInvoiceId: string;
+let testFacilityId: string;
 let classId: string;
 
 beforeAll(async () => {
@@ -19,6 +22,7 @@ beforeAll(async () => {
     id: crypto.randomUUID(), name: "Payment Test", region: "Lagos", address: "Pay St", status: "ACTIVE",
   }).returning();
   const facId = facRows[0]!.id;
+  testFacilityId = facId;
 
   const patRows = await db.insert(patient).values({
     id: crypto.randomUUID(), uniquePatientId: "PAY-TEST-" + crypto.randomUUID().slice(0, 8).toUpperCase(),
@@ -44,7 +48,7 @@ beforeAll(async () => {
 
   await db.insert(tariff).values({
     id: crypto.randomUUID(), facilityId: facId, classificationId: classId,
-    networkFeeKobo: 500000n, facilityBedFeeKobo: 300000n, drugPriceKobo: 200000n,
+    networkFeeKobo: 500000n, facilityBedFeeKobo: 300000n, professionalFeeKobo: 100000n, drugPriceKobo: 200000n,
   });
 
   const invRows = await db.insert(invoice).values({
@@ -104,6 +108,52 @@ describe("PaymentService — pay invoice from wallet", () => {
     await expect(
       paySvc.payInvoiceWithWallet(testInvoiceId),
     ).rejects.toThrow("Only SENT invoices can be paid");
+  });
+});
+
+describe("PaymentService — receipt email is best-effort", () => {
+  it("still returns PAID even though RESEND_API_KEY isn't set in the test env", async () => {
+    const invRows = await db.insert(invoice).values({
+      id: crypto.randomUUID(), patientId: testPatientId, facilityId: testFacilityId,
+      classificationId: classId, status: "SENT", totalKobo: 100000n, issuedAt: new Date(),
+    }).returning();
+
+    // Resend isn't configured in this test env — sendReceiptBestEffort will throw internally,
+    // but it's fire-and-forget (void ...catch(...)), so the payment result must be unaffected.
+    const result = await paySvc.payInvoiceWithWallet(invRows[0]!.id);
+    expect(result.invoice.status).toBe("PAID");
+  });
+});
+
+describe("PaymentService — invoice-paid notification", () => {
+  it("creates an INVOICE_PAID notification for the patient's linked userId", async () => {
+    const patientUserId = crypto.randomUUID();
+    await db.insert(user).values({ id: patientUserId, email: `paidnotif-${crypto.randomUUID()}@test.com`, passwordHash: "test" });
+
+    const patRows = await db.insert(patient).values({
+      id: crypto.randomUUID(), uniquePatientId: "PAY-NOTIF-" + crypto.randomUUID().slice(0, 8).toUpperCase(),
+      userId: patientUserId,
+      firstName: "Notify", lastName: "Test", dob: "1990-01-01", gender: "Female",
+      phone: "+2348099995555", email: "paynotif." + crypto.randomUUID().slice(0, 4) + "@test.com",
+      facilityId: testFacilityId, status: "ACTIVE",
+    }).returning();
+    const newPatientId = patRows[0]!.id;
+    await db.insert(wallet).values({ id: crypto.randomUUID(), patientId: newPatientId, balanceKobo: 1000000n });
+
+    const invRows = await db.insert(invoice).values({
+      id: crypto.randomUUID(), patientId: newPatientId, facilityId: testFacilityId,
+      classificationId: classId, status: "SENT", totalKobo: 100000n, issuedAt: new Date(),
+    }).returning();
+
+    await paySvc.payInvoiceWithWallet(invRows[0]!.id);
+
+    // notifyPaidBestEffort is fire-and-forget (not awaited by payInvoiceWithWallet, same as
+    // the receipt email) — give its microtask a tick to actually write the row before checking.
+    await new Promise((r) => setTimeout(r, 50));
+
+    const notificationRepo = new NotificationRepository();
+    const notifications = await notificationRepo.findByRecipient(patientUserId);
+    expect(notifications.some((n) => n.type === "INVOICE_PAID")).toBe(true);
   });
 });
 

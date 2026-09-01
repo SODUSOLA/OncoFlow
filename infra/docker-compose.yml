@@ -32,6 +32,7 @@ services:
       POOL_MODE: transaction
       MAX_CLIENT_CONN: "100"
       DEFAULT_POOL_SIZE: "25"
+      
       # Postgres 16 defaults to scram-sha-256 password storage; this image's own default
       # (auth_type=md5) can't complete a login against that and fails with "wrong password
       # type". Verified locally: without this, `drizzle-kit migrate` against :6432 never
@@ -52,6 +53,17 @@ services:
       interval: 5s
       timeout: 3s
       retries: 5
+
+  clamav:
+    image: clamav/clamav:stable
+    healthcheck:
+      # clamd's virus-DB load is slow on first boot — start_period gives it room before the
+      # healthcheck starts counting failures against it.
+      test: ["CMD", "clamdcheck.sh"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 90s
 
   app:
     build:
@@ -76,10 +88,17 @@ services:
       R2_BUCKET_NAME: ${R2_BUCKET_NAME:-oncoflow-uploads}
       R2_PUBLIC_URL: ${R2_PUBLIC_URL:-}
       VIDEO_SDK_KEY: ${VIDEO_SDK_KEY:-}
+      CALL_PROVIDER_API_KEY: ${CALL_PROVIDER_API_KEY:-}
+      RESEND_API_KEY: ${RESEND_API_KEY:-}
+      RESEND_FROM_EMAIL: ${RESEND_FROM_EMAIL:-}
+      CLAMAV_HOST: clamav
+      CLAMAV_PORT: "3310"
     depends_on:
       pgbouncer:
         condition: service_started
       redis:
+        condition: service_healthy
+      clamav:
         condition: service_healthy
     healthcheck:
       # 127.0.0.1, not localhost — see infra/Dockerfile's HEALTHCHECK comment (IPv6 loopback

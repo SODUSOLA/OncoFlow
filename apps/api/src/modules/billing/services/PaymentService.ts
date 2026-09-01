@@ -1,12 +1,25 @@
 import crypto from "node:crypto";
 import { db } from "../../../db/index.js";
 import { payment, walletTransaction, invoice } from "../schema.js";
-import { InvoiceRepository } from "../repository.js";
-import { Invoice } from "../entities/Invoice.js";
+import { InvoiceRepository, InvoiceItemRepository } from "../repository.js";
+import { Invoice, InvoiceItem } from "../entities/Invoice.js";
 import { eq, sql } from "drizzle-orm";
 import { wallet } from "../../../db/schema.js";
+// Cross-module read, same pattern as billing/controller.ts's own PatientRepository import —
+// needed for the patient's email once a payment succeeds (receipt) and nowhere else in this
+// service.
+import { PatientRepository } from "../../patient/index.js";
+import { sendInvoiceReceipt } from "./EmailService.js";
+// Cross-module — connects invoice payment to the 2PM-cutoff appointment categorization
+// (handlePaymentEvent). Only relevant when the invoice is appointment-linked; a no-op call
+// for anything else (side-effect reports, etc.) since handlePaymentEvent checks for a row.
+import { AppointmentService } from "../../appointment/index.js";
+import { notificationService } from "../../notification/index.js";
 
 const invoiceRepo = new InvoiceRepository();
+const invoiceItemRepo = new InvoiceItemRepository();
+const patientRepo = new PatientRepository();
+const appointmentService = new AppointmentService();
 
 export class PaymentService {
   async processWebhookEvent(event: {
@@ -116,6 +129,42 @@ export class PaymentService {
       return { invoice: new Invoice(updatedInvoice).toJSON() };
     });
 
+    // Fire-and-forget, outside the transaction — the payment itself already committed and must
+    // never roll back because a receipt email failed to send. Logged, never re-thrown.
+    void this.sendReceiptBestEffort(invoiceId, invRow.patientId, result.invoice).catch((err) => {
+      console.error(`Receipt email failed for invoice ${invoiceId}:`, err);
+    });
+
+    void this.notifyPaidBestEffort(invRow.patientId).catch((err) => {
+      console.error(`Invoice-paid notification failed for invoice ${invoiceId}:`, err);
+    });
+
+    // Same best-effort tolerance as the receipt email — a failure here is staff-recoverable
+    // (they can manually confirm/reschedule), not a reason to undo a committed payment.
+    if (invRow.appointmentId) {
+      void appointmentService.handlePaymentEvent(invRow.appointmentId, new Date()).catch((err) => {
+        console.error(`2PM-cutoff categorization failed for invoice ${invoiceId}:`, err);
+      });
+    }
+
     return result;
+  }
+
+  private async sendReceiptBestEffort(
+    invoiceId: string,
+    patientId: string,
+    invoiceJSON: ReturnType<Invoice["toJSON"]>,
+  ): Promise<void> {
+    const patientRow = await patientRepo.findById(patientId);
+    if (!patientRow?.email) return;
+    const itemRows = await invoiceItemRepo.findByInvoice(invoiceId);
+    const items = itemRows.map((row) => new InvoiceItem(row).toJSON());
+    await sendInvoiceReceipt(patientRow.email, invoiceJSON, items);
+  }
+
+  private async notifyPaidBestEffort(patientId: string): Promise<void> {
+    const patientRow = await patientRepo.findById(patientId);
+    if (!patientRow?.userId) return;
+    await notificationService.create({ recipientId: patientRow.userId, type: "INVOICE_PAID" });
   }
 }

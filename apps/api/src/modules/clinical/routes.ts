@@ -17,6 +17,10 @@ const conversationIdParamSchema = z.object({
 
 const listCountdownCasesQuerySchema = z.object({
   patientId: z.string().uuid().optional(),
+  // Defaults to the narrow, day>0-only ACTIVE set every existing caller expects (see
+  // CountdownCaseRepository.findActive's comment) — the admin overview board opts into the
+  // wider ACTIVE+ESCALATED set explicitly with ?scope=overview rather than changing the default.
+  scope: z.enum(["active", "overview"]).optional(),
 });
 
 const completeTriageChecklistSchema = z.object({

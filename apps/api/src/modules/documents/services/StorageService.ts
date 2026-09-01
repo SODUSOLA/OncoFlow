@@ -1,4 +1,4 @@
-import { S3Client, PutObjectCommand } from "@aws-sdk/client-s3";
+import { S3Client, PutObjectCommand, GetObjectCommand } from "@aws-sdk/client-s3";
 import crypto from "node:crypto";
 
 const R2_ACCOUNT_ID = process.env.R2_ACCOUNT_ID ?? "";
@@ -53,6 +53,13 @@ export async function uploadToR2(
       ContentType: mimeType,
     }),
   );
+}
+
+export async function downloadFromR2(storageKey: string): Promise<Buffer> {
+  const client = getS3Client();
+  const res = await client.send(new GetObjectCommand({ Bucket: R2_BUCKET_NAME, Key: storageKey }));
+  const bytes = await res.Body!.transformToByteArray();
+  return Buffer.from(bytes);
 }
 
 export function resetS3ClientForTest(): void {

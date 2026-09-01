@@ -16,6 +16,8 @@ export interface PatientData {
   profilePictureFileId: string | null;
   status: PatientStatus;
   facilityId: string;
+  facilityConfirmedAt: Date | null;
+  createdAt: Date;
 }
 
 export class Patient {
@@ -48,6 +50,10 @@ export class Patient {
       profilePictureFileId: this.data.profilePictureFileId,
       status: this.data.status,
       facilityId: this.data.facilityId,
+      // Null until a Regional Admin confirms the facility — not a gate on access (the record
+      // is usable immediately), just onboarding status the UI can surface.
+      facilityConfirmedAt: this.data.facilityConfirmedAt,
+      createdAt: this.data.createdAt,
     };
   }
 

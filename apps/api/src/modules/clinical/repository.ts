@@ -20,11 +20,26 @@ export class CountdownCaseRepository {
       .orderBy(countdownCase.createdAt);
   }
 
+  // Deliberately narrow: only cases still counting down (ACTIVE, day > 0). Used by
+  // CountdownJobService (the daily advance/escalate job — must never reprocess an already-
+  // escalated case) and CalendarService (only cases still awaiting a calendar slot). Do not
+  // widen this for the admin overview's needs — see findForOverview below instead.
   async findActive() {
     return db
       .select()
       .from(countdownCase)
       .where(and(eq(countdownCase.status, "ACTIVE"), eq(countdownCase.isDeleted, false), gt(countdownCase.currentDay, 0)));
+  }
+
+  // The admin oversight board (regional-admin Dashboard) needs the opposite scope from
+  // findActive: it specifically wants to see day-0 and ESCALATED cases too (that's the entire
+  // point of an SLA-breach view) — everything still open, excluding only resolved cases
+  // (CLEARED/DECLINED).
+  async findForOverview() {
+    return db
+      .select()
+      .from(countdownCase)
+      .where(and(inArray(countdownCase.status, ["ACTIVE", "ESCALATED"]), eq(countdownCase.isDeleted, false)));
   }
 
   // countdown_case has no facility_id of its own (only patient_id) — callers that need
@@ -159,6 +174,13 @@ export class LabResultRepository {
       .from(labResult)
       .where(and(eq(labResult.patientId, patientId), eq(labResult.isDeleted, false)))
       .orderBy(labResult.createdAt);
+  }
+
+  async findByRequest(requestId: string) {
+    return db
+      .select()
+      .from(labResult)
+      .where(and(eq(labResult.requestId, requestId), eq(labResult.isDeleted, false)));
   }
 
   // Backs F3.5's duplicate-detection rule — uses the same (file_hash, patient_id, test_date)

@@ -47,7 +47,7 @@ export const challenges: Challenge[] = [
     icon: Clock,
     title: "Delayed diagnosis-to-treatment",
     description:
-      "Manual coordination between labs, sign-off, and scheduling adds days to a pathway where days matter most.",
+      "Manual navigation between labs, sign-off, and scheduling adds days to a pathway where days matter most.",
   },
   {
     icon: AlertTriangle,

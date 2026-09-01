@@ -18,6 +18,7 @@ export interface UserData {
   facilityId: string | null;
   lastLogin: Date | null;
   mfaEnabled: boolean;
+  emailVerifiedAt: Date | null;
   isDeleted: boolean;
   deletedAt: Date | null;
 }
@@ -43,6 +44,9 @@ export class User {
   }
   get facilityId(): string | null {
     return this.data.facilityId;
+  }
+  get emailVerified(): boolean {
+    return this.data.emailVerifiedAt !== null;
   }
   get passwordHash(): string {
     return this.data.passwordHash;
@@ -70,6 +74,10 @@ export class User {
     this.data.lastLogin = new Date();
   }
 
+  markEmailVerified(): void {
+    this.data.emailVerifiedAt = new Date();
+  }
+
   enableMfa(): void {
     this.data.mfaEnabled = true;
   }
@@ -86,6 +94,7 @@ export class User {
       facilityId: this.data.facilityId,
       lastLogin: this.data.lastLogin,
       mfaEnabled: this.data.mfaEnabled,
+      emailVerified: this.emailVerified,
     };
   }
 }

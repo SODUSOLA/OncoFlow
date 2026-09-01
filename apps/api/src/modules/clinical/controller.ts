@@ -1,6 +1,7 @@
 import type { Request, Response } from "express";
 import type { AuthenticatedRequest } from "../../lib/rbac.js";
 import { userHasRole, userHasPermission } from "../../lib/rbac.js";
+import { ConflictError } from "../../lib/errors.js";
 import { CountdownCaseRepository } from "./repository.js";
 import { CountdownCase } from "./entities/CountdownCase.js";
 import {
@@ -50,7 +51,7 @@ export async function listCountdownCasesHandler(req: Request, res: Response) {
       res.status(403).json({ error: "Forbidden" });
       return;
     }
-    const rows = await caseRepo.findActive();
+    const rows = req.query.scope === "overview" ? await caseRepo.findForOverview() : await caseRepo.findActive();
     res.json({ cases: rows.map((r) => new CountdownCase(r).toJSON()) });
   } catch {
     res.status(500).json({ error: "Internal server error" });
@@ -171,6 +172,13 @@ export async function markLabRequestReviewedHandler(req: Request, res: Response)
     const result = await labRequestSvc.markReviewed(String(req.params.id));
     res.json({ labRequest: result });
   } catch (err) {
+    // markReviewed can throw a real ConflictError (F4.6's virus-scan gate) alongside the
+    // string-matched "Cannot transition" case the sibling handler above uses — checking the
+    // actual error class here is more reliable than extending the string match further.
+    if (err instanceof ConflictError) {
+      res.status(409).json({ error: err.message });
+      return;
+    }
     const message = err instanceof Error ? err.message : "Internal server error";
     const status = message === "Lab request not found" ? 404 : message.startsWith("Cannot transition") ? 409 : 500;
     res.status(status).json({ error: message });

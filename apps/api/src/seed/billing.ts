@@ -7,19 +7,23 @@ type ClassificationName =
   | "SUBSCRIPTION" | "CONSULTATION" | "DRUG_ADMINISTRATION" | "CHEMOTHERAPY" | "GENERAL_ADMISSION" | "PROCEDURE"
   | "SIDE_EFFECT_REPORT";
 
-// facilityFeeShare/drugShare are fractions of the network fee, matching the ~0.6/~0.3 split
-// every other classification here already uses — SIDE_EFFECT_REPORT is a pure chat-based
-// consult with no facility/drug component, so both are 0.
-const CLASSIFICATIONS: { name: ClassificationName; cappedNetworkFeeKobo: number; facilityShare: number; drugShare: number }[] = [
-  { name: "SUBSCRIPTION", cappedNetworkFeeKobo: 0, facilityShare: 0, drugShare: 0 },
-  { name: "CONSULTATION", cappedNetworkFeeKobo: 5_000_00, facilityShare: 0.6, drugShare: 0.3 },
-  { name: "DRUG_ADMINISTRATION", cappedNetworkFeeKobo: 2_000_00, facilityShare: 0.6, drugShare: 0.3 },
-  { name: "CHEMOTHERAPY", cappedNetworkFeeKobo: 10_000_00, facilityShare: 0.6, drugShare: 0.3 },
-  { name: "GENERAL_ADMISSION", cappedNetworkFeeKobo: 3_000_00, facilityShare: 0.6, drugShare: 0.3 },
-  { name: "PROCEDURE", cappedNetworkFeeKobo: 8_000_00, facilityShare: 0.6, drugShare: 0.3 },
+// facilityShare/professionalShare/drugShare are fractions of the network fee — SIDE_EFFECT_REPORT
+// is a pure chat-based consult with no facility/professional/drug component, so all three are 0.
+// professionalShare's 0.4 split (vs. the existing 0.6/0.3) is a placeholder proportion, not a
+// documented product figure — easy to retune per classification later.
+const CLASSIFICATIONS: {
+  name: ClassificationName; cappedNetworkFeeKobo: number;
+  facilityShare: number; professionalShare: number; drugShare: number;
+}[] = [
+  { name: "SUBSCRIPTION", cappedNetworkFeeKobo: 0, facilityShare: 0, professionalShare: 0, drugShare: 0 },
+  { name: "CONSULTATION", cappedNetworkFeeKobo: 5_000_00, facilityShare: 0.6, professionalShare: 0.4, drugShare: 0.3 },
+  { name: "DRUG_ADMINISTRATION", cappedNetworkFeeKobo: 2_000_00, facilityShare: 0.6, professionalShare: 0.4, drugShare: 0.3 },
+  { name: "CHEMOTHERAPY", cappedNetworkFeeKobo: 10_000_00, facilityShare: 0.6, professionalShare: 0.4, drugShare: 0.3 },
+  { name: "GENERAL_ADMISSION", cappedNetworkFeeKobo: 3_000_00, facilityShare: 0.6, professionalShare: 0.4, drugShare: 0.3 },
+  { name: "PROCEDURE", cappedNetworkFeeKobo: 8_000_00, facilityShare: 0.6, professionalShare: 0.4, drugShare: 0.3 },
   // Day-rate reference only — the actual per-invoice fee is computed dynamically by
   // side-effect-pricing.ts (₦3,000 day / ₦5,000 night), not read from a Tariff row.
-  { name: "SIDE_EFFECT_REPORT", cappedNetworkFeeKobo: 3_000_00, facilityShare: 0, drugShare: 0 },
+  { name: "SIDE_EFFECT_REPORT", cappedNetworkFeeKobo: 3_000_00, facilityShare: 0, professionalShare: 0, drugShare: 0 },
 ];
 
 export async function seedBilling() {
@@ -50,7 +54,18 @@ export async function seedBilling() {
     const existingTariff = await db.select().from(tariff)
       .where(and(eq(tariff.facilityId, pilotFacility.id), eq(tariff.classificationId, classificationId)))
       .limit(1);
-    if (existingTariff.length > 0) continue;
+
+    const professionalFeeKobo = BigInt(Math.floor(c.cappedNetworkFeeKobo * c.professionalShare));
+
+    if (existingTariff.length > 0) {
+      // professional_fee_kobo is a new column (defaulted to 0 for pre-existing rows) — backfill
+      // it in place rather than skipping, since the per-row existence check above predates it.
+      if (existingTariff[0]!.professionalFeeKobo === 0n) {
+        await db.update(tariff).set({ professionalFeeKobo }).where(eq(tariff.id, existingTariff[0]!.id));
+        console.log(`  Backfilled professionalFeeKobo for ${c.name} at ${pilotFacility.name}`);
+      }
+      continue;
+    }
 
     await db.insert(tariff).values({
       id: crypto.randomUUID(),
@@ -58,6 +73,7 @@ export async function seedBilling() {
       classificationId,
       networkFeeKobo: BigInt(c.cappedNetworkFeeKobo),
       facilityBedFeeKobo: BigInt(Math.floor(c.cappedNetworkFeeKobo * c.facilityShare)),
+      professionalFeeKobo,
       drugPriceKobo: BigInt(Math.floor(c.cappedNetworkFeeKobo * c.drugShare)),
     });
     console.log(`  Created tariff for ${c.name} at ${pilotFacility.name}`);

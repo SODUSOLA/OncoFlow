@@ -1,4 +1,4 @@
-export { PatientService } from "./service.js";
+export { PatientService, generateUniquePatientId } from "./service.js";
 export {
   PatientRepository, AddressRepository, EmergencyContactRepository, WalletRepository,
   PatientTimelineRepository, PatientRegistrationRequestRepository,

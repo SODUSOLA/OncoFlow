@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/Button";
 
 export const metadata: Metadata = {
   title: "Careers",
-  description: "Join the team building OncoFlow's oncology care coordination platform.",
+  description: "Join the team building OncoFlow's oncology care navigation platform.",
 };
 
 export default function CareersPage() {

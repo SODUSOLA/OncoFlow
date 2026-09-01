@@ -92,12 +92,14 @@ const PENDING_REGISTRATIONS = [
     fullName: "Yewande Okafor",
     email: "yewande.okafor@example.com",
     dob: "1995-03-14",
+    gender: "Female",
     phone: "+2348099998888",
   },
   {
     fullName: "Suleiman Bello",
     email: "suleiman.bello@example.com",
     dob: "1982-11-02",
+    gender: "Male",
     phone: "+2348077776666",
   },
 ];
@@ -195,6 +197,7 @@ export async function seedPatients() {
       userId,
       email: r.email,
       fullName: r.fullName,
+      gender: r.gender,
       dob: r.dob,
       phone: r.phone,
       preferredFacilityId,

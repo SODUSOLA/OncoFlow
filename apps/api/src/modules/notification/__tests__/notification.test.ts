@@ -5,6 +5,7 @@ import { createApp } from "../../../app.js";
 import { db } from "../../../db/index.js";
 import { user, session } from "../../auth/schema.js";
 import { notification } from "../schema.js";
+import { NotificationService } from "../service.js";
 import { SESSION_COOKIE_NAME } from "../../../lib/session-cookie.js";
 
 const app = createApp();
@@ -41,5 +42,19 @@ describe("GET /notifications", () => {
     expect(res.status).toBe(200);
     expect(res.body.notifications).toHaveLength(1);
     expect(res.body.notifications[0].type).toBe("LAB_RESULT_REVIEWED");
+  });
+});
+
+describe("NotificationService.create", () => {
+  it("inserts a row with the given recipient/type, defaulting to PENDING status", async () => {
+    const { userId } = await createSessionCookie();
+    const svc = new NotificationService();
+
+    const row = await svc.create({ recipientId: userId, type: "INVOICE_PAID" });
+
+    expect(row.recipientId).toBe(userId);
+    expect(row.type).toBe("INVOICE_PAID");
+    expect(row.status).toBe("PENDING");
+    expect(row.sentAt).toBeNull();
   });
 });

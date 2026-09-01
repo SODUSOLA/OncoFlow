@@ -14,6 +14,8 @@ import { documentRoutes } from "./modules/documents/index.js";
 import { messagingRoutes } from "./modules/messaging/index.js";
 import { notificationRoutes } from "./modules/notification/index.js";
 import { inquiryRoutes } from "./modules/inquiry/index.js";
+import { staffingRoutes } from "./modules/staffing/index.js";
+import { inventoryRoutes } from "./modules/inventory/index.js";
 import { config } from "./config.js";
 
 export function createApp() {
@@ -46,6 +48,8 @@ export function createApp() {
   app.use(messagingRoutes);
   app.use(notificationRoutes);
   app.use(inquiryRoutes);
+  app.use(staffingRoutes);
+  app.use(inventoryRoutes);
 
   app.use(notFoundHandler);
   app.use(errorHandler);

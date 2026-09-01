@@ -19,13 +19,13 @@ export function Hero() {
       <Container className="grid items-center gap-16 py-16 md:py-24 lg:grid-cols-2 lg:py-32">
         <div>
           <motion.p {...stagger(0)} className="mb-4 text-sm font-semibold uppercase tracking-wide text-accent-gold">
-            Oncology Care Coordination
+            Oncology Care Navigation
           </motion.p>
           <motion.h1
             {...stagger(1)}
             className="font-display text-4xl font-bold tracking-tight text-primary sm:text-5xl lg:text-6xl"
           >
-            Cancer care coordination that doesn&apos;t depend on a phone call.
+            Cancer care navigation that doesn&apos;t depend on a phone call.
           </motion.h1>
           <motion.p {...stagger(2)} className="mt-6 max-w-xl text-lg leading-relaxed text-neutral-600">
             OncoFlow replaces fragmented, paper-based, and WhatsApp-driven case management

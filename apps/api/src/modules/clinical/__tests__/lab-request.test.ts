@@ -1,12 +1,16 @@
 import { describe, it, expect, beforeAll } from "vitest";
 import crypto from "node:crypto";
-import { LabRequestService } from "../service.js";
+import { LabRequestService, LabResultService } from "../service.js";
 import { db } from "../../../db/index.js";
 import { patient } from "../../patient/schema.js";
 import { facility } from "../../facility/schema.js";
 import { user } from "../../auth/schema.js";
+import { FileRepository } from "../../documents/index.js";
+import { computeFileHash, buildStorageKey } from "../../documents/services/StorageService.js";
 
 const labRequestSvc = new LabRequestService();
+const labResultSvc = new LabResultService();
+const fileRepo = new FileRepository();
 
 let testPatientId: string;
 let testStaffId: string;
@@ -65,5 +69,71 @@ describe("LabRequestService — CRUD + status transitions (F3.4 DoD)", () => {
 
   it("throws NotFoundError for an unknown id", async () => {
     await expect(labRequestSvc.get(crypto.randomUUID())).rejects.toThrow("Lab request not found");
+  });
+});
+
+describe("LabRequestService.markReviewed — F4.6 virus-scan gate", () => {
+  async function createFile(status: "PENDING" | "CLEAN" | "INFECTED") {
+    const content = Buffer.from(`gate-${crypto.randomUUID()}`);
+    const hash = computeFileHash(content);
+    return fileRepo.create({
+      id: crypto.randomUUID(),
+      patientId: testPatientId,
+      uploadedBy: testStaffId,
+      storageKey: buildStorageKey(testPatientId, "application/pdf", hash),
+      mimeType: "application/pdf",
+      virusScanStatus: status,
+      fileHash: hash,
+    });
+  }
+
+  it("rejects reviewing a request whose result's file is still PENDING scan", async () => {
+    const created = await labRequestSvc.create({ patientId: testPatientId, requestedBy: testStaffId });
+    const fileRow = await createFile("PENDING");
+    await labResultSvc.upload({
+      patientId: testPatientId, requestId: created.id, uploadedBy: testStaffId,
+      fileId: fileRow.id, testDate: "2026-01-01", fileHash: fileRow.fileHash,
+    });
+
+    await expect(labRequestSvc.markReviewed(created.id)).rejects.toThrow(
+      "Cannot review a lab result whose file is not yet scanned clean",
+    );
+  });
+
+  it("rejects reviewing a request whose result's file came back INFECTED", async () => {
+    const created = await labRequestSvc.create({ patientId: testPatientId, requestedBy: testStaffId });
+    const fileRow = await createFile("INFECTED");
+    await labResultSvc.upload({
+      patientId: testPatientId, requestId: created.id, uploadedBy: testStaffId,
+      fileId: fileRow.id, testDate: "2026-01-01", fileHash: fileRow.fileHash,
+    });
+
+    await expect(labRequestSvc.markReviewed(created.id)).rejects.toThrow(
+      "Cannot review a lab result whose file is not yet scanned clean",
+    );
+  });
+
+  it("allows reviewing once the file has come back CLEAN", async () => {
+    const created = await labRequestSvc.create({ patientId: testPatientId, requestedBy: testStaffId });
+    const fileRow = await createFile("CLEAN");
+    await labResultSvc.upload({
+      patientId: testPatientId, requestId: created.id, uploadedBy: testStaffId,
+      fileId: fileRow.id, testDate: "2026-01-01", fileHash: fileRow.fileHash,
+    });
+
+    const reviewed = await labRequestSvc.markReviewed(created.id);
+    expect(reviewed.status).toBe("REVIEWED");
+  });
+
+  it("exposes fileStatus on the LabResult read paths", async () => {
+    const created = await labRequestSvc.create({ patientId: testPatientId, requestedBy: testStaffId });
+    const fileRow = await createFile("CLEAN");
+    const uploaded = await labResultSvc.upload({
+      patientId: testPatientId, requestId: created.id, uploadedBy: testStaffId,
+      fileId: fileRow.id, testDate: "2026-01-01", fileHash: fileRow.fileHash,
+    });
+
+    const fetched = await labResultSvc.get(uploaded.id);
+    expect(fetched.fileStatus).toBe("CLEAN");
   });
 });

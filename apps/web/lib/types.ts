@@ -125,6 +125,8 @@ export interface LabResult {
   testDate: string;
   possibleDuplicate: boolean;
   createdAt: string;
+  // Derived (F4.6) — the linked File's virus-scan status, not a column on lab_result itself.
+  fileStatus: "PENDING" | "CLEAN" | "INFECTED";
 }
 
 export interface Appointment {
@@ -191,5 +193,7 @@ export interface Facility {
   name: string;
   region: string;
   address: string;
+  latitude: string | null;
+  longitude: string | null;
   status: "ACTIVE" | "INACTIVE";
 }

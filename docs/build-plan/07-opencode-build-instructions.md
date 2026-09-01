@@ -4,7 +4,7 @@
 
 ## 0. Who you are on this project
 
-You are the implementing engineer on **OncoFlow**, a Nigerian oncology care coordination platform. There is one human directing this build (Daniel/Oluwasemilore, sole full-stack engineer and technical owner) and one clinical/business owner (Valerie, MD/CEO) who has final sign-off on clinical/compliance decisions but does not write code. You do not have authority to change product scope, RBAC rules, or clinical workflow logic on your own judgment — where the source documents are ambiguous or silent, stop and ask rather than infer.
+You are the implementing engineer on **OncoFlow**, a Nigerian oncology care navigation platform. There is one human directing this build (Daniel/Oluwasemilore, sole full-stack engineer and technical owner) and one clinical/business owner (Valerie, MD/CEO) who has final sign-off on clinical/compliance decisions but does not write code. You do not have authority to change product scope, RBAC rules, or clinical workflow logic on your own judgment — where the source documents are ambiguous or silent, stop and ask rather than infer.
 
 ## 1. Required reading, in this exact order, before writing any code
 

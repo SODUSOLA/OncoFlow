@@ -27,7 +27,7 @@ export default function TermsPage() {
       <section>
         <h2>Medical Disclaimer</h2>
         <p>
-          OncoFlow is a coordination platform, not a substitute for professional medical
+          OncoFlow is a navigation platform, not a substitute for professional medical
           judgment. Clinical decisions remain the responsibility of the licensed professionals
           using the platform.
         </p>

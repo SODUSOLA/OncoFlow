@@ -11,7 +11,11 @@ import { ClinicalDecision } from "./entities/ClinicalDecision.js";
 import { CountdownCase } from "./entities/CountdownCase.js";
 import { ConflictError, NotFoundError } from "../../lib/errors.js";
 import { userHasRole } from "../../lib/rbac.js";
+// Cross-module read (same pattern as billing/appointment's PatientRepository imports) — the
+// F4.6 virus-scan gate needs the File row's virusScanStatus, which this module doesn't own.
+import { FileRepository } from "../documents/index.js";
 
+const fileRepo = new FileRepository();
 const triageChecklistRepo = new TriageChecklistRepository();
 const prescriptionRepo = new PrescriptionRepository();
 const labRequestRepo = new LabRequestRepository();
@@ -133,6 +137,19 @@ export class LabRequestService {
   async markReviewed(id: string) {
     const row = await labRequestRepo.findById(id);
     if (!row) throw new NotFoundError("Lab request not found");
+
+    // F4.6: a lab result whose file hasn't come back CLEAN yet (still scanning, or flagged
+    // INFECTED) can't be reviewed — per spec, nothing downstream should treat an unscanned
+    // upload as usable. Checks every result tied to this request (a request can have more
+    // than one submission), not just the latest.
+    const results = await labResultRepo.findByRequest(id);
+    for (const result of results) {
+      const fileRow = await fileRepo.findById(result.fileId);
+      if (fileRow?.virusScanStatus !== "CLEAN") {
+        throw new ConflictError("Cannot review a lab result whose file is not yet scanned clean");
+      }
+    }
+
     const updated = new LabRequest(row).markReviewed();
     const saved = await labRequestRepo.update(id, { status: updated.status });
     return new LabRequest(saved!).toJSON();
@@ -179,26 +196,35 @@ export class LabResultService {
     return new LabResult(row).toJSON();
   }
 
+  // Derived, not stored on LabResult itself — the entity has no knowledge of File (cross-
+  // module concern), so this merges it in at the service layer rather than teaching the
+  // entity about a table it doesn't own. Defaults to "PENDING" if the file row is somehow
+  // missing rather than throwing, since this is read-path enrichment, not a hard dependency.
+  private async fileStatus(fileId: string): Promise<"PENDING" | "CLEAN" | "INFECTED"> {
+    const fileRow = await fileRepo.findById(fileId);
+    return fileRow?.virusScanStatus ?? "PENDING";
+  }
+
   async get(id: string) {
     const row = await labResultRepo.findById(id);
     if (!row) throw new NotFoundError("Lab result not found");
-    return new LabResult(row).toJSON();
+    return { ...new LabResult(row).toJSON(), fileStatus: await this.fileStatus(row.fileId) };
   }
 
   async getForAdmin(id: string) {
     const row = await labResultRepo.findById(id);
     if (!row) throw new NotFoundError("Lab result not found");
-    return new LabResult(row).toAdminJSON();
+    return { ...new LabResult(row).toAdminJSON(), fileStatus: await this.fileStatus(row.fileId) };
   }
 
   async listByPatient(patientId: string) {
     const rows = await labResultRepo.findByPatient(patientId);
-    return rows.map((r) => new LabResult(r).toJSON());
+    return Promise.all(rows.map(async (r) => ({ ...new LabResult(r).toJSON(), fileStatus: await this.fileStatus(r.fileId) })));
   }
 
   async listByPatientForAdmin(patientId: string) {
     const rows = await labResultRepo.findByPatient(patientId);
-    return rows.map((r) => new LabResult(r).toAdminJSON());
+    return Promise.all(rows.map(async (r) => ({ ...new LabResult(r).toAdminJSON(), fileStatus: await this.fileStatus(r.fileId) })));
   }
 }
 

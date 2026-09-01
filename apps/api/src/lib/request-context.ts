@@ -8,7 +8,7 @@ const sessionRepo = new SessionRepository();
 const userRepo = new UserRepository();
 
 export async function attachRequestContext(req: Request, _res: Response, next: NextFunction): Promise<void> {
-  const authed = req as Request & { userId?: string; facilityId?: string };
+  const authed = req as Request & { userId?: string; facilityId?: string; mfaVerified?: boolean; mfaRequired?: boolean; };
   const contextReq = req as Request & { requestId?: string };
 
   const requestId = typeof req.headers["x-request-id"] === "string" && req.headers["x-request-id"].length > 0
@@ -26,8 +26,9 @@ export async function attachRequestContext(req: Request, _res: Response, next: N
   const sessionIdFromCookie = typeof req.cookies?.[SESSION_COOKIE_NAME] === "string"
     ? req.cookies[SESSION_COOKIE_NAME]
     : undefined;
+  let session = null;
   if (typeof sessionIdFromCookie === "string" && sessionIdFromCookie.length > 0) {
-    const session = await sessionRepo.findById(sessionIdFromCookie);
+    session = await sessionRepo.findById(sessionIdFromCookie);
     if (session && !session.revokedAt && session.expiresAt > new Date()) {
       authed.userId = session.userId;
     }
@@ -40,14 +41,24 @@ export async function attachRequestContext(req: Request, _res: Response, next: N
     authed.facilityId = process.env.TEST_FACILITY_ID;
   }
 
-  // Facility-scoped RBAC (rbac.ts requirePermissionScoped) needs the requesting user's own
-  // facility to compare against a resource's facility_id — derive it from the DB rather than
-  // trusting anything client-supplied. Skipped when a test already set it directly above.
+  // Derive facility from user DB record for RBAC scoping — skipped when test already set it
   if (authed.userId && !authed.facilityId) {
     const userRow = await userRepo.findById(authed.userId);
     if (userRow?.facilityId) {
       authed.facilityId = userRow.facilityId;
     }
+  }
+
+  // Load MFA state from session for enforcement
+  if (authed.userId && session) {
+    authed.mfaVerified = session.mfaVerified;
+    const userRow = await userRepo.findById(authed.userId);
+    authed.mfaRequired = userRow?.mfaEnabled ?? false;
+  } else if (authed.userId) {
+    // No session cookie — derive mfaRequired from user record (e.g. test mode or stale state)
+    const userRow = await userRepo.findById(authed.userId);
+    authed.mfaVerified = false;
+    authed.mfaRequired = userRow?.mfaEnabled ?? false;
   }
 
   next();

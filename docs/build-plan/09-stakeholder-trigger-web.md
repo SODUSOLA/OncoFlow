@@ -56,7 +56,7 @@ Where a trigger target isn't actually specified anywhere in the source docs, it'
 
 4. **State Clinical Director** sets `final_decision`
    → if `APPROVED`: `CountdownCase.status → CLEARED` → triggers Notification to **Patient** + **Consulting Oncologist / Onsite Nursing Officer** (schedule the appointment/physical case) → **feeds into Chain E or Chain F**
-   → if `DECLINED`: `CountdownCase.status → DECLINED` → triggers Notification to **Patient** + **[UNSPECIFIED — does Regional Admin get looped in for follow-up/alternative-care coordination, or does this dead-end at the patient?]**
+   → if `DECLINED`: `CountdownCase.status → DECLINED` → triggers Notification to **Patient** + **[UNSPECIFIED — does Regional Admin get looped in for follow-up/alternative-care navigation, or does this dead-end at the patient?]**
 
 5. **Independently, running the whole time:** a daily BullMQ job decrements `current_day`. If day-thresholds pass with no patient/QA/Director action, it stamps `reminder_sent_at` (Notification to Patient) and, past a threshold, flips `CountdownCase.status → ESCALATED` → triggers Notification to **[UNSPECIFIED — Regional Admin? State Clinical Director? Neither role's escalation-handling duty is documented anywhere]**. This is a real gap worth closing before `F2.4` is considered done, not just a documentation nicety — an escalated countdown case with no defined recipient is a silent failure in production.
 
@@ -154,7 +154,7 @@ This is the clearest literal "AND-gate" in the whole system — it's the one pla
 
 ## Chain I — Transfer Request
 
-1. **[UNSPECIFIED — which role initiates this?]** Regional Admin is the most likely candidate given their operational-coordination role elsewhere, but it's not explicitly stated.
+1. **[UNSPECIFIED — which role initiates this?]** Regional Admin is the most likely candidate given their operational-navigation role elsewhere, but it's not explicitly stated.
    → creates `TransferRequest(PENDING)` → triggers Notification to **[UNSPECIFIED — who approves? `approved_by` is a `User` FK with no role constraint documented]**
 
 2. Approval

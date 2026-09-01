@@ -192,6 +192,12 @@ export default function RecordsPage() {
                     <p className="mt-0.5 text-xs text-neutral-500">
                       Uploaded {new Date(r.createdAt).toLocaleDateString()}
                     </p>
+                    {r.fileStatus === "PENDING" && (
+                      <p className="mt-0.5 text-xs text-amber-600">Scan pending — not yet reviewable</p>
+                    )}
+                    {r.fileStatus === "INFECTED" && (
+                      <p className="mt-0.5 text-xs text-red-600">Flagged during virus scan — blocked, pending review</p>
+                    )}
                   </div>
                   <Badge variant={RESULT_STATUS_VARIANT[r.status]}>{r.status}</Badge>
                 </Card>

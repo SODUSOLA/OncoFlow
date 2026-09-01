@@ -51,7 +51,7 @@ export default function AboutPage() {
           <Reveal className="mt-14" delay={0.05}>
             <h2 className="font-display text-2xl font-bold text-primary">The Problem We&apos;re Solving</h2>
             <p className="mt-4 leading-relaxed text-neutral-600">
-              Oncology care coordination has depended on manual phone calls, chat groups, paper
+              Oncology care navigation has depended on manual phone calls, chat groups, paper
               lab slips, and spreadsheet-based tariff lookups. That produces four recurring
               failure modes:
             </p>

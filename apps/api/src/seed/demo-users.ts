@@ -31,8 +31,14 @@ const DEMO_USERS: { email: string; password: string; roleName: string; facilityS
 ];
 
 export async function seedDemoUsers() {
-  const facilityRows = await db.execute<{ id: string }>(sql`SELECT id FROM facility ORDER BY name`);
+  const facilityRows = await db.execute<{ id: string; region: string }>(sql`SELECT id, region FROM facility ORDER BY name`);
   let facilityIndex = 0;
+  // The pilot facility (LUTH, region "Lagos" — see 17-ideal-registration-onboarding-flow.md /
+  // seed/billing.ts's own pilotFacility lookup) is the only one carrying real showcase
+  // patients/invoices/tariffs/inventory stock. The lone REGIONAL_ADMIN demo account is pinned
+  // here specifically so a login actually shows populated data, instead of round-robining onto
+  // a facility (e.g. Kano) that only has the facility-agnostic staffing policy seeded.
+  const pilotFacilityId = facilityRows.find((f) => f.region === "Lagos")?.id ?? facilityRows[0]?.id;
 
   for (const demo of DEMO_USERS) {
     const existingUser = await db.execute<{ id: string }>(
@@ -43,9 +49,13 @@ export async function seedDemoUsers() {
     if (existingUser.length === 0) {
       userId = crypto.randomUUID();
       const passwordHash = await User.hashPassword(demo.password);
-      const facilityId = demo.facilityScoped && facilityRows.length > 0
-        ? facilityRows[facilityIndex++ % facilityRows.length]!.id
-        : null;
+      const facilityId = !demo.facilityScoped
+        ? null
+        : demo.roleName === "REGIONAL_ADMIN"
+          ? pilotFacilityId ?? null
+          : facilityRows.length > 0
+            ? facilityRows[facilityIndex++ % facilityRows.length]!.id
+            : null;
       await db.insert(user).values({
         id: userId, email: demo.email, passwordHash, status: "ACTIVE", mfaEnabled: false, facilityId,
       });

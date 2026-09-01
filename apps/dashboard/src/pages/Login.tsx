@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { Navigate, useLocation } from "react-router-dom";
+import { Loader2 } from "lucide-react";
 import { useAuth } from "../lib/auth";
 import { dashboardPathForRoles } from "../lib/roleRouting";
 
@@ -31,43 +32,58 @@ export default function Login() {
   }
 
   return (
-    <div className="min-h-screen bg-gray-50 flex items-center justify-center px-4">
+    <div className="flex min-h-screen items-center justify-center bg-gray-50 px-4">
       <div className="w-full max-w-sm">
-        <h1 className="text-2xl font-bold text-brand-700 text-center mb-1">OncoFlow</h1>
-        <p className="text-sm text-gray-500 text-center mb-8">Sign in to your dashboard</p>
+        <div className="mb-8 flex flex-col items-center">
+          <img src="/oncoflow-logo.svg" alt="OncoFlow" className="size-12" />
+          <p className="mt-3 text-lg font-bold tracking-tight text-ink">ONCOFLOW</p>
+          <p className="text-[11px] font-semibold uppercase tracking-widest text-gray-400">Staff Portal</p>
+        </div>
 
-        <form onSubmit={handleSubmit} className="bg-white rounded-xl border border-gray-200 p-6 space-y-4">
+        <form onSubmit={handleSubmit} className="space-y-4 rounded border border-gray-200 bg-white p-6">
+          <div className="mb-2 text-center">
+            <h1 className="text-base font-semibold text-gray-900">Sign in to your dashboard</h1>
+          </div>
+
           <div>
-            <label className="block text-sm text-gray-600 mb-1">Email</label>
+            <label className="mb-1 block text-sm text-gray-600">Email</label>
             <input
               type="email"
               value={email}
               onChange={(e) => setEmail(e.target.value)}
               required
-              className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm"
+              autoFocus
+              className="w-full rounded border border-gray-300 px-3 py-2 text-sm focus:border-ink focus:outline-none focus:ring-1 focus:ring-ink"
               autoComplete="username"
             />
           </div>
           <div>
-            <label className="block text-sm text-gray-600 mb-1">Password</label>
+            <label className="mb-1 block text-sm text-gray-600">Password</label>
             <input
               type="password"
               value={password}
               onChange={(e) => setPassword(e.target.value)}
               required
-              className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm"
+              className="w-full rounded border border-gray-300 px-3 py-2 text-sm focus:border-ink focus:outline-none focus:ring-1 focus:ring-ink"
               autoComplete="current-password"
             />
           </div>
+
           {error && <p className="text-sm text-red-600">{error}</p>}
+
           <button
             type="submit"
             disabled={submitting}
-            className="w-full px-4 py-2 bg-brand-600 text-white rounded-lg hover:bg-brand-700 disabled:opacity-50 text-sm font-medium"
+            className="flex w-full items-center justify-center gap-2 rounded bg-ink px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-ink-600 disabled:opacity-50"
           >
-            {submitting ? "Signing in..." : "Sign in"}
+            {submitting && <Loader2 className="size-4 animate-spin" aria-hidden="true" />}
+            {submitting ? "Signing in…" : "Sign in"}
           </button>
         </form>
+
+        <p className="mt-6 text-center text-xs text-gray-400">
+          Staff and clinician access only.
+        </p>
       </div>
     </div>
   );

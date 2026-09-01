@@ -2,7 +2,7 @@ export const siteConfig = {
   name: "OncoFlow",
   legalName: "OncoFlow Limited",
   description:
-    "Secure, role-based oncology care coordination — from scheduling through chemotherapy administration and follow-up.",
+    "Secure, role-based oncology care navigation — from scheduling through chemotherapy administration and follow-up.",
   contactEmail: "hello@oncoflow.health",
   supportEmail: "support@oncoflow.health",
   phone: "+234 (0) 800 000 0000",

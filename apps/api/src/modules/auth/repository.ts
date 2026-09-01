@@ -2,7 +2,7 @@ import { db } from "../../db/index.js";
 import { eq, sql, and } from "drizzle-orm";
 import {
   user, role, permission, userRole, rolePermission, session,
-  accountLock, misconductFlag,
+  accountLock, misconductFlag, emailVerificationToken, passwordResetToken,
 } from "./schema.js";
 
 export class UserRepository {
@@ -141,6 +141,70 @@ export class SessionRepository {
       .update(session)
       .set({ revokedAt: new Date() })
       .where(sql`${session.userId} = ${userId} AND ${session.revokedAt} IS NULL`);
+  }
+}
+
+export class EmailVerificationTokenRepository {
+  async create(data: typeof emailVerificationToken.$inferInsert) {
+    const row = await db.insert(emailVerificationToken).values(data).returning();
+    return row[0]!;
+  }
+
+  async findValidByHash(tokenHash: string) {
+    const row = await db
+      .select()
+      .from(emailVerificationToken)
+      .where(sql`${emailVerificationToken.tokenHash} = ${tokenHash}
+        AND ${emailVerificationToken.consumedAt} IS NULL
+        AND ${emailVerificationToken.expiresAt} > NOW()`)
+      .limit(1);
+    return row[0] ?? null;
+  }
+
+  async markConsumed(id: string) {
+    await db.update(emailVerificationToken).set({ consumedAt: new Date() }).where(eq(emailVerificationToken.id, id));
+  }
+
+  // Called before issuing a fresh token (register's initial send, or a resend) so a user can
+  // never have more than one live link outstanding — an old, still-emailed link should stop
+  // working the moment a newer one is issued, not silently coexist with it.
+  async invalidateAllForUser(userId: string) {
+    await db
+      .update(emailVerificationToken)
+      .set({ consumedAt: new Date() })
+      .where(sql`${emailVerificationToken.userId} = ${userId} AND ${emailVerificationToken.consumedAt} IS NULL`);
+  }
+}
+
+export class PasswordResetTokenRepository {
+  async create(data: typeof passwordResetToken.$inferInsert) {
+    const row = await db.insert(passwordResetToken).values(data).returning();
+    return row[0]!;
+  }
+
+  async findValidByHash(tokenHash: string) {
+    const row = await db
+      .select()
+      .from(passwordResetToken)
+      .where(sql`${passwordResetToken.tokenHash} = ${tokenHash}
+        AND ${passwordResetToken.consumedAt} IS NULL
+        AND ${passwordResetToken.expiresAt} > NOW()`)
+      .limit(1);
+    return row[0] ?? null;
+  }
+
+  async markConsumed(id: string) {
+    await db.update(passwordResetToken).set({ consumedAt: new Date() }).where(eq(passwordResetToken.id, id));
+  }
+
+  // Same reasoning as EmailVerificationTokenRepository.invalidateAllForUser — a fresh reset
+  // request should retire every link still outstanding, not let an old, already-emailed one
+  // keep working alongside the new one.
+  async invalidateAllForUser(userId: string) {
+    await db
+      .update(passwordResetToken)
+      .set({ consumedAt: new Date() })
+      .where(sql`${passwordResetToken.userId} = ${userId} AND ${passwordResetToken.consumedAt} IS NULL`);
   }
 }
 

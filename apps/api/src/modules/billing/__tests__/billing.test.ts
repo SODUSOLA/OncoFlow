@@ -53,6 +53,7 @@ describe("TariffRepository", () => {
       classificationId: testClassId,
       networkFeeKobo: 500000n,
       facilityBedFeeKobo: 300000n,
+      professionalFeeKobo: 200000n,
       drugPriceKobo: 200000n,
     });
 
@@ -63,6 +64,7 @@ describe("TariffRepository", () => {
         classificationId: testClassId,
         networkFeeKobo: 100n,
         facilityBedFeeKobo: 100n,
+        professionalFeeKobo: 100n,
         drugPriceKobo: 100n,
       }),
     ).rejects.toThrow("Tariff already exists for this facility and classification");
@@ -76,9 +78,10 @@ describe("TariffRepository", () => {
       classificationId: "00000000-0000-0000-0000-000000000003",
       networkFeeKobo: 5000n,
       facilityBedFeeKobo: 3000n,
+      professionalFeeKobo: 1500n,
       drugPriceKobo: 2000n,
     });
-    expect(t.totalKobo()).toBe(10000n);
+    expect(t.totalKobo()).toBe(11500n);
   });
 
   it("finds tariff by facility and classification", async () => {
@@ -91,6 +94,7 @@ describe("TariffRepository", () => {
       classificationId: testClassId,
       networkFeeKobo: 100000n,
       facilityBedFeeKobo: 60000n,
+      professionalFeeKobo: 50000n,
       drugPriceKobo: 40000n,
     });
 

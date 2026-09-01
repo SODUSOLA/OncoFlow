@@ -9,7 +9,7 @@ import { SecurityGrid } from "@/components/marketing/SecurityGrid";
 export const metadata: Metadata = {
   title: "Features",
   description:
-    "The complete OncoFlow feature set — scheduling, video consultation, care coordination, secure messaging, and more.",
+    "The complete OncoFlow feature set — scheduling, video consultation, care navigation, secure messaging, and more.",
 };
 
 export default function FeaturesPage() {

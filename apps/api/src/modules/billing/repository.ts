@@ -111,6 +111,14 @@ export class InvoiceRepository {
       .orderBy(invoice.createdAt);
   }
 
+  async findAll() {
+    return db
+      .select()
+      .from(invoice)
+      .where(eq(invoice.isDeleted, false))
+      .orderBy(invoice.createdAt);
+  }
+
   async create(data: typeof invoice.$inferInsert) {
     const row = await db.insert(invoice).values(data).returning();
     return row[0]!;

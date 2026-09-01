@@ -9,19 +9,80 @@ const sessionRepo = new SessionRepository();
 
 export async function registerHandler(req: Request, res: Response) {
   try {
-    const { email, password, device, fullName, dob, phone, preferredFacilityId } = req.body;
+    const { email, password, device, fullName, dob, gender, phone, preferredFacilityId } = req.body;
     if (!email || !password) {
       res.status(400).json({ error: "Email and password required" });
       return;
     }
     const user = await auth.register(email, password, device ?? "unknown", req.ip ?? "unknown", {
-      fullName, dob, phone, preferredFacilityId,
+      fullName, dob, gender, phone, preferredFacilityId,
     });
     res.status(201).json({ user: user.toSafeJSON() });
   } catch (err) {
     const message = err instanceof Error ? err.message : "Internal server error";
     const status = message === "Email already registered" ? 409 : 400;
     res.status(status).json({ error: message });
+  }
+}
+
+export async function verifyEmailHandler(req: Request, res: Response) {
+  try {
+    const { token } = req.body;
+    if (!token) {
+      res.status(400).json({ error: "Token required" });
+      return;
+    }
+    await auth.verifyEmail(token);
+    res.json({ verified: true });
+  } catch (err) {
+    const message = err instanceof Error ? err.message : "Internal server error";
+    res.status(400).json({ error: message });
+  }
+}
+
+export async function resendVerificationHandler(req: Request, res: Response) {
+  try {
+    const userId = (req as AuthenticatedRequest).userId;
+    await auth.resendVerificationEmail(userId);
+    res.json({ sent: true });
+  } catch (err) {
+    const message = err instanceof Error ? err.message : "Internal server error";
+    const status = message === "Email already verified" ? 409 : 400;
+    res.status(status).json({ error: message });
+  }
+}
+
+export async function forgotPasswordHandler(req: Request, res: Response) {
+  try {
+    const { email } = req.body;
+    if (!email) {
+      res.status(400).json({ error: "Email required" });
+      return;
+    }
+    await auth.requestPasswordReset(email);
+    // Always 200 with the same body, whether or not the account exists — see
+    // AuthService.requestPasswordReset's own comment on why.
+    res.json({ sent: true });
+  } catch {
+    // Deliberately still doesn't leak anything more specific than a generic failure — a 500
+    // here shouldn't be distinguishable from a "no such account" success by response shape,
+    // only by status code, and status alone doesn't confirm account existence.
+    res.status(500).json({ error: "Internal server error" });
+  }
+}
+
+export async function resetPasswordHandler(req: Request, res: Response) {
+  try {
+    const { token, password } = req.body;
+    if (!token || !password) {
+      res.status(400).json({ error: "Token and password required" });
+      return;
+    }
+    await auth.resetPassword(token, password);
+    res.json({ ok: true });
+  } catch (err) {
+    const message = err instanceof Error ? err.message : "Internal server error";
+    res.status(400).json({ error: message });
   }
 }
 
@@ -60,6 +121,17 @@ export async function logoutHandler(req: Request, res: Response) {
     res.json({ ok: true });
   } catch {
     res.status(500).json({ error: "Internal server error" });
+  }
+}
+
+export async function enrollMfaHandler(req: Request, res: Response) {
+  try {
+    const userId = (req as AuthenticatedRequest).userId;
+    const result = await auth.enrollMfa(userId);
+    res.json({ mfaEnabled: true, ...result });
+  } catch (err) {
+    const message = err instanceof Error ? err.message : "Internal server error";
+    res.status(400).json({ error: message });
   }
 }
 

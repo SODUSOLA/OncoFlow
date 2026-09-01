@@ -59,6 +59,14 @@ export async function getFileHandler(req: Request, res: Response) {
       return;
     }
 
+    // F4.6: block the file from being served once flagged infected — no reviewer-override
+    // role exists in this codebase, so this blocks unconditionally rather than half-gating it
+    // behind a permission nobody has been granted.
+    if (result.file.virusScanStatus === "INFECTED") {
+      res.status(403).json({ error: "File blocked: flagged as infected, pending review" });
+      return;
+    }
+
     res.json(result);
   } catch (err) {
     if (err instanceof Error && err.message === "File not found") {

@@ -2,6 +2,8 @@ import { useEffect, useState } from "react";
 import { CheckCheck, Check, Star } from "lucide-react";
 import { api } from "../../lib/api";
 import { useAuth } from "../../lib/auth";
+import { useCountdown } from "../../lib/useCountdown";
+import { getSocket } from "../../lib/socket";
 import type { Conversation, Message, ConversationFeedback } from "../../lib/types";
 
 const CONVERSATION_TYPE_LABELS: Record<Conversation["conversationType"], string> = {
@@ -11,7 +13,14 @@ const CONVERSATION_TYPE_LABELS: Record<Conversation["conversationType"], string>
 
 // WhatsApp-style: a conversation that's been replied to just shows a read-style tick, not a
 // text badge — "Answered" as a label was the generic status the real per-message ticks replace.
+// The "Xm left" badge used to be computed once per render (Date.now() snapshotted at render
+// time) and would silently go stale until something else happened to re-render this row —
+// useCountdown gives it a real 1s tick instead.
 function SlaBadge({ conversation }: { conversation: Conversation }) {
+  const countdown = useCountdown(
+    conversation.status === "OPEN" && !conversation.firstResponseAt ? conversation.slaDeadline : null,
+  );
+
   if (conversation.status === "CLOSED") {
     return <span className="px-2 py-0.5 rounded-full text-xs font-medium bg-gray-100 text-gray-600">Closed</span>;
   }
@@ -22,8 +31,12 @@ function SlaBadge({ conversation }: { conversation: Conversation }) {
     return <CheckCheck className="size-4 text-teal-600" aria-label="Replied" />;
   }
   if (conversation.slaDeadline) {
-    const minutesLeft = Math.max(0, Math.round((new Date(conversation.slaDeadline).getTime() - Date.now()) / 60000));
-    return <span className="px-2 py-0.5 rounded-full text-xs font-medium bg-amber-100 text-amber-700">{minutesLeft}m left</span>;
+    const label = countdown.days > 0
+      ? `${countdown.days}d ${countdown.hours}h left`
+      : countdown.hours > 0
+        ? `${countdown.hours}h ${countdown.minutes}m left`
+        : `${countdown.minutes}m ${countdown.seconds}s left`;
+    return <span className="px-2 py-0.5 rounded-full text-xs font-medium bg-amber-100 text-amber-700">{label}</span>;
   }
   return null;
 }
@@ -182,6 +195,27 @@ export function MessagesPanel({ patientId: fixedPatientId }: { patientId?: strin
       .catch(() => setFeedbackList([]))
       .finally(() => setFeedbackLoaded(true));
   }, [selected]);
+
+  // Live delivery for the open thread — same join/leave/dedupe pattern as apps/web's messages
+  // page. Staff previously only saw a message appear after sending their own (optimistic local
+  // append) or re-selecting the conversation; this makes an incoming message from the other
+  // party show up without either.
+  useEffect(() => {
+    if (!selectedId) return;
+    const socket = getSocket();
+    socket.emit("conversation:join", selectedId);
+
+    function onNewMessage(msg: Message & { conversationId: string }) {
+      if (msg.conversationId !== selectedId) return;
+      setMessages((prev) => (prev.some((m) => m.id === msg.id) ? prev : [...prev, msg]));
+    }
+    socket.on("message:new", onNewMessage);
+
+    return () => {
+      socket.off("message:new", onNewMessage);
+      socket.emit("conversation:leave", selectedId);
+    };
+  }, [selectedId]);
 
   const showFeedback = selected?.conversationType === "MO_SIDE_EFFECT" && selected.status === "CLOSED" && feedbackLoaded;
   const myFeedback = feedbackList.find((f) => f.raterId === user?.id);

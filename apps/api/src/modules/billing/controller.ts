@@ -2,9 +2,9 @@ import type { Request, Response } from "express";
 import type { AuthenticatedRequest } from "../../lib/rbac.js";
 import { userHasPermission } from "../../lib/rbac.js";
 import { InvoiceService } from "./service.js";
-import { InvoiceRepository, InvoiceItemRepository, ServiceClassificationRepository, WalletTransactionRepository } from "./repository.js";
+import { InvoiceRepository, InvoiceItemRepository, ServiceClassificationRepository, WalletTransactionRepository, TariffRepository } from "./repository.js";
 import { Invoice, InvoiceItem } from "./entities/Invoice.js";
-import { ServiceClassification } from "./entities/ServiceClassification.js";
+import { ServiceClassification, Tariff } from "./entities/ServiceClassification.js";
 import { WalletTransaction } from "./entities/WalletTransaction.js";
 // Cross-module read (same pattern as clinical/documents controllers) — needed to check
 // "is this invoice's/query's patientId the caller's own patient record" (Patient role spec:
@@ -16,6 +16,7 @@ const invoiceSvc = new InvoiceService();
 const invoiceRepo = new InvoiceRepository();
 const invoiceItemRepo = new InvoiceItemRepository();
 const classificationRepo = new ServiceClassificationRepository();
+const tariffRepo = new TariffRepository();
 const walletTransactionRepo = new WalletTransactionRepository();
 const patientRepo = new PatientRepository();
 const walletRepo = new WalletRepository();
@@ -89,7 +90,9 @@ export async function listInvoicesHandler(req: Request, res: Response) {
 
     const invoices = patientId
       ? await invoiceRepo.findByPatient(patientId)
-      : await invoiceRepo.findByFacility(facilityId!);
+      : facilityId === "all"
+        ? await invoiceRepo.findAll()
+        : await invoiceRepo.findByFacility(facilityId!);
     res.json({ invoices: invoices.map((r) => new Invoice(r).toJSON()) });
   } catch {
     res.status(500).json({ error: "Internal server error" });
@@ -138,6 +141,23 @@ export async function voidInvoiceHandler(req: Request, res: Response) {
   } catch (err) {
     const message = err instanceof Error ? err.message : "Internal server error";
     res.status(400).json({ error: message });
+  }
+}
+
+// Feeds the dashboard Invoice Generator's per-classification fee breakdown preview (Network/
+// Facility/Professional/Drug sections) before an invoice is actually created — staff-only,
+// no ownership concept applies to a tariff the way it does to a specific patient's invoice.
+export async function listTariffsHandler(req: Request, res: Response) {
+  try {
+    const facilityId = typeof req.query.facilityId === "string" ? req.query.facilityId : undefined;
+    if (!facilityId) {
+      res.status(400).json({ error: "facilityId query parameter required" });
+      return;
+    }
+    const rows = await tariffRepo.findByFacility(facilityId);
+    res.json({ tariffs: rows.map((row) => new Tariff(row).toJSON()) });
+  } catch {
+    res.status(500).json({ error: "Internal server error" });
   }
 }
 

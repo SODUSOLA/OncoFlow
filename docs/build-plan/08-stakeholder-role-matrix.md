@@ -58,7 +58,7 @@ Twelve roles total (eleven authenticated + one unauthenticated public visitor).
 - Generate invoices — **dropdown-only** (patient + classification + facility selection; the system computes the amount from `Tariff`). No free-text amount entry exists in this role's UI, by design (FR-51).
 - Monitor the 7-Day Countdown board across their patients.
 - Initiate/manage `TransferRequest`s between facilities (P1).
-- View patient contact info for coordination purposes, **with click-to-call** intended (masked number, never rendered client-side — flagged earlier as a feature present in the PRD but not yet built into the schema/plan).
+- View patient contact info for navigation purposes, **with click-to-call** intended (masked number, never rendered client-side — flagged earlier as a feature present in the PRD but not yet built into the schema/plan).
 
 **Can view:**
 - `CountdownCase` status and day-count for patients in their scope.

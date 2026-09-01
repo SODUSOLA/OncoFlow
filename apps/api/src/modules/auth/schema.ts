@@ -19,6 +19,11 @@ export const user = pgTable("user", {
   facilityId: uuid("facility_id").references(() => facility.id),
   lastLogin: timestamp("last_login"),
   mfaEnabled: boolean("mfa_enabled").notNull().default(false),
+  mfaSecret: varchar("mfa_secret", { length: 256 }),
+  // Null until the /auth/verify-email link is clicked. Doesn't gate login (auto-login on
+  // register would otherwise strand a user whose verification email is delayed/lost) — it's
+  // tracked so the app can prompt for it, not enforced as an access control.
+  emailVerifiedAt: timestamp("email_verified_at"),
   createdAt: timestamp("created_at").notNull().defaultNow(),
   updatedAt: timestamp("updated_at").notNull().defaultNow(),
   isDeleted: boolean("is_deleted").notNull().default(false),
@@ -75,6 +80,35 @@ export const session = pgTable("session", {
 }, (t) => ({
   userIdx: index("session_user_idx").on(t.userId),
   expiresAtIdx: index("session_expires_at_idx").on(t.expiresAt),
+}));
+
+export const emailVerificationToken = pgTable("email_verification_token", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  userId: uuid("user_id").notNull().references(() => user.id),
+  // sha256 hex digest of the raw token that's mailed to the patient — only the hash is ever
+  // stored, same reasoning as a password hash: the email itself is a less-trusted channel
+  // (forwarding, inbox scanners, shared devices) than this database.
+  tokenHash: varchar("token_hash", { length: 64 }).notNull(),
+  expiresAt: timestamp("expires_at").notNull(),
+  consumedAt: timestamp("consumed_at"),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+}, (t) => ({
+  tokenHashIdx: uniqueIndex("email_verification_token_hash_idx").on(t.tokenHash),
+  userIdx: index("email_verification_token_user_idx").on(t.userId),
+}));
+
+export const passwordResetToken = pgTable("password_reset_token", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  userId: uuid("user_id").notNull().references(() => user.id),
+  // Same reasoning as emailVerificationToken.tokenHash — only the sha256 hash of the mailed
+  // token is ever stored.
+  tokenHash: varchar("token_hash", { length: 64 }).notNull(),
+  expiresAt: timestamp("expires_at").notNull(),
+  consumedAt: timestamp("consumed_at"),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+}, (t) => ({
+  tokenHashIdx: uniqueIndex("password_reset_token_hash_idx").on(t.tokenHash),
+  userIdx: index("password_reset_token_user_idx").on(t.userId),
 }));
 
 export const accountLock = pgTable("account_lock", {

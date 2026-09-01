@@ -45,7 +45,7 @@ beforeAll(async () => {
   if (existingTariff.length === 0) {
     await db.insert(tariff).values({
       id: crypto.randomUUID(), facilityId: testFacilityId, classificationId: testClassificationId,
-      networkFeeKobo: 100000n, facilityBedFeeKobo: 60000n, drugPriceKobo: 40000n,
+      networkFeeKobo: 100000n, facilityBedFeeKobo: 60000n, professionalFeeKobo: 50000n, drugPriceKobo: 40000n,
     });
   }
 
@@ -87,7 +87,7 @@ describe("POST /invoices — create", () => {
     });
     expect(res.status).toBe(201);
     expect(res.body.invoice).toBeDefined();
-    expect(res.body.invoice.totalKobo).toBe("200000");
+    expect(res.body.invoice.totalKobo).toBe("250000");
     expect(res.body.invoice.status).toBe("DRAFT");
   });
 
@@ -132,11 +132,13 @@ describe("Invoice lifecycle via API", () => {
     });
     const res = await request(app).get(`${base}/${created.body.invoiceId}`);
     expect(res.status).toBe(200);
-    expect(res.body.invoice.items).toHaveLength(3);
+    expect(res.body.invoice.items).toHaveLength(4);
     const components = res.body.invoice.items.map((item: { component: string }) => item.component).sort();
-    expect(components).toEqual(["DRUG_COST", "FACILITY_FEE", "NETWORK_FEE"]);
+    expect(components).toEqual(["DRUG_COST", "FACILITY_FEE", "NETWORK_FEE", "PROFESSIONAL_FEE"]);
     const networkFeeItem = res.body.invoice.items.find((item: { component: string }) => item.component === "NETWORK_FEE");
     expect(networkFeeItem.amountKobo).toBe("100000");
+    const professionalFeeItem = res.body.invoice.items.find((item: { component: string }) => item.component === "PROFESSIONAL_FEE");
+    expect(professionalFeeItem.amountKobo).toBe("50000");
   });
 });
 

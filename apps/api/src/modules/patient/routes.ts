@@ -4,6 +4,7 @@ import {
   updatePatientHandler, deletePatientHandler,
   createAddressHandler, createEmergencyContactHandler,
   getWalletHandler, getPatientTimelineHandler, listPendingRegistrationsHandler,
+  callPatientHandler, confirmFacilityHandler,
 } from "./controller.js";
 import { requirePermission, requireAuthenticated } from "../../lib/rbac.js";
 import { validateBody, validateParams, validateQuery } from "../../lib/validation.js";
@@ -23,6 +24,12 @@ const registerPatientSchema = z.object({
   email: z.string().trim().email(),
   facilityId: z.string().uuid(),
   userId: z.string().uuid().optional(),
+});
+
+// facilityId optional — omitted means "the self-reported choice was right, just confirm it";
+// supplied means Admin is reassigning the patient to a different facility as part of confirming.
+const confirmFacilitySchema = z.object({
+  facilityId: z.string().uuid().optional(),
 });
 
 const updatePatientSchema = z.object({
@@ -86,6 +93,12 @@ router.get("/patients/:id/timeline", requireAuthenticated(), validateParams(pati
 router.delete("/patients/:id", requirePermission("patient", "delete"), validateParams(patientIdParamSchema), deletePatientHandler);
 router.post("/patients/:id/addresses", requirePermission("patient", "update"), validateParams(patientIdParamSchema), validateBody(createAddressSchema), createAddressHandler);
 router.post("/patients/:id/emergency-contacts", requirePermission("patient", "update"), validateParams(patientIdParamSchema), validateBody(createEmergencyContactSchema), createEmergencyContactHandler);
+// Regional Admin / Onsite Nursing Officer only (patient:call, granted to just those two roles
+// in seed/identity.ts) — places a masked call, never returns the raw phone number to the client.
+router.post("/patients/:id/call", requirePermission("patient", "call"), validateParams(patientIdParamSchema), callPatientHandler);
+// Staff-only, and specifically NOT requireAuthenticated-with-ownership like PUT /patients/:id —
+// a patient confirming their own facility would defeat the entire point of the review step.
+router.patch("/patients/:id/confirm-facility", requirePermission("patient", "update"), validateParams(patientIdParamSchema), validateBody(confirmFacilitySchema), confirmFacilityHandler);
 // Same reasoning as GET /patients/:id — ownership-or-permission check lives in getWalletHandler.
 router.get("/wallet", requireAuthenticated(), validateQuery(walletQuerySchema), getWalletHandler);
 

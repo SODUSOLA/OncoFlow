@@ -48,7 +48,7 @@ export const features: Feature[] = [
   },
   {
     icon: Workflow,
-    title: "Care Coordination",
+    title: "Care navigation",
     description:
       "The 7-day pre-chemo pathway — labs, sign-off, invoicing, payment — runs as one enforced workflow across every role involved.",
   },

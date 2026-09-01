@@ -12,6 +12,7 @@ import { Badge } from "@/components/ui/Badge";
 import { api, ApiError } from "@/lib/api";
 import { useMyPatient } from "@/lib/useMyPatient";
 import { currentSideEffectFeeKobo, isNightRateNow } from "@/lib/sideEffectPricing";
+import { getSocket } from "@/lib/socket";
 import type { Conversation, Message, Invoice, ConversationFeedback } from "@/lib/types";
 
 function koboToNaira(kobo: string) {
@@ -169,6 +170,26 @@ function MessagesPageInner() {
       .then((res) => setFeedbackList(res.feedback))
       .catch(() => setFeedbackList([]))
       .finally(() => setFeedbackLoaded(true));
+  }, [selected]);
+
+  // Live delivery for the open thread — join the conversation's room, append anything the
+  // server pushes for it, leave on cleanup so a socket doesn't accumulate stale room
+  // memberships as the patient switches between conversations.
+  useEffect(() => {
+    if (!selected) return;
+    const socket = getSocket();
+    socket.emit("conversation:join", selected.id);
+
+    function onNewMessage(msg: Message & { conversationId: string }) {
+      if (msg.conversationId !== selected!.id) return;
+      setMessages((prev) => (prev.some((m) => m.id === msg.id) ? prev : [...prev, msg]));
+    }
+    socket.on("message:new", onNewMessage);
+
+    return () => {
+      socket.off("message:new", onNewMessage);
+      socket.emit("conversation:leave", selected.id);
+    };
   }, [selected]);
 
   async function openConversation(conversation: Conversation) {

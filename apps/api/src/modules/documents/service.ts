@@ -3,6 +3,7 @@ import { FileRepository } from "./repository.js";
 import { File } from "./entities/File.js";
 import { computeFileHash, buildStorageKey, uploadToR2 } from "./services/StorageService.js";
 import { NotFoundError } from "../../lib/errors.js";
+import { virusScanQueue } from "./queue.js";
 
 const fileRepo = new FileRepository();
 
@@ -27,6 +28,13 @@ export class FileService {
       mimeType: data.mimeType,
       virusScanStatus: "PENDING",
       fileHash,
+    });
+
+    // Best-effort: an upload that succeeded (bytes are safely in R2, the DB row exists) should
+    // not fail the request just because the scan couldn't be enqueued — it stays PENDING and
+    // is retriable, same tolerance as the other fire-and-forget hooks in this codebase.
+    await virusScanQueue.add("scan", { fileId: row.id }).catch((err) => {
+      console.error(`Failed to enqueue virus scan for file ${row.id}:`, err);
     });
 
     return { file: new File(row).toJSON() };

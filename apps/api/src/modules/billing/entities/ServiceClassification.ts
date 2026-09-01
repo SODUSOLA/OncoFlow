@@ -26,6 +26,7 @@ export interface TariffData {
   classificationId: string;
   networkFeeKobo: bigint;
   facilityBedFeeKobo: bigint;
+  professionalFeeKobo: bigint;
   drugPriceKobo: bigint;
 }
 
@@ -37,7 +38,7 @@ export class Tariff {
   get classificationId() { return this.data.classificationId; }
 
   totalKobo(): bigint {
-    return this.data.networkFeeKobo + this.data.facilityBedFeeKobo + this.data.drugPriceKobo;
+    return this.data.networkFeeKobo + this.data.facilityBedFeeKobo + this.data.professionalFeeKobo + this.data.drugPriceKobo;
   }
 
   toJSON() {
@@ -47,6 +48,7 @@ export class Tariff {
       classificationId: this.data.classificationId,
       networkFeeKobo: this.data.networkFeeKobo.toString(),
       facilityBedFeeKobo: this.data.facilityBedFeeKobo.toString(),
+      professionalFeeKobo: this.data.professionalFeeKobo.toString(),
       drugPriceKobo: this.data.drugPriceKobo.toString(),
     };
   }

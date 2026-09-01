@@ -5,14 +5,20 @@ import { ArrowLeft, Bell } from "lucide-react";
 import Link from "next/link";
 import { Card } from "@/components/ui/Card";
 import { api } from "@/lib/api";
+import { getSocket } from "@/lib/socket";
 import type { AppNotification } from "@/lib/types";
 
 const TYPE_LABELS: Record<string, string> = {
   APPOINTMENT_REMINDER: "Appointment Reminder",
   LAB_RESULT_REVIEWED: "Lab Result Reviewed",
   INVOICE_SENT: "Invoice Sent",
+  INVOICE_PAID: "Payment Confirmed",
   PAYMENT_CONFIRMED: "Payment Confirmed",
   NEW_MESSAGE: "New Message",
+  APPOINTMENT_CONFIRMED: "Appointment Confirmed",
+  APPOINTMENT_RESCHEDULED: "Appointment Rescheduled",
+  SLA_BREACH: "Response Delayed",
+  CONVERSATION_FEEDBACK: "New Feedback Received",
 };
 
 export default function NotificationsPage() {
@@ -24,6 +30,20 @@ export default function NotificationsPage() {
       .then((res) => setNotifications(res.notifications))
       .catch(() => setNotifications([]))
       .finally(() => setLoading(false));
+  }, []);
+
+  // The per-user room is auto-joined server-side on connect (no explicit join needed here,
+  // unlike a conversation room) — any notification created for this patient while the page is
+  // open arrives live.
+  useEffect(() => {
+    const socket = getSocket();
+    function onNewNotification(n: AppNotification) {
+      setNotifications((prev) => (prev.some((existing) => existing.id === n.id) ? prev : [n, ...prev]));
+    }
+    socket.on("notification:new", onNewNotification);
+    return () => {
+      socket.off("notification:new", onNewNotification);
+    };
   }, []);
 
   return (

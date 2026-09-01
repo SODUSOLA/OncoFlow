@@ -5,8 +5,9 @@ export interface Invoice {
   classificationId: string;
   totalKobo: number;
   status: "DRAFT" | "SENT" | "PAID" | "VOID" | "OVERDUE";
-  dueDate: string;
-  createdAt: string;
+  // No dueDate/createdAt columns exist on the real Invoice entity (apps/api's Invoice.toJSON())
+  // — issuedAt is the one real timestamp it returns, null until the invoice is SENT.
+  issuedAt: string | null;
 }
 
 export interface CountdownCase {
@@ -30,7 +31,9 @@ export interface Patient {
   dob: string;
   gender: string;
   phone?: string;
+  phoneMasked?: string;
   email: string;
+  createdAt?: string;
   secondaryEmail?: string | null;
   profilePictureFileId: string | null;
   status: string;
@@ -48,8 +51,14 @@ export interface Facility {
 export interface PendingRegistration {
   id: string;
   userId: string;
+  // Non-null once the patient has verified their email — the patient record and Unique Patient
+  // ID are created automatically at that point, so this queue is now "awaiting facility
+  // confirmation", not "awaiting record creation".
+  patientId: string | null;
+  uniquePatientId: string | null;
   fullName: string;
   dob: string;
+  gender: string;
   phone: string;
   email: string;
   preferredFacilityId: string | null;
@@ -82,6 +91,7 @@ export interface Tariff {
   classificationId: string;
   networkFeeKobo: number;
   facilityBedFeeKobo: number;
+  professionalFeeKobo: number;
   drugPriceKobo: number;
 }
 
@@ -142,6 +152,8 @@ export interface LabResult {
   testDate: string;
   possibleDuplicate: boolean;
   createdAt: string;
+  // Derived (F4.6) — the linked File's virus-scan status, not a column on lab_result itself.
+  fileStatus: "PENDING" | "CLEAN" | "INFECTED";
 }
 
 export interface Appointment {

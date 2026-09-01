@@ -59,6 +59,7 @@ beforeAll(async () => {
     email: requestUserRow[0]!.email,
     fullName: "Pending Test Patient",
     dob: "1988-05-20",
+    gender: "Female",
     phone: "+2348011112222",
     preferredFacilityId: testFacilityId,
   });

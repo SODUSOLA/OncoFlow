@@ -18,6 +18,9 @@ import { InvoiceService, InvoiceRepository, ServiceClassificationRepository } fr
 import { Invoice } from "../billing/entities/Invoice.js";
 import { PaymentService } from "../billing/services/PaymentService.js";
 import { sideEffectReportFeeKobo } from "./entities/side-effect-pricing.js";
+import { MessagingJobService } from "./services/MessagingJobService.js";
+import { notificationService } from "../notification/index.js";
+import { getIo, isIoAttached } from "../../lib/socket.js";
 import type { conversationTypeEnum, messageTypeEnum, meetingStatusEnum } from "../../db/enums.js";
 
 type ConversationType = (typeof conversationTypeEnum.enumValues)[number];
@@ -37,6 +40,7 @@ const invoiceSvc = new InvoiceService();
 const invoiceRepo = new InvoiceRepository();
 const classificationRepo = new ServiceClassificationRepository();
 const paymentSvc = new PaymentService();
+const messagingJobService = new MessagingJobService();
 
 // F3.11 §5 — proposed default, not FR-pinned. A global constant for MVP; per-scribe override
 // is a reasonable later enhancement, not worth building now (no evidence yet of scribes
@@ -231,7 +235,14 @@ export class MessagingService {
       }
     }
 
-    return messageEntity.toJSON();
+    const json = messageEntity.toJSON();
+    // Only emits once a real Socket.IO server exists (attachSocketServer, index.ts) — never
+    // attached in the test process, so this is a no-op there, not a thrown error.
+    if (isIoAttached()) {
+      getIo().to(`conversation:${data.conversationId}`).emit("message:new", json);
+    }
+
+    return json;
   }
 
   async listMessages(conversationId: string, callerId: string) {
@@ -242,6 +253,12 @@ export class MessagingService {
     if (!isSelf && !(await userHasPermission(callerId, "message", "read"))) {
       throw new ForbiddenError("Forbidden");
     }
+
+    // Lazy sweep, same "side effect of a read" precedent as markReadForViewer right below —
+    // no scheduler/queue needed, any thread view is enough to catch every overdue conversation.
+    await messagingJobService.sweepSlaBreaches().catch((err) => {
+      console.error("SLA breach sweep failed:", err);
+    });
 
     // WhatsApp-style "read": opening this specific thread is the read signal — mark the
     // other party's messages read before returning, so this same response reflects it.
@@ -298,6 +315,16 @@ export class MessagingService {
       rating,
       review: review ?? null,
     });
+
+    // Notify the other party — whoever didn't just submit this feedback. Best-effort, same
+    // tolerance as every other notification hook in this codebase.
+    const recipientId = isSelf ? row.assignedTo : (await patientRepo.findById(row.patientId))?.userId;
+    if (recipientId) {
+      await notificationService.create({ recipientId, type: "CONVERSATION_FEEDBACK" }).catch((err) => {
+        console.error(`Feedback notification failed for conversation ${conversationId}:`, err);
+      });
+    }
+
     return new ConversationFeedback(feedbackRow).toJSON();
   }
 
