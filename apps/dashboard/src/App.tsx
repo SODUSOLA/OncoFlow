@@ -2,10 +2,9 @@ import { lazy, Suspense, type ReactNode } from "react";
 import { BrowserRouter, Routes, Route, Navigate, useLocation } from "react-router-dom";
 import { DashboardLayout } from "./components/DashboardLayout";
 import { AuthProvider, useAuth } from "./lib/auth";
-import { dashboardPathForRoles } from "./lib/roleRouting";
+import { dashboardPathForRoles, hasStaffAccess } from "./lib/roleRouting";
 import Login from "./pages/Login";
 
-const patient = lazy(() => import("./pages/patient/Dashboard"));
 const vmo = lazy(() => import("./pages/virtual-medical-officer/Dashboard"));
 const oncologist = lazy(() => import("./pages/consulting-oncologist/Dashboard"));
 const scd = lazy(() => import("./pages/state-clinical-director/Dashboard"));
@@ -29,7 +28,6 @@ const RaInventory = lazy(() => import("./pages/regional-admin/pages/InventoryPag
 const RaGeneralInquiry = lazy(() => import("./pages/regional-admin/pages/GeneralInquiryPage"));
 
 const roles = [
-  { path: "patient", component: patient, label: "Patient" },
   { path: "virtual-medical-officer", component: vmo, label: "Virtual Medical Officer" },
   { path: "consulting-oncologist", component: oncologist, label: "Consulting Oncologist" },
   { path: "state-clinical-director", component: scd, label: "State Clinical Director" },
@@ -56,12 +54,20 @@ function FullScreenLoading() {
 // Session check happens once at the top of the tree (AuthProvider's /auth/profile call) —
 // this just waits for that to settle and redirects to /login if it came back empty, remembering
 // where the user was headed so login can send them straight back.
+//
+// Being signed in is not sufficient: the session cookie is scoped to the host, and cookies
+// ignore the port, so a patient signed into the patient app on the same hostname arrives here
+// already authenticated. Checking only `user` meant that session was admitted into the staff
+// console and routed to a page — the staff login was never even shown. The API refused every
+// staff request behind it (403), so no data was exposed, but the shell should never have
+// rendered. Staff standing is now required to get past this point.
 function RequireAuth({ children }: { children: ReactNode }) {
-  const { user, loading } = useAuth();
+  const { user, roles, loading } = useAuth();
   const location = useLocation();
 
   if (loading) return <FullScreenLoading />;
   if (!user) return <Navigate to="/login" replace state={{ from: location.pathname }} />;
+  if (!hasStaffAccess(roles.map((r) => r.roleName))) return <Navigate to="/login" replace />;
   return <>{children}</>;
 }
 
@@ -71,7 +77,12 @@ function RootRedirect() {
   if (loading) return <FullScreenLoading />;
   if (!user) return <Navigate to="/login" replace />;
 
-  const path = dashboardPathForRoles(userRoles.map((r) => r.roleName));
+  const roleNames = userRoles.map((r) => r.roleName);
+  // Non-staff sessions are bounced to /login, which explains the situation rather than
+  // silently looping them back here.
+  if (!hasStaffAccess(roleNames)) return <Navigate to="/login" replace />;
+
+  const path = dashboardPathForRoles(roleNames);
   return <Navigate to={path ? `/dashboard/${path}` : "/no-dashboard"} replace />;
 }
 
@@ -84,7 +95,7 @@ function NoDashboard() {
         <p className="text-gray-400 mt-2 text-sm">
           {userRoles.map((r) => r.roleName).join(", ") || "No roles assigned"}
         </p>
-        <button onClick={() => logout()} className="mt-4 text-sm text-brand-700 hover:underline">
+        <button onClick={() => logout()} className="mt-4 text-sm text-ink hover:underline">
           Sign out
         </button>
       </div>

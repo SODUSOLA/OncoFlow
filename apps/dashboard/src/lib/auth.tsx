@@ -1,5 +1,6 @@
 import { createContext, useContext, useEffect, useState, type ReactNode } from "react";
 import { api } from "./api";
+import { invalidateRegionScope } from "../pages/regional-admin/lib/facilityStore";
 
 export interface AuthUser {
   id: string;
@@ -22,7 +23,7 @@ interface AuthState {
 }
 
 interface AuthContextValue extends AuthState {
-  login: (email: string, password: string) => Promise<void>;
+  login: (email: string, password: string) => Promise<{ user: AuthUser; roles: AuthRole[] }>;
   logout: () => Promise<void>;
 }
 
@@ -40,13 +41,21 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       .catch(() => setState({ user: null, roles: [], loading: false }));
   }, []);
 
+  // Returns the authenticated identity so a caller can decide whether it is one this app
+  // should accept — the staff portal refuses patient accounts outright rather than signing
+  // them in and then blocking them.
   async function login(email: string, password: string) {
     const result = await api.post<{ user: AuthUser; roles: AuthRole[] }>("/auth/login", { email, password });
     setState({ user: result.user, roles: result.roles, loading: false });
+    return result;
   }
 
   async function logout() {
     await api.post("/auth/logout").catch(() => { /* clear local state regardless */ });
+    // The facility list is cached in a module-level store that outlives this provider, so it
+    // has to be cleared explicitly or a long-lived tab keeps serving data fetched under the
+    // previous session.
+    invalidateRegionScope();
     setState({ user: null, roles: [], loading: false });
   }
 

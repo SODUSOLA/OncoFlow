@@ -28,7 +28,7 @@ function AppointmentRow({ appointment }: { appointment: Appointment }) {
           href={`https://${meeting.roomId}.daily.co`}
           target="_blank"
           rel="noreferrer"
-          className="px-3 py-1.5 bg-brand-600 text-white rounded-lg hover:bg-brand-700 text-xs font-medium"
+          className="px-3 py-1.5 bg-ink text-white rounded-lg hover:bg-ink-600 text-xs font-medium"
         >
           Join Call ({meeting.status})
         </a>

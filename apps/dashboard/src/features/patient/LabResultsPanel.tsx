@@ -58,7 +58,7 @@ function UploadRow({ request, onUploaded }: { request: LabRequest; onUploaded: (
           onChange={(e) => setTestDate(e.target.value)}
           className="border border-gray-300 rounded-lg px-2 py-1.5 text-sm"
         />
-        <label className="px-3 py-1.5 bg-brand-600 text-white rounded-lg hover:bg-brand-700 text-xs font-medium cursor-pointer">
+        <label className="px-3 py-1.5 bg-ink text-white rounded-lg hover:bg-ink-600 text-xs font-medium cursor-pointer">
           {uploading ? "Uploading..." : "Upload Result"}
           <input type="file" onChange={handleUpload} disabled={uploading} className="hidden" />
         </label>

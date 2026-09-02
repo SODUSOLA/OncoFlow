@@ -101,7 +101,7 @@ export function ProfilePanel({ patient, onUpdated }: { patient: Patient; onUpdat
         <button
           onClick={handleSave}
           disabled={saving}
-          className="px-4 py-2 bg-brand-600 text-white rounded-lg hover:bg-brand-700 disabled:opacity-50 text-sm font-medium"
+          className="px-4 py-2 bg-ink text-white rounded-lg hover:bg-ink-600 disabled:opacity-50 text-sm font-medium"
         >
           {saving ? "Saving..." : "Save Changes"}
         </button>

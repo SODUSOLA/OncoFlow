@@ -1,7 +1,7 @@
-import { useEffect, useMemo, useState } from "react";
-import { api } from "../../../lib/api";
+import { useMemo, useSyncExternalStore } from "react";
 import { useAuth } from "../../../lib/auth";
 import type { Facility } from "../../../lib/types";
+import { subscribeToFacilities, getFacilitySnapshot } from "./facilityStore";
 
 interface RegionScope {
   loading: boolean;
@@ -20,15 +20,9 @@ interface RegionScope {
 // client-side read of data that's already there rather than a new backend concept.
 export function useRegionScope(): RegionScope {
   const { user } = useAuth();
-  const [facilities, setFacilities] = useState<Facility[]>([]);
-  const [loading, setLoading] = useState(true);
-
-  useEffect(() => {
-    api.get<{ facilities: Facility[] }>("/facilities")
-      .then((d) => setFacilities(d.facilities))
-      .catch(() => setFacilities([]))
-      .finally(() => setLoading(false));
-  }, []);
+  const { facilities, loading } = useSyncExternalStore(
+    subscribeToFacilities, getFacilitySnapshot, getFacilitySnapshot,
+  );
 
   const region = useMemo(() => {
     if (!user?.facilityId) return null;

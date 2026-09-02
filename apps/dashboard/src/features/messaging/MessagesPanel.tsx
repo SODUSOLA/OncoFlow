@@ -51,7 +51,7 @@ function DeliveryStatus({ status }: { status: Message["status"] }) {
   const Icon = status === "SENT" ? Check : CheckCheck;
   return (
     <span
-      className={`mt-1 flex items-center justify-end gap-0.5 ${status === "READ" ? "text-sky-300" : "text-brand-100"}`}
+      className={`mt-1 flex items-center justify-end gap-0.5 ${status === "READ" ? "text-sky-300" : "text-white/70"}`}
       title={STATUS_TITLE[status]}
     >
       <Icon className="size-3.5" aria-hidden="true" />
@@ -239,7 +239,7 @@ export function MessagesPanel({ patientId: fixedPatientId }: { patientId?: strin
         </div>
         <button
           onClick={() => patientId && loadConversations(patientId)}
-          className="px-4 py-2 bg-brand-600 text-white rounded-lg hover:bg-brand-700 text-sm font-medium"
+          className="px-4 py-2 bg-ink text-white rounded-lg hover:bg-ink-600 text-sm font-medium"
         >
           Load
         </button>
@@ -262,7 +262,7 @@ export function MessagesPanel({ patientId: fixedPatientId }: { patientId?: strin
                 </select>
                 <button
                   onClick={startConversation}
-                  className="px-3 py-1 bg-brand-600 text-white rounded-lg hover:bg-brand-700 text-xs font-medium"
+                  className="px-3 py-1 bg-ink text-white rounded-lg hover:bg-ink-600 text-xs font-medium"
                 >
                   + New
                 </button>
@@ -277,7 +277,7 @@ export function MessagesPanel({ patientId: fixedPatientId }: { patientId?: strin
                   <li key={c.id}>
                     <button
                       onClick={() => selectConversation(c.id)}
-                      className={`w-full text-left px-4 py-3 hover:bg-gray-50 ${selectedId === c.id ? "bg-brand-50" : ""}`}
+                      className={`w-full text-left px-4 py-3 hover:bg-gray-50 ${selectedId === c.id ? "bg-gray-100" : ""}`}
                     >
                       <div className="flex items-center justify-between gap-2">
                         <span className="text-sm font-medium text-gray-800">{CONVERSATION_TYPE_LABELS[c.conversationType]}</span>
@@ -325,7 +325,7 @@ export function MessagesPanel({ patientId: fixedPatientId }: { patientId?: strin
                       return (
                         <div key={m.id} className={`max-w-[80%] rounded-lg px-3 py-2 text-sm ${
                           m.type === "SYSTEM" ? "bg-gray-100 text-gray-500 italic mx-auto" :
-                          isMine ? "bg-brand-600 text-white ml-auto" : "bg-gray-100 text-gray-800"
+                          isMine ? "bg-ink text-white ml-auto" : "bg-gray-100 text-gray-800"
                         }`}>
                           <p>{m.content}</p>
                           {isMine && m.type !== "SYSTEM" ? (
@@ -354,7 +354,7 @@ export function MessagesPanel({ patientId: fixedPatientId }: { patientId?: strin
                     <button
                       onClick={sendMessage}
                       disabled={sending || !newMessage.trim()}
-                      className="px-4 py-2 bg-brand-600 text-white rounded-lg hover:bg-brand-700 disabled:opacity-50 text-sm font-medium"
+                      className="px-4 py-2 bg-ink text-white rounded-lg hover:bg-ink-600 disabled:opacity-50 text-sm font-medium"
                     >
                       Send
                     </button>
@@ -401,7 +401,7 @@ export function MessagesPanel({ patientId: fixedPatientId }: { patientId?: strin
                         <button
                           onClick={submitFeedback}
                           disabled={submittingFeedback || myRating < 1}
-                          className="mt-2 w-full px-4 py-2 bg-brand-600 text-white rounded-lg hover:bg-brand-700 disabled:opacity-50 text-sm font-medium"
+                          className="mt-2 w-full px-4 py-2 bg-ink text-white rounded-lg hover:bg-ink-600 disabled:opacity-50 text-sm font-medium"
                         >
                           Submit Rating
                         </button>
