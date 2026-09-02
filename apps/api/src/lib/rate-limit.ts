@@ -1,6 +1,18 @@
+import crypto from "node:crypto";
 import type { NextFunction, Request, Response } from "express";
 import { getRedis } from "./redis.js";
 import { RateLimitError } from "./errors.js";
+import { config } from "../config.js";
+
+// Every request in a test run originates from 127.0.0.1, so without this all 47 suites share
+// one bucket per limiter — and because counters live in Redis for the full 15-minute window,
+// they also survive *between* runs. That made failures depend on how recently the suite last
+// ran: consecutive full runs produced 4, then 12, then more spurious 429s as counters piled up.
+// Namespacing per process gives each vitest worker its own buckets, so limiter behaviour is
+// still fully exercised within a file but never leaks across files or across runs.
+// Empty in production and development — real deployments must share buckets across requests,
+// which is the entire point of a rate limiter.
+const KEY_NAMESPACE = config.isTest ? `test:${process.pid}:${crypto.randomBytes(4).toString("hex")}:` : "";
 
 type RateLimitConfig = {
   windowMs: number;
@@ -67,7 +79,7 @@ function consumeMemory(key: string, windowMs: number, max: number) {
 
 export function createRateLimiter({ windowMs, max, keyPrefix, keyGenerator }: RateLimitConfig) {
   return async (req: Request, res: Response, next: NextFunction): Promise<void> => {
-    const key = `${keyPrefix}:${keyGenerator?.(req) ?? getDefaultKey(req)}`;
+    const key = `${KEY_NAMESPACE}${keyPrefix}:${keyGenerator?.(req) ?? getDefaultKey(req)}`;
 
     try {
       const result = await consumeRedis(key, windowMs, max);

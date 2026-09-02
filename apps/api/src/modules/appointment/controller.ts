@@ -1,4 +1,5 @@
 import type { Request, Response } from "express";
+import { resolveScopeOrDeny } from "../../lib/facility-scope.js";
 import type { AuthenticatedRequest } from "../../lib/rbac.js";
 import { userHasPermission } from "../../lib/rbac.js";
 import { appointmentStatusEnum } from "../../db/enums.js";
@@ -67,7 +68,8 @@ export async function getAppointmentHandler(req: Request, res: Response) {
 export async function listAppointmentsHandler(req: Request, res: Response) {
   try {
     const patientId = typeof req.query.patientId === "string" ? req.query.patientId : undefined;
-    const facilityId = typeof req.query.facilityId === "string" ? req.query.facilityId : undefined;
+    // `?facilityId` is deliberately not read here — resolveScopeOrDeny below reads it from the
+    // request and narrows it to what the caller may actually see.
     const status = typeof req.query.status === "string" && appointmentStatusEnum.enumValues.includes(req.query.status as never)
       ? req.query.status
       : undefined;
@@ -85,11 +87,19 @@ export async function listAppointmentsHandler(req: Request, res: Response) {
       return;
     }
 
-    const results = await apptSvc.listAppointments({
-      patientId,
-      facilityId,
-      status,
-    });
+    // The patientId path is already authorised by ownership or appointment:read above. The
+    // facility path takes an untrusted `?facilityId`, so it is narrowed to the caller's real
+    // scope instead of being used as the filter directly.
+    let results;
+    if (patientId) {
+      results = await apptSvc.listAppointments({ patientId, status });
+    } else {
+      const scope = await resolveScopeOrDeny(req, res, "appointment");
+      if (!scope) return;
+      results = await apptSvc.listAppointments(
+        scope.kind === "unrestricted" ? { status } : { facilityIds: scope.facilityIds, status },
+      );
+    }
     res.json({ appointments: results });
   } catch {
     res.status(500).json({ error: "Internal server error" });
@@ -117,8 +127,11 @@ export async function updateAppointmentStatusHandler(req: Request, res: Response
 // reason to see a facility-wide confirmation queue.
 export async function listPendingConfirmationQueueHandler(req: Request, res: Response) {
   try {
-    const facilityId = typeof req.query.facilityId === "string" ? req.query.facilityId : undefined;
-    const results = await apptSvc.listPendingConfirmationQueue(facilityId);
+    const scope = await resolveScopeOrDeny(req, res, "appointment");
+    if (!scope) return;
+    const results = await apptSvc.listPendingConfirmationQueue(
+      scope.kind === "unrestricted" ? undefined : scope.facilityIds,
+    );
     res.json({ appointments: results });
   } catch {
     res.status(500).json({ error: "Internal server error" });

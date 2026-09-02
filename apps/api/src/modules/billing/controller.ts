@@ -1,4 +1,5 @@
 import type { Request, Response } from "express";
+import { resolveScopeOrDeny } from "../../lib/facility-scope.js";
 import type { AuthenticatedRequest } from "../../lib/rbac.js";
 import { userHasPermission } from "../../lib/rbac.js";
 import { InvoiceService } from "./service.js";
@@ -88,11 +89,20 @@ export async function listInvoicesHandler(req: Request, res: Response) {
       return;
     }
 
-    const invoices = patientId
-      ? await invoiceRepo.findByPatient(patientId)
-      : facilityId === "all"
+    let invoices;
+    if (patientId) {
+      invoices = await invoiceRepo.findByPatient(patientId);
+    } else {
+      // `?facilityId` is client-supplied and untrusted: narrow it against what this caller may
+      // actually see rather than querying it directly. Previously `?facilityId=all` returned
+      // every invoice on the platform, and an explicit id let one facility's staff read another
+      // facility's billing — the same IDOR already fixed on patient search.
+      const scope = await resolveScopeOrDeny(req, res, "invoice");
+      if (!scope) return;
+      invoices = scope.kind === "unrestricted"
         ? await invoiceRepo.findAll()
-        : await invoiceRepo.findByFacility(facilityId!);
+        : await invoiceRepo.findByFacilityIds(scope.facilityIds);
+    }
     res.json({ invoices: invoices.map((r) => new Invoice(r).toJSON()) });
   } catch {
     res.status(500).json({ error: "Internal server error" });
@@ -154,7 +164,13 @@ export async function listTariffsHandler(req: Request, res: Response) {
       res.status(400).json({ error: "facilityId query parameter required" });
       return;
     }
-    const rows = await tariffRepo.findByFacility(facilityId);
+    // Tariffs are per-facility commercial terms, so reading another facility's is a real
+    // disclosure — narrowed the same way as invoices above.
+    const scope = await resolveScopeOrDeny(req, res, "tariff");
+    if (!scope) return;
+    const rows = scope.kind === "unrestricted"
+      ? await tariffRepo.findByFacility(facilityId)
+      : await tariffRepo.findByFacilityIds(scope.facilityIds);
     res.json({ tariffs: rows.map((row) => new Tariff(row).toJSON()) });
   } catch {
     res.status(500).json({ error: "Internal server error" });

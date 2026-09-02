@@ -4,6 +4,7 @@ import { eq } from "drizzle-orm";
 import { createApp } from "../../../app.js";
 import { db } from "../../../db/index.js";
 import { user, emailVerificationToken } from "../schema.js";
+import { waitFor } from "../../../test/wait-for.js";
 
 vi.mock("../services/VerificationEmailService.js", () => ({
   sendVerificationEmail: vi.fn().mockResolvedValue(undefined),
@@ -47,15 +48,17 @@ async function registerAndCaptureToken(): Promise<{ userId: string; email: strin
   createdUserIds.push(userId);
 
   // The verification email is fire-and-forget (issueAndSendVerificationEmail isn't awaited by
-  // register) — give its microtask a tick to run before asserting on its side effects, same
-  // pattern as PaymentService's notification test. Deliberately not asserting a call *count*
-  // here (e.g. toHaveBeenCalledTimes) — this mock is shared module-wide across every test in
-  // this file, and another test's own fire-and-forget send can still be settling when this one
-  // starts, since nothing awaits it. Finding the call for *this* email is what's actually being
-  // asserted, and is robust to that overlap.
-  await new Promise((r) => setTimeout(r, 50));
-
-  const call = vi.mocked(sendVerificationEmail).mock.calls.find(([to]) => to === email);
+  // register), so we have to wait for its side effect. Deliberately not asserting a call
+  // *count* (e.g. toHaveBeenCalledTimes) — this mock is shared module-wide across every test
+  // in this file, and another test's own fire-and-forget send can still be settling when this
+  // one starts. Finding the call for *this* email is what's actually being asserted, and is
+  // robust to that overlap.
+  //
+  // Polled rather than slept against a fixed 50ms: the suite runs one worker per core and
+  // saturates the CPU, so a fixed delay raced the send and failed intermittently — the send
+  // had simply not landed yet. Polling waits only as long as it actually needs to.
+  const call = await waitFor(() =>
+    vi.mocked(sendVerificationEmail).mock.calls.find(([to]) => to === email));
   expect(call).toBeDefined();
   const rawToken = call![1];
 
@@ -155,8 +158,10 @@ describe("email verification — resend", () => {
     expect(resendRes.status).toBe(200);
     expect(resendRes.body.sent).toBe(true);
 
-    await new Promise((r) => setTimeout(r, 50));
-    const callsForEmail = vi.mocked(sendVerificationEmail).mock.calls.filter(([to]) => to === email);
+    const callsForEmail = await waitFor(() => {
+      const found = vi.mocked(sendVerificationEmail).mock.calls.filter(([to]) => to === email);
+      return found.length > 0 ? found : undefined;
+    }) ?? [];
     expect(callsForEmail.length).toBeGreaterThan(0);
     expect(vi.mocked(sendVerificationEmail).mock.calls.length).toBeGreaterThan(callsBefore);
     const [, newRawToken] = callsForEmail[callsForEmail.length - 1]!;

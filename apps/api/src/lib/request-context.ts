@@ -3,6 +3,7 @@ import type { Request, Response, NextFunction } from "express";
 import { SessionRepository, UserRepository } from "../modules/auth/index.js";
 import { SESSION_COOKIE_NAME } from "./session-cookie.js";
 import { config } from "../config.js";
+import { resolveMfaRequirement } from "./mfa-policy.js";
 
 const sessionRepo = new SessionRepository();
 const userRepo = new UserRepository();
@@ -49,16 +50,16 @@ export async function attachRequestContext(req: Request, _res: Response, next: N
     }
   }
 
-  // Load MFA state from session for enforcement
-  if (authed.userId && session) {
-    authed.mfaVerified = session.mfaVerified;
+  // Load MFA state for enforcement. `required` comes from lib/mfa-policy.ts rather than
+  // user.mfaEnabled directly, so a staff account that policy requires to use MFA but has not
+  // enrolled yet is still gated — reading mfaEnabled alone would let exactly those accounts
+  // (the ones the policy exists for) straight through.
+  if (authed.userId) {
     const userRow = await userRepo.findById(authed.userId);
-    authed.mfaRequired = userRow?.mfaEnabled ?? false;
-  } else if (authed.userId) {
-    // No session cookie — derive mfaRequired from user record (e.g. test mode or stale state)
-    const userRow = await userRepo.findById(authed.userId);
-    authed.mfaVerified = false;
-    authed.mfaRequired = userRow?.mfaEnabled ?? false;
+    const requirement = await resolveMfaRequirement(authed.userId, userRow?.mfaEnabled ?? false);
+    authed.mfaRequired = requirement.required;
+    // No session cookie (test mode, or stale state) means nothing has been verified.
+    authed.mfaVerified = session ? session.mfaVerified : false;
   }
 
   next();

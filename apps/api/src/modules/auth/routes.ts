@@ -3,6 +3,7 @@ import {
   registerHandler,
   loginHandler,
   logoutHandler,
+  enrollMfaHandler,
   verifyMfaHandler,
   profileHandler,
   listSessionsHandler,
@@ -12,7 +13,7 @@ import {
   forgotPasswordHandler,
   resetPasswordHandler,
 } from "./controller.js";
-import { requirePermission, requireAuthenticated, type AuthenticatedRequest } from "../../lib/rbac.js";
+import { requireAuthenticated, type AuthenticatedRequest } from "../../lib/rbac.js";
 import { validateBody, validateParams } from "../../lib/validation.js";
 import { createRateLimiter } from "../../lib/rate-limit.js";
 import { z } from "zod";
@@ -90,10 +91,16 @@ const resendVerificationRateLimiter = createRateLimiter({
   keyGenerator: (req) => (req as AuthenticatedRequest).userId,
 });
 
+// Keyed by the caller's own account (both MFA routes run requireAuthenticated first), not IP.
+// Per-account is the meaningful limit here: brute-forcing a 6-digit TOTP targets one specific
+// account, and an attacker rotates source IPs for free, so an IP bucket is the weaker control.
+// It also stops a whole clinic sharing one public IP from exhausting each other's budget —
+// a real deployment shape here, not a hypothetical. Same pattern as resendVerificationRateLimiter.
 const mfaRateLimiter = createRateLimiter({
   windowMs: 15 * 60 * 1000,
   max: 5,
   keyPrefix: "auth-mfa",
+  keyGenerator: (req) => (req as AuthenticatedRequest).userId,
 });
 
 // Keyed by email like authRateLimiter — this is the one endpoint that runs a real DB lookup
@@ -133,7 +140,13 @@ router.post("/auth/logout", requireAuthenticated(), logoutHandler);
 // while MFA went unenforced, but the moment MFA is actually enforced it locks every other role
 // out permanently (they can't reach the only route that would clear the MFA gate). The route is
 // also MFA-exempt in rbac.ts for the same deadlock reason.
-router.post("/auth/mfa/verify", mfaRateLimiter, requireAuthenticated(), validateBody(verifyMfaSchema), verifyMfaHandler);
+// Enrolment had a handler and a service method but no route at all, so no account could ever
+// turn MFA on — the whole second-factor path was unreachable in production. Same self-service
+// class as /auth/mfa/verify: requireAuthenticated only, and MFA-exempt in rbac.ts, because a
+// user who is *required* to enrol has by definition not passed an MFA check yet.
+// Rate-limited on the mfa bucket: each call mints a fresh secret, so it should not be free.
+router.post("/auth/mfa/enroll", requireAuthenticated(), mfaRateLimiter, enrollMfaHandler);
+router.post("/auth/mfa/verify", requireAuthenticated(), mfaRateLimiter, validateBody(verifyMfaSchema), verifyMfaHandler);
 // public — the token itself (256-bit, hashed at rest) is the credential; no session required,
 // since the link may be opened on a different device than the one that registered.
 router.post("/auth/verify-email", verifyEmailRateLimiter, validateBody(verifyEmailSchema), verifyEmailHandler);

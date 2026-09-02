@@ -1,5 +1,5 @@
 import { db } from "../../db/index.js";
-import { eq, sql, and, desc } from "drizzle-orm";
+import { eq, sql, and, desc, inArray } from "drizzle-orm";
 import { serviceClassification, tariff, invoice, invoiceItem, subscription, walletTransaction } from "./schema.js";
 
 export class ServiceClassificationRepository {
@@ -42,6 +42,14 @@ export class TariffRepository {
       .select()
       .from(tariff)
       .where(and(eq(tariff.facilityId, facilityId), eq(tariff.isDeleted, false)));
+  }
+
+  // See InvoiceRepository.findByFacilityIds — same authorization-narrowed contract.
+  async findByFacilityIds(facilityIds: string[]) {
+    return db
+      .select()
+      .from(tariff)
+      .where(and(inArray(tariff.facilityId, facilityIds), eq(tariff.isDeleted, false)));
   }
 
   async findByFacilityAndClassification(facilityId: string, classificationId: string) {
@@ -108,6 +116,16 @@ export class InvoiceRepository {
       .select()
       .from(invoice)
       .where(and(eq(invoice.facilityId, facilityId), eq(invoice.isDeleted, false)))
+      .orderBy(invoice.createdAt);
+  }
+
+  // Takes the authorization-narrowed set from lib/facility-scope.ts. An empty array is a valid
+  // "nothing in scope" and inArray renders it false, yielding no rows — the correct answer.
+  async findByFacilityIds(facilityIds: string[]) {
+    return db
+      .select()
+      .from(invoice)
+      .where(and(inArray(invoice.facilityId, facilityIds), eq(invoice.isDeleted, false)))
       .orderBy(invoice.createdAt);
   }
 

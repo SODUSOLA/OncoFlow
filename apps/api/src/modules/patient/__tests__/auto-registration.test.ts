@@ -9,6 +9,7 @@ import { user, session, role, userRole } from "../../auth/schema.js";
 import { patient, wallet, patientTimeline, patientRegistrationRequest } from "../schema.js";
 import { SESSION_COOKIE_NAME } from "../../../lib/session-cookie.js";
 import { seedIdentity } from "../../../seed/identity.js";
+import { waitFor } from "../../../test/wait-for.js";
 
 vi.mock("../../auth/services/VerificationEmailService.js", () => ({
   sendVerificationEmail: vi.fn().mockResolvedValue(undefined),
@@ -76,8 +77,15 @@ async function registerPatientAndCaptureCode(
   const userId: string = res.body.user.id;
   createdUserIds.push(userId);
 
-  await new Promise((r) => setTimeout(r, 50));
-  const calls = vi.mocked(sendVerificationEmail).mock.calls.filter(([to]) => to === email);
+  // Polled rather than slept against a fixed 50ms. The verification email is fire-and-forget
+  // (register does not await issueAndSendVerificationEmail), and the suite runs one worker per
+  // core, so on a loaded machine the send had simply not landed inside the fixed delay and this
+  // failed intermittently with "expected 0 to be greater than 0". Polling waits only as long
+  // as it needs to and is not sensitive to machine load.
+  const calls = await waitFor(() => {
+    const found = vi.mocked(sendVerificationEmail).mock.calls.filter(([to]) => to === email);
+    return found.length > 0 ? found : undefined;
+  }) ?? [];
   expect(calls.length).toBeGreaterThan(0);
   return { userId, email, code: calls[calls.length - 1]![1] };
 }
@@ -188,8 +196,11 @@ describe("auto-registration on email verification", () => {
     expect(res.status).toBe(201);
     createdUserIds.push(res.body.user.id);
 
-    await new Promise((r) => setTimeout(r, 50));
-    const calls = vi.mocked(sendVerificationEmail).mock.calls.filter(([to]) => to === email);
+    const calls = await waitFor(() => {
+      const found = vi.mocked(sendVerificationEmail).mock.calls.filter(([to]) => to === email);
+      return found.length > 0 ? found : undefined;
+    }) ?? [];
+    expect(calls.length).toBeGreaterThan(0);
     const code = calls[calls.length - 1]![1];
 
     const verifyRes = await request(app).post("/auth/verify-email").set("X-Forwarded-For", nextFakeIp()).send({ token: code });
@@ -235,9 +246,11 @@ describe("PATCH /patients/:id/confirm-facility", () => {
     const requestRows = await db.select().from(patientRegistrationRequest).where(eq(patientRegistrationRequest.userId, userId));
     expect(requestRows).toHaveLength(0);
 
-    await new Promise((r) => setTimeout(r, 50));
-    const emailCalls = vi.mocked(sendRegistrationConfirmedEmail).mock.calls
-      .filter(([, , uniqueId]) => uniqueId === rows[0]!.uniquePatientId);
+    const emailCalls = await waitFor(() => {
+      const found = vi.mocked(sendRegistrationConfirmedEmail).mock.calls
+        .filter(([, , uniqueId]) => uniqueId === rows[0]!.uniquePatientId);
+      return found.length > 0 ? found : undefined;
+    }) ?? [];
     expect(emailCalls.length).toBeGreaterThan(0);
   });
 

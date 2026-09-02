@@ -176,10 +176,19 @@ describe("AppointmentRepository — CRUD", () => {
 });
 
 describe("AppointmentService — status update with cutoff", () => {
-  it("confirms an appointment before 2PM", async () => {
+  // Scheduled relative to now, not on a fixed calendar date. This previously hardcoded
+  // 2026-08-20, which was in the future when written and silently became a permanent failure
+  // ("Scheduled date is in the past") once that day passed — a real defect in the test rather
+  // than a flake, since it fails on every run regardless of the hour.
+  //
+  // A future date exercises the allowed branch deterministically at any time of day. The 2PM
+  // boundary itself is covered directly, and without wall-clock dependence, by the
+  // canConfirmOnDay unit tests above, which inject `now`.
+  it("confirms an appointment scheduled for a future day", async () => {
+    const tomorrow = new Date(Date.now() + 24 * 60 * 60 * 1000);
     const row = await apptRepo.create({
       patientId: testPatientId, facilityId: testFacilityId, appointmentType: "VIRTUAL",
-      scheduledAt: new Date("2026-08-20T10:00:00Z"),
+      scheduledAt: tomorrow,
     });
 
     const result = await apptSvc.updateStatus(row.id, "CONFIRMED");

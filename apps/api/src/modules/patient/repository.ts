@@ -1,5 +1,5 @@
 import { db } from "../../db/index.js";
-import { eq, sql, and, desc } from "drizzle-orm";
+import { eq, sql, and, desc, inArray } from "drizzle-orm";
 import {
   patient, patientAddress, emergencyContact, wallet, patientTimeline, patientRegistrationRequest,
 } from "./schema.js";
@@ -54,6 +54,15 @@ export class PatientRepository {
       .select()
       .from(patient)
       .where(and(eq(patient.facilityId, facilityId), eq(patient.isDeleted, false)));
+  }
+
+  // Takes the authorization-narrowed set from lib/facility-scope.ts. One query rather than a
+  // findByFacility per facility, which is what the scoped search originally fanned out into.
+  async findByFacilityIds(facilityIds: string[]) {
+    return db
+      .select()
+      .from(patient)
+      .where(and(inArray(patient.facilityId, facilityIds), eq(patient.isDeleted, false)));
   }
 
   // Cross-facility search (e.g. Regional Admin linking a public inquiry to an existing

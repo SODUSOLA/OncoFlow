@@ -110,10 +110,12 @@ async function rejectedForUnverifiedMfa(
 
 // Routes that must stay reachable while a session is authenticated-but-not-yet-MFA-verified,
 // otherwise the user is deadlocked: they cannot complete MFA because completing MFA requires
-// passing the MFA gate. /auth/mfa/verify is gated by requirePermission("auth","update"), so
-// without this exemption enforcing MFA there would lock every MFA user out permanently.
+// passing the MFA gate. /auth/mfa/enroll is here for the same reason one step earlier — under
+// the staff policy (lib/mfa-policy.ts) an account can be *required* to use MFA before it holds
+// any secret at all, so the route that issues that secret cannot itself demand a verified one.
+// /auth/logout must stay open so a stuck session can always be ended.
 // Matched against req.path; routers mount at root (app.ts) so these are the full paths.
-const MFA_EXEMPT_PATHS = new Set(["/auth/mfa/verify", "/auth/logout"]);
+const MFA_EXEMPT_PATHS = new Set(["/auth/mfa/enroll", "/auth/mfa/verify", "/auth/logout"]);
 
 function isMfaExempt(req: Request): boolean {
   return MFA_EXEMPT_PATHS.has(req.path);

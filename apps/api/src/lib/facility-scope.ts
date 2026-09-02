@@ -1,6 +1,10 @@
+import type { Request, Response } from "express";
 import { sql } from "drizzle-orm";
 import { db } from "../db/index.js";
-import { userHasRole } from "./rbac.js";
+import { userHasRole, type AuthenticatedRequest } from "./rbac.js";
+// Same cross-module coupling as rbac.ts: an access-denied decision must leave an audit row,
+// and this is one of the places that decision is made.
+import { auditService } from "../modules/audit/index.js";
 
 // Resolves which facilities a caller is allowed to see, server-side.
 //
@@ -72,4 +76,35 @@ export function resolveRequestedFacilityScope(
   }
 
   return { kind: "restricted", facilityIds: allowed };
+}
+
+// Controller-side wrapper: reads `?facilityId`, narrows it against the caller's real scope, and
+// on refusal writes the audit row and sends the 403 itself, returning null so the handler just
+// returns. Exists because the alternative — repeating twenty lines of scope-resolve-audit-403 in
+// every list handler that accepts `?facilityId` — is exactly how one of them ends up subtly
+// different from the others, which is the bug class this whole module exists to close.
+// The `forbidden` case never escapes — it is turned into a 403 here — so it is excluded from
+// the return type. That lets callers narrow on `kind` without TypeScript still believing a
+// forbidden result could reach them.
+export type AllowedFacilityScope = Exclude<FacilityScopeResolution, { kind: "forbidden" }>;
+
+export async function resolveScopeOrDeny(
+  req: Request,
+  res: Response,
+  resource: string,
+): Promise<AllowedFacilityScope | null> {
+  const userId = (req as AuthenticatedRequest).userId;
+  const requested = typeof req.query.facilityId === "string" ? req.query.facilityId : undefined;
+
+  const scope = resolveRequestedFacilityScope(requested, await accessibleFacilityIds(userId));
+  if (scope.kind !== "forbidden") return scope;
+
+
+  // Best-effort, same tolerance as rbac.ts's own audit calls — a logging failure must never
+  // turn a correct 403 into a 500.
+  await auditService.recordEvent({
+    actorId: userId, action: "ACCESS_DENIED", resource, result: "DENIED", ip: req.ip,
+  }).catch(() => {});
+  res.status(403).json({ error: "Forbidden: facility outside your scope" });
+  return null;
 }

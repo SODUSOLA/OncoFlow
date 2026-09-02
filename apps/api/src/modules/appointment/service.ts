@@ -62,7 +62,9 @@ export class AppointmentService {
     return new Appointment(row).toJSON();
   }
 
-  async listAppointments(filters?: { patientId?: string; facilityId?: string; status?: string }) {
+  async listAppointments(filters?: {
+    patientId?: string; facilityId?: string; facilityIds?: string[]; status?: string;
+  }) {
     const rows = await repo.findAll(
       filters
         ? { ...filters, status: filters.status as AppointmentStatus | undefined }
@@ -126,8 +128,8 @@ export class AppointmentService {
     // appointment-status/invoice-status join, scoped to today's Lagos date.
   }
 
-  async listPendingConfirmationQueue(facilityId?: string) {
-    const rows = await repo.findPendingConfirmationQueue(facilityId);
+  async listPendingConfirmationQueue(facilityIds?: string[]) {
+    const rows = await repo.findPendingConfirmationQueue(facilityIds);
     return rows.map((r) => new Appointment(r).toJSON());
   }
 }

@@ -11,6 +11,15 @@ const envSchema = z.object({
   DATABASE_URL: z.string().min(1, "DATABASE_URL is required"),
   REDIS_URL: z.string().min(1).default("redis://localhost:6379"),
   CORS_ORIGIN: z.string().optional(),
+  // Whether holding a staff role (anything but PATIENT) makes MFA mandatory — see
+  // lib/mfa-policy.ts. Deliberately a string enum rather than z.coerce.boolean(): coercion
+  // runs Boolean("false"), which is true, so MFA_ENFORCE_STAFF=false would silently enable it.
+  //
+  // Defaults OFF, and that default is a known gap rather than a recommendation: apps/dashboard
+  // has no MFA enrolment screen yet, so turning this on now lets staff log in but leaves them
+  // blocked on every gated route with no in-product way to enrol. Ship that screen against
+  // POST /auth/mfa/enroll, then set MFA_ENFORCE_STAFF=true — it should be on before go-live.
+  MFA_ENFORCE_STAFF: z.enum(["true", "false"]).default("false"),
 });
 
 const parsed = envSchema.safeParse(process.env);
@@ -41,4 +50,5 @@ export const config = {
   databaseUrl: env.DATABASE_URL,
   redisUrl: env.REDIS_URL,
   corsOrigins: resolveCorsOrigins(),
+  mfaEnforceStaff: env.MFA_ENFORCE_STAFF === "true",
 };

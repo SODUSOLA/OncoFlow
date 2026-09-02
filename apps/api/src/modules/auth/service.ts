@@ -13,6 +13,7 @@ import {
 } from "./repository.js";
 import { User } from "./entities/User.js";
 import { invalidatePermissionCache } from "../../lib/rbac.js";
+import { resolveMfaRequirement } from "../../lib/mfa-policy.js";
 // Cross-module coupling (global-conventions.md §2): login/logout are explicitly-required
 // audit events, so AuthService is one of the few callers of AuditService besides rbac.ts.
 import { auditService } from "../audit/index.js";
@@ -293,6 +294,8 @@ export class AuthService {
       lastLogin: entity["data"].lastLogin,
     });
 
+    const mfaRequirement = await resolveMfaRequirement(userRow.id, entity.mfaEnabled);
+
     const expiresAt = new Date(Date.now() + SESSION_DURATION_MS);
     const sessionRow = await this.sessionRepo.create({
       id: crypto.randomUUID(),
@@ -300,7 +303,11 @@ export class AuthService {
       device,
       ip,
       expiresAt,
-      mfaVerified: !entity.mfaEnabled,
+      // A session starts MFA-satisfied only when MFA does not apply at all. Deriving this from
+      // entity.mfaEnabled alone predated the role policy: a staff account that policy requires
+      // to use MFA but has not enrolled yet has mfaEnabled=false, and would have been handed a
+      // pre-verified session — i.e. the policy would have been silently unenforceable.
+      mfaVerified: !mfaRequirement.required,
     });
 
     const roles = await this.userRoleRepo.findByUser(userRow.id);
@@ -311,7 +318,10 @@ export class AuthService {
       sessionId: sessionRow.id,
       expiresAt: sessionRow.expiresAt,
       userId: userRow.id,
-      mfaRequired: entity.mfaEnabled,
+      mfaRequired: mfaRequirement.required,
+      // Tells the client to route the user into enrolment rather than a code prompt: MFA is
+      // required for them, but there is no secret to generate a code from yet.
+      mfaEnrollmentPending: mfaRequirement.enrollmentPending,
       mfaVerified: sessionRow.mfaVerified,
       roles,
       user: entity.toSafeJSON(),
@@ -341,13 +351,20 @@ export class AuthService {
     }
 
     const userRow = await this.userRepo.findById(row.userId);
-    if (!userRow || !userRow.mfaEnabled || !userRow.mfaSecret) {
+    // Keyed on the presence of a secret rather than on mfaEnabled: during enrolment the secret
+    // exists while mfaEnabled is still false, and this endpoint is what confirms it.
+    if (!userRow || !userRow.mfaSecret) {
       throw new Error("MFA not enabled for this user");
     }
 
     const isValid = this.verifyTotp(code, userRow.mfaSecret);
     if (!isValid) {
       throw new Error("Invalid MFA code");
+    }
+
+    // First valid code against a pending secret completes enrolment.
+    if (!userRow.mfaEnabled) {
+      await this.userRepo.update(userRow.id, { mfaEnabled: true });
     }
 
     await db
@@ -381,17 +398,20 @@ const hmac = crypto.createHmac("sha1", secretBytes).update(data).digest();
     if (!userRow) {
       throw new Error("User not found");
     }
+    // Re-enrolling over an already-confirmed secret is refused: anyone holding a live session
+    // cookie could otherwise swap the second factor for one of their own, which turns MFA into
+    // a formality. Replacing a confirmed factor is an admin reset, not a self-service action.
     if (userRow.mfaEnabled) {
       throw new Error("MFA already enabled for this user");
     }
 
+    // Two-phase enrolment: store the secret but leave mfaEnabled false until the user proves
+    // they can generate a code from it (verifyMfa completes it). Enabling here instead would
+    // strand anyone who requested a secret and never finished adding it to their authenticator
+    // — MFA would be "on" against a secret they do not hold, with no way back in. Leaving it
+    // false also makes an unconfirmed secret safely re-issuable on a retry.
     const secret = this.generateTotpSecret();
-    userRow.mfaSecret = secret;
-    userRow.mfaEnabled = true;
-    await this.userRepo.update(userRow.id, {
-      mfaSecret: secret,
-      mfaEnabled: true,
-    });
+    await this.userRepo.update(userRow.id, { mfaSecret: secret });
 
     return { secret };
   }
@@ -401,20 +421,31 @@ const hmac = crypto.createHmac("sha1", secretBytes).update(data).digest();
     return this.base32Encode(bytes);
   }
 
+  // RFC 4648 base32. The previous implementation emitted two characters per input byte
+  // (top 5 bits, then 3 low bits merged with the next byte's top 3), which is not base32 at
+  // all: it produced 20 characters for a 10-byte secret where the standard produces 16, and
+  // base32Decode(base32Encode(x)) did not return x. That made TOTP unusable in practice —
+  // an authenticator app decodes the stored secret per RFC 4648 and derives one key, while
+  // verifyTotp() decoded the same string with the (correct) standard decoder above and got a
+  // different one, so a correctly-typed code could never match. Streaming 5 bits at a time,
+  // the inverse of base32Decode, is what makes the two halves agree and interoperate with
+  // Google Authenticator / Authy / 1Password.
   private base32Encode(input: Buffer): string {
-    const alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZ234567";
+    let bits = 0;
+    let value = 0;
     let result = "";
-    for (let i = 0; i < input.length; i++) {
-      const byte: number = input[i]!;
-      result += alphabet.charAt(((byte >> 3) & 0x1f));
-      if (i + 1 < input.length) {
-        const nextByte: number = input[i + 1]!;
-        result += alphabet.charAt(((byte << 2) & 0x1f) | (nextByte >> 5));
-      } else {
-        result += alphabet.charAt((byte << 2) & 0x1f);
+    for (const byte of input) {
+      value = (value << 8) | byte;
+      bits += 8;
+      while (bits >= 5) {
+        bits -= 5;
+        result += BASE32_ALPHABET.charAt((value >> bits) & 0x1f);
       }
     }
-    // Pad to multiple of 8 characters
+    if (bits > 0) {
+      result += BASE32_ALPHABET.charAt((value << (5 - bits)) & 0x1f);
+    }
+    // Pad to a multiple of 8 characters
     while (result.length % 8 !== 0) {
       result += "=";
     }

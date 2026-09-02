@@ -97,6 +97,7 @@ export async function loginHandler(req: Request, res: Response) {
     res.cookie(SESSION_COOKIE_NAME, result.sessionId, getSessionCookieOptions());
     res.json({
       mfaRequired: result.mfaRequired,
+      mfaEnrollmentPending: result.mfaEnrollmentPending,
       mfaVerified: result.mfaVerified,
       userId: result.userId,
       roles: result.roles,

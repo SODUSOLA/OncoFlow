@@ -4,6 +4,7 @@ import { eq } from "drizzle-orm";
 import { createApp } from "../../../app.js";
 import { db } from "../../../db/index.js";
 import { user, passwordResetToken, session } from "../schema.js";
+import { waitFor } from "../../../test/wait-for.js";
 
 vi.mock("../services/PasswordResetEmailService.js", () => ({
   sendPasswordResetEmail: vi.fn().mockResolvedValue(undefined),
@@ -41,7 +42,8 @@ async function requestResetAndCaptureToken(email: string): Promise<string> {
   // pattern elsewhere in this module is still tolerant of a tick of delay) — same reasoning
   // as email-verification.test.ts's registerAndCaptureToken, and same reason this isn't
   // asserting a call *count*: the mock is shared module-wide across every test in this file.
-  await new Promise((r) => setTimeout(r, 50));
+  await waitFor(() =>
+    vi.mocked(sendPasswordResetEmail).mock.calls.some(([to]) => to === email));
   // Last matching call, not first: a test that calls this twice for the same email (to
   // exercise invalidateAllForUser) would otherwise always get the FIRST matching call back,
   // i.e. the stale token, since the mock's call list only ever grows across every request in

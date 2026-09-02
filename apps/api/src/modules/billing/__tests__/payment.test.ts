@@ -9,6 +9,7 @@ import { patient, wallet } from "../../patient/schema.js";
 import { invoice, serviceClassification, tariff } from "../schema.js";
 import { user } from "../../auth/schema.js";
 import { NotificationRepository } from "../../notification/index.js";
+import { waitFor } from "../../../test/wait-for.js";
 
 const paySvc = new PaymentService();
 
@@ -148,11 +149,12 @@ describe("PaymentService — invoice-paid notification", () => {
     await paySvc.payInvoiceWithWallet(invRows[0]!.id);
 
     // notifyPaidBestEffort is fire-and-forget (not awaited by payInvoiceWithWallet, same as
-    // the receipt email) — give its microtask a tick to actually write the row before checking.
-    await new Promise((r) => setTimeout(r, 50));
-
+    // the receipt email), so poll for the row rather than assuming a fixed delay is enough.
     const notificationRepo = new NotificationRepository();
-    const notifications = await notificationRepo.findByRecipient(patientUserId);
+    const notifications = await waitFor(async () => {
+      const rows = await notificationRepo.findByRecipient(patientUserId);
+      return rows.some((n) => n.type === "INVOICE_PAID") ? rows : undefined;
+    }) ?? [];
     expect(notifications.some((n) => n.type === "INVOICE_PAID")).toBe(true);
   });
 });

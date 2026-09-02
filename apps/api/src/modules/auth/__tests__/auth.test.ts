@@ -56,13 +56,18 @@ it("register grants the PATIENT role — the only real caller of this endpoint t
   await db.delete(user).where(eq(user.id, userId)).catch(() => {});
 });
 
-it("register with fullName/dob/phone creates a pending patient_registration_request", async () => {
+// Gender is part of the intake snapshot now. It was added as a NOT NULL column in migration
+// 0011, which deliberately dropped its temporary backfill default so new rows must carry a real
+// value, and patient.gender is NOT NULL too — so a snapshot without it could never satisfy the
+// auto-registration that reads it (verifyEmail -> registerPatient). The registration wizard
+// collects biological sex on step 1 and always sends it.
+it("register with a complete intake creates a pending patient_registration_request", async () => {
   const email = `intake-${Date.now()}@example.com`;
   const res = await request(app)
     .post("/auth/register")
     .send({
       email, password: "Password123!",
-      fullName: "Test Intake Patient", dob: "1990-01-01", phone: "+2348000000000",
+      fullName: "Test Intake Patient", dob: "1990-01-01", gender: "Female", phone: "+2348000000000",
     });
 
   expect(res.status).toBe(201);
@@ -73,9 +78,38 @@ it("register with fullName/dob/phone creates a pending patient_registration_requ
   expect(rows).toHaveLength(1);
   expect(rows[0]!.fullName).toBe("Test Intake Patient");
   expect(rows[0]!.email).toBe(email);
+  expect(rows[0]!.gender).toBe("Female");
 
   const { user } = await import("../schema.js");
   await db.delete(patientRegistrationRequest).where(eq(patientRegistrationRequest.userId, userId)).catch(() => {});
+  await db.delete(user).where(eq(user.id, userId)).catch(() => {});
+});
+
+// The intake snapshot is deliberately all-or-nothing: register() only writes it when fullName,
+// dob, gender and phone are all present. A partial intake creates the login but no snapshot,
+// so auto-registration correctly no-ops rather than half-creating a patient with a missing
+// field. Pinned explicitly so the rule is asserted rather than assumed.
+//
+// Note this means a partial intake is currently accepted silently (201, no snapshot). That is
+// almost certainly a client bug when it happens, and rejecting it with a 400 would surface it
+// — left as-is here because changing it is a contract change, not a test fix.
+it("register with an intake missing gender creates no registration request", async () => {
+  const email = `partial-intake-${Date.now()}@example.com`;
+  const res = await request(app)
+    .post("/auth/register")
+    .send({
+      email, password: "Password123!",
+      fullName: "Partial Intake Patient", dob: "1990-01-01", phone: "+2348000000000",
+    });
+
+  expect(res.status).toBe(201);
+  const userId: string = res.body.user.id;
+
+  const { patientRegistrationRequest } = await import("../../patient/schema.js");
+  const rows = await db.select().from(patientRegistrationRequest).where(eq(patientRegistrationRequest.userId, userId));
+  expect(rows).toHaveLength(0);
+
+  const { user } = await import("../schema.js");
   await db.delete(user).where(eq(user.id, userId)).catch(() => {});
 });
 

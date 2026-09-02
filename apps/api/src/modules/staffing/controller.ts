@@ -1,4 +1,5 @@
 import type { Request, Response } from "express";
+import { resolveScopeOrDeny } from "../../lib/facility-scope.js";
 import type { AuthenticatedRequest } from "../../lib/rbac.js";
 import { StaffingService } from "./service.js";
 
@@ -55,8 +56,13 @@ export async function publishWeekHandler(req: Request, res: Response) {
 
 export async function listEligibleNursesHandler(req: Request, res: Response) {
   try {
-    const facilityId = typeof req.query.facilityId === "string" ? req.query.facilityId : undefined;
-    const nurses = await staffingSvc.findEligibleNurses(facilityId);
+    // Staff directory for a facility — narrowed to the caller's scope so one region cannot
+    // enumerate another's nursing roster off an untrusted `?facilityId`.
+    const scope = await resolveScopeOrDeny(req, res, "staffing");
+    if (!scope) return;
+    const nurses = await staffingSvc.findEligibleNurses(
+      scope.kind === "unrestricted" ? undefined : scope.facilityIds,
+    );
     res.json({ nurses });
   } catch {
     res.status(500).json({ error: "Internal server error" });

@@ -1,12 +1,15 @@
 import { describe, it, expect, beforeAll, afterAll } from "vitest";
 import request from "supertest";
-import { eq } from "drizzle-orm";
+import { eq, inArray } from "drizzle-orm";
 import crypto from "node:crypto";
 import { createApp } from "../../app.js";
 import { db } from "../../db/index.js";
 import { user, session, role, userRole } from "../../modules/auth/schema.js";
 import { facility } from "../../modules/facility/schema.js";
 import { patient } from "../../modules/patient/schema.js";
+import { invoice, serviceClassification } from "../../modules/billing/schema.js";
+import { appointment } from "../../modules/appointment/schema.js";
+import { auditLog } from "../../modules/audit/schema.js";
 import { SESSION_COOKIE_NAME } from "../session-cookie.js";
 import { seedIdentity } from "../../seed/identity.js";
 
@@ -24,6 +27,11 @@ import { seedIdentity } from "../../seed/identity.js";
 
 const app = createApp();
 
+let classificationId: string;
+let createdClassification = false;
+let invoiceAlice: string;
+let invoiceCara: string;
+let invoiceBob: string;
 let hospitalA: string;
 let hospitalAPeer: string;
 let hospitalB: string;
@@ -32,6 +40,8 @@ const createdUsers: string[] = [];
 const createdSessions: string[] = [];
 const createdFacilities: string[] = [];
 const createdPatients: string[] = [];
+const createdInvoices: string[] = [];
+const createdAppointments: string[] = [];
 
 type RoleName = (typeof role.name.enumValues)[number];
 
@@ -77,7 +87,7 @@ async function createFacility(name: string, region: string): Promise<string> {
   return id;
 }
 
-async function createPatient(facilityId: string, firstName: string): Promise<void> {
+async function createPatient(facilityId: string, firstName: string): Promise<string> {
   const id = crypto.randomUUID();
   await db.insert(patient).values({
     id,
@@ -86,6 +96,26 @@ async function createPatient(facilityId: string, firstName: string): Promise<voi
     phone: "+2340000000000", email: `${id}@test.local`, facilityId, status: "ACTIVE",
   });
   createdPatients.push(id);
+  return id;
+}
+
+async function createInvoice(facilityId: string, patientId: string): Promise<string> {
+  const id = crypto.randomUUID();
+  await db.insert(invoice).values({
+    id, patientId, facilityId, classificationId,
+    totalKobo: 100000n, status: "DRAFT",
+  });
+  createdInvoices.push(id);
+  return id;
+}
+
+async function createAppointment(facilityId: string, patientId: string): Promise<void> {
+  const id = crypto.randomUUID();
+  await db.insert(appointment).values({
+    id, patientId, facilityId, appointmentType: "VIRTUAL",
+    scheduledAt: new Date(Date.now() + 24 * 60 * 60 * 1000), status: "PENDING",
+  });
+  createdAppointments.push(id);
 }
 
 beforeAll(async () => {
@@ -93,19 +123,52 @@ beforeAll(async () => {
   hospitalA = await createFacility("Authz Hospital A", "AuthzRegionA");
   hospitalAPeer = await createFacility("Authz Hospital A Peer", "AuthzRegionA");
   hospitalB = await createFacility("Authz Hospital B", "AuthzRegionB");
-  await createPatient(hospitalA, "AuthzAlice");
-  await createPatient(hospitalAPeer, "AuthzCara");
-  await createPatient(hospitalB, "AuthzBob");
+  const alice = await createPatient(hospitalA, "AuthzAlice");
+  const cara = await createPatient(hospitalAPeer, "AuthzCara");
+  const bob = await createPatient(hospitalB, "AuthzBob");
+
+  // serviceClassification.name is an enum with a fixed, seeded set — reuse whatever is there
+  // rather than inventing one, and only create (and later clean up) if the table is empty.
+  const existingClassification = await db.select().from(serviceClassification).limit(1);
+  if (existingClassification[0]) {
+    classificationId = existingClassification[0].id;
+  } else {
+    classificationId = crypto.randomUUID();
+    await db.insert(serviceClassification).values({
+      id: classificationId, name: "CONSULTATION", cappedNetworkFeeKobo: 0n,
+    });
+    createdClassification = true;
+  }
+
+  invoiceAlice = await createInvoice(hospitalA, alice);
+  invoiceCara = await createInvoice(hospitalAPeer, cara);
+  invoiceBob = await createInvoice(hospitalB, bob);
+
+  await createAppointment(hospitalA, alice);
+  await createAppointment(hospitalB, bob);
 });
 
 afterAll(async () => {
-  for (const id of createdPatients) await db.delete(patient).where(eq(patient.id, id)).catch(() => {});
-  for (const id of createdSessions) await db.delete(session).where(eq(session.id, id)).catch(() => {});
-  for (const id of createdUsers) {
-    await db.delete(userRole).where(eq(userRole.userId, id)).catch(() => {});
-    await db.delete(user).where(eq(user.id, id)).catch(() => {});
+  for (const id of createdAppointments) await db.delete(appointment).where(eq(appointment.id, id));
+  for (const id of createdInvoices) await db.delete(invoice).where(eq(invoice.id, id));
+  if (createdClassification) {
+    await db.delete(serviceClassification).where(eq(serviceClassification.id, classificationId));
   }
-  for (const id of createdFacilities) await db.delete(facility).where(eq(facility.id, id)).catch(() => {});
+  for (const id of createdPatients) await db.delete(patient).where(eq(patient.id, id));
+  for (const id of createdSessions) await db.delete(session).where(eq(session.id, id));
+  // Audit rows must go first: these tests deliberately trigger denials, and rbac.ts records
+  // each one with actor_id referencing the user, so deleting the user violates that FK. The
+  // deletes below used to swallow every error with .catch(() => {}), which turned that failure
+  // into a silent leak — one run per suite, accumulating MFA-enabled accounts in the dev
+  // database. Left unswallowed now so a future leak fails loudly instead of quietly growing.
+  if (createdUsers.length > 0) {
+    await db.delete(auditLog).where(inArray(auditLog.actorId, createdUsers));
+  }
+  for (const id of createdUsers) {
+    await db.delete(userRole).where(eq(userRole.userId, id));
+    await db.delete(user).where(eq(user.id, id));
+  }
+  for (const id of createdFacilities) await db.delete(facility).where(eq(facility.id, id));
 });
 
 describe("MFA enforcement across every route gate", () => {
@@ -194,5 +257,60 @@ describe("facility isolation on ?facilityId", () => {
     expect(body).toContain("AuthzBob");        // the requested facility
     expect(body).not.toContain("AuthzAlice");  // must not bleed in other facilities
     expect(body).not.toContain("AuthzCara");
+  });
+});
+
+// The same untrusted-?facilityId hole existed on every other list endpoint that accepts one.
+// Patient search was fixed first; these cover the rest (billing, appointments, tariffs,
+// staffing), which all now route through the shared resolveScopeOrDeny helper.
+describe("facility isolation on the remaining ?facilityId endpoints", () => {
+  it("403s on invoices for a facility outside the caller's region", async () => {
+    const caller = await createUser({ roleName: "REGIONAL_ADMIN", mfaEnabled: false, facilityId: hospitalA });
+    const res = await request(app).get(`/invoices?facilityId=${hospitalB}`).set("Cookie", caller.cookie);
+    expect(res.status).toBe(403);
+    expect(JSON.stringify(res.body)).not.toContain(invoiceBob);
+  });
+
+  it("scopes ?facilityId=all on invoices to the caller's own region", async () => {
+    const caller = await createUser({ roleName: "REGIONAL_ADMIN", mfaEnabled: false, facilityId: hospitalA });
+    const res = await request(app).get("/invoices?facilityId=all").set("Cookie", caller.cookie);
+    expect(res.status).toBe(200);
+
+    const body = JSON.stringify(res.body);
+    expect(body).toContain(invoiceAlice);   // own facility
+    expect(body).toContain(invoiceCara);    // peer facility, same region
+    expect(body).not.toContain(invoiceBob); // other region — must not leak
+  });
+
+  it("403s on appointments for a facility outside the caller's region", async () => {
+    const caller = await createUser({ roleName: "REGIONAL_ADMIN", mfaEnabled: false, facilityId: hospitalA });
+    const res = await request(app).get(`/appointments?facilityId=${hospitalB}`).set("Cookie", caller.cookie);
+    expect(res.status).toBe(403);
+  });
+
+  // /appointments takes no "all" sentinel (its query schema only accepts a uuid), so the
+  // list-everything request is simply omitting facilityId — which is precisely the case that
+  // used to return every appointment on the platform to any caller with appointment:read.
+  it("scopes a facility-less appointment query to the caller's own region", async () => {
+    const caller = await createUser({ roleName: "REGIONAL_ADMIN", mfaEnabled: false, facilityId: hospitalA });
+    const res = await request(app).get("/appointments?status=PENDING").set("Cookie", caller.cookie);
+    expect(res.status).toBe(200);
+
+    const facilityIds = (res.body.appointments as { facilityId: string }[]).map((a) => a.facilityId);
+    expect(facilityIds.length).toBeGreaterThan(0);
+    expect(facilityIds).not.toContain(hospitalB);
+  });
+
+  it("403s on tariffs for a facility outside the caller's region", async () => {
+    const caller = await createUser({ roleName: "REGIONAL_ADMIN", mfaEnabled: false, facilityId: hospitalA });
+    const res = await request(app).get(`/tariffs?facilityId=${hospitalB}`).set("Cookie", caller.cookie);
+    expect(res.status).toBe(403);
+  });
+
+  it("403s on the eligible-nurse roster for a facility outside the caller's region", async () => {
+    const caller = await createUser({ roleName: "REGIONAL_ADMIN", mfaEnabled: false, facilityId: hospitalA });
+    const res = await request(app)
+      .get(`/staffing/eligible-nurses?facilityId=${hospitalB}`).set("Cookie", caller.cookie);
+    expect(res.status).toBe(403);
   });
 });

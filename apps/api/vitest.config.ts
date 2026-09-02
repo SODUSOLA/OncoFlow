@@ -6,6 +6,15 @@ export default defineConfig({
     environment: "node",
     include: ["src/**/*.test.ts"],
     setupFiles: ["./src/test/setup.ts"],
+    // These are integration tests — real HTTP through supertest, real Postgres, real bcrypt —
+    // not unit tests, so vitest's 5s default is the wrong scale. Individually they finish in
+    // 0.4-1.5s, but the suite runs one worker per core and bcrypt saturates the CPU, so under
+    // full parallelism the slower ones crossed 5s and failed as timeouts. That produced a
+    // failure count that moved with machine load (19, 25, 32, 40 across consecutive runs)
+    // rather than with the code. Raising the ceiling changes no assertion; it stops a busy
+    // machine from being reported as a broken test suite.
+    testTimeout: 30_000,
+    hookTimeout: 30_000,
     env: {
       DATABASE_URL: "postgresql://oncoflow:oncoflow_dev@localhost:5432/oncoflow",
       REDIS_URL: "redis://localhost:6379",

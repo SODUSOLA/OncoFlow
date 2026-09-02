@@ -12,8 +12,7 @@ import { Wallet } from "./entities/Wallet.js";
 import { timelineService } from "./services/TimelineService.js";
 import { placeCall } from "./services/CallService.js";
 import { maskPhone } from "../../lib/maskPhone.js";
-import { accessibleFacilityIds, resolveRequestedFacilityScope } from "../../lib/facility-scope.js";
-import { auditService } from "../audit/index.js";
+import { resolveScopeOrDeny } from "../../lib/facility-scope.js";
 
 const patientSvc = new PatientService();
 const patientRepo = new PatientRepository();
@@ -134,31 +133,18 @@ export async function getPatientHandler(req: Request, res: Response) {
 
 export async function searchPatientsHandler(req: Request, res: Response) {
   try {
-    const facilityId = typeof req.query.facilityId === "string" ? req.query.facilityId : undefined;
     const q = typeof req.query.q === "string" ? req.query.q : undefined;
 
     // `?facilityId` is client-supplied and therefore untrusted: it is narrowed against what
     // this caller may actually see (lib/facility-scope.ts) rather than used as the filter
     // directly. Before this, `?facilityId=all` returned every patient on the platform and an
     // explicit id let one hospital's staff read another hospital's patients.
-    const scope = resolveRequestedFacilityScope(
-      facilityId,
-      await accessibleFacilityIds((req as AuthenticatedRequest).userId),
-    );
-    if (scope.kind === "forbidden") {
-      // Best-effort, same tolerance as rbac.ts's own audit calls — a logging failure must not
-      // turn a correct 403 into a 500.
-      await auditService.recordEvent({
-        actorId: (req as AuthenticatedRequest).userId,
-        action: "ACCESS_DENIED", resource: "patient", result: "DENIED", ip: req.ip,
-      }).catch(() => {});
-      res.status(403).json({ error: "Forbidden: facility outside your scope" });
-      return;
-    }
+    const scope = await resolveScopeOrDeny(req, res, "patient");
+    if (!scope) return;
 
     const patients = scope.kind === "unrestricted"
       ? await patientRepo.findAll()
-      : (await Promise.all(scope.facilityIds.map((id) => patientRepo.findByFacility(id)))).flat();
+      : await patientRepo.findByFacilityIds(scope.facilityIds);
 
     let filtered = patients;
     if (q) {

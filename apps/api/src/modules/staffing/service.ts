@@ -57,15 +57,18 @@ export class StaffingService {
   // Eligible assignees for the "Assign Nurse" picker — Onsite Nursing Officers, optionally
   // narrowed to one facility (user.facilityId, populated for facility-scoped staff per
   // auth/schema.ts's own comment on that column).
-  async findEligibleNurses(facilityId?: string) {
+  // `facilityIds` is the authorization-narrowed set from lib/facility-scope.ts. Undefined means
+  // unrestricted (SUPER_ADMIN / national roles); an empty array means nothing in scope, which
+  // inArray renders as a false predicate — correctly returning no nurses rather than all of them.
+  async findEligibleNurses(facilityIds?: string[]) {
     return db
       .select({ id: user.id, email: user.email })
       .from(user)
       .innerJoin(userRole, eq(userRole.userId, user.id))
       .innerJoin(role, eq(userRole.roleId, role.id))
       .where(
-        facilityId
-          ? and(eq(role.name, "ONSITE_NURSING_OFFICER"), eq(user.facilityId, facilityId))
+        facilityIds
+          ? and(eq(role.name, "ONSITE_NURSING_OFFICER"), inArray(user.facilityId, facilityIds))
           : eq(role.name, "ONSITE_NURSING_OFFICER"),
       );
   }

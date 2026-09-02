@@ -40,10 +40,16 @@ export class AppointmentRepository {
       .orderBy(appointment.scheduledAt);
   }
 
-  async findAll(filters?: { patientId?: string; facilityId?: string; status?: AppointmentStatus }) {
+  // `facilityIds` is the authorization-narrowed set from lib/facility-scope.ts, not a
+  // client-supplied filter — an empty array is a legitimate "nothing in scope" and inArray
+  // renders it as a false predicate, which is the correct (empty) result rather than an error.
+  async findAll(filters?: {
+    patientId?: string; facilityId?: string; facilityIds?: string[]; status?: AppointmentStatus;
+  }) {
     const conditions = [eq(appointment.isDeleted, false)];
     if (filters?.patientId) conditions.push(eq(appointment.patientId, filters.patientId));
     if (filters?.facilityId) conditions.push(eq(appointment.facilityId, filters.facilityId));
+    if (filters?.facilityIds) conditions.push(inArray(appointment.facilityId, filters.facilityIds));
     if (filters?.status) conditions.push(eq(appointment.status, filters.status));
     return db.select().from(appointment).where(and(...conditions)).orderBy(appointment.scheduledAt);
   }
@@ -76,13 +82,13 @@ export class AppointmentRepository {
   // in application code (Lagos calendar-day string comparison) rather than a timezone-aware SQL
   // clause — row counts here are small (per-facility, per-day), same trade-off the rest of this
   // repository already makes (plain filters, no raw SQL) elsewhere.
-  async findPendingConfirmationQueue(facilityId?: string) {
+  async findPendingConfirmationQueue(facilityIds?: string[]) {
     const conditions = [
       eq(appointment.status, "PENDING"),
       eq(appointment.isDeleted, false),
       eq(invoice.status, "PAID"),
     ];
-    if (facilityId) conditions.push(eq(appointment.facilityId, facilityId));
+    if (facilityIds) conditions.push(inArray(appointment.facilityId, facilityIds));
 
     const rows = await db
       .select({ appointment })
