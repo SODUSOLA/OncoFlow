@@ -6,6 +6,7 @@ import { FileService } from "./service.js";
 // to check "is this file's/query's patientId the caller's own patient record" (Patient role
 // spec: "can upload own labs") before falling back to the staff-level file:create/read grant.
 import { PatientRepository } from "../patient/index.js";
+import { config } from "../../config.js";
 
 const fileSvc = new FileService();
 const patientRepo = new PatientRepository();
@@ -39,6 +40,19 @@ export async function uploadFileHandler(req: Request, res: Response) {
     }
 
     const buffer = Buffer.from(content as string, "base64");
+    // Checked on the decoded bytes, not the base64 string, so the limit means what it says.
+    // The body parser also caps the request (app.ts), but that produces a generic
+    // "body too large" about the envelope; this is the one that can name the actual file limit,
+    // and it keeps the rule intact if the parser budget is ever raised independently.
+    if (buffer.byteLength > config.maxUploadBytes) {
+      const limitMb = (config.maxUploadBytes / (1024 * 1024)).toFixed(0);
+      res.status(413).json({
+        error: `File is too large — the maximum upload size is ${limitMb}MB`,
+        code: "PAYLOAD_TOO_LARGE",
+      });
+      return;
+    }
+
     const result = await fileSvc.upload({ patientId, uploadedBy, mimeType, content: buffer });
     res.status(201).json(result);
   } catch (err) {

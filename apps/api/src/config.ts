@@ -20,6 +20,9 @@ const envSchema = z.object({
   // blocked on every gated route with no in-product way to enrol. Ship that screen against
   // POST /auth/mfa/enroll, then set MFA_ENFORCE_STAFF=true — it should be on before go-live.
   MFA_ENFORCE_STAFF: z.enum(["true", "false"]).default("false"),
+  // Largest file accepted by POST /files/upload, in bytes (default 10MB). Lab PDFs, phone
+  // photos of physical documents and voice notes all have to fit under this.
+  MAX_UPLOAD_BYTES: z.coerce.number().int().positive().default(10 * 1024 * 1024),
 });
 
 const parsed = envSchema.safeParse(process.env);
@@ -51,4 +54,10 @@ export const config = {
   redisUrl: env.REDIS_URL,
   corsOrigins: resolveCorsOrigins(),
   mfaEnforceStaff: env.MFA_ENFORCE_STAFF === "true",
+  maxUploadBytes: env.MAX_UPLOAD_BYTES,
+  // Uploads arrive as base64 inside a JSON body, which inflates the bytes by 4/3, so the JSON
+  // body limit for the upload route has to be meaningfully larger than the file limit itself
+  // or the parser rejects a file that is actually within budget. The 1KB allowance covers the
+  // surrounding JSON (field names, mimeType, patientId).
+  maxUploadBodyBytes: Math.ceil(env.MAX_UPLOAD_BYTES * 4 / 3) + 1024,
 };

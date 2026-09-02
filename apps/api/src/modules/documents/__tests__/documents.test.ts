@@ -8,6 +8,7 @@ import { patient } from "../../patient/schema.js";
 import { FileRepository } from "../repository.js";
 import { File } from "../entities/File.js";
 import { computeFileHash, buildStorageKey } from "../services/StorageService.js";
+import { config } from "../../../config.js";
 
 // file.patient_id has a real FK to patient.id — a bare crypto.randomUUID() with no matching
 // row (what several tests below used to pass) trips that constraint. This creates one real
@@ -166,6 +167,46 @@ describe("FileService — upload", () => {
     expect(res.body.file.mimeType).toBe("image/png");
     expect(res.body.file.virusScanStatus).toBe("PENDING");
     expect(res.body.file.fileHash).toBe(computeFileHash(content));
+  });
+
+  // The reported bug: uploading a document or a voice note failed with
+  // {"error":"Internal server error","code":"INTERNAL_ERROR"}. The cause was express.json()'s
+  // 100kb default body limit — and because uploads are base64 in a JSON body (4/3 inflation),
+  // the real file ceiling was about 75kb, which almost any photo, PDF or voice note exceeds.
+  // 500kb here is comfortably past the old limit and comfortably inside the new one.
+  it("accepts a file far larger than the old 100kb body limit", async () => {
+    const pid = await createTestPatient();
+    const content = Buffer.alloc(500 * 1024, "a");
+    const res = await request(app)
+      .post("/files/upload")
+      .send({ patientId: pid, mimeType: "application/pdf", content: content.toString("base64") });
+
+    expect(res.status).toBe(201);
+    expect(res.body.file.fileHash).toBe(computeFileHash(content));
+  });
+
+  // The limit is enforced on decoded bytes in the controller as well as by the parser, so it
+  // can report the actual file limit rather than a generic complaint about the envelope.
+  // maxUploadBytes is lowered here because the parser budget is derived from it at import and
+  // would otherwise reject the request first — this exercises the controller's own branch.
+  it("rejects a file over the configured limit with 413, naming the limit", async () => {
+    const pid = await createTestPatient();
+    const original = config.maxUploadBytes;
+    try {
+      Object.assign(config, { maxUploadBytes: 1024 });
+      const res = await request(app)
+        .post("/files/upload")
+        .send({
+          patientId: pid, mimeType: "application/pdf",
+          content: Buffer.alloc(4096, "b").toString("base64"),
+        });
+
+      expect(res.status).toBe(413);
+      expect(res.body.code).toBe("PAYLOAD_TOO_LARGE");
+      expect(res.body.error).toMatch(/too large/i);
+    } finally {
+      Object.assign(config, { maxUploadBytes: original });
+    }
   });
 
   it("returns 400 when mimeType is missing", async () => {

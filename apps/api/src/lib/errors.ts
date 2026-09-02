@@ -7,6 +7,7 @@ export type ErrorCode =
   | "RATE_LIMITED"
   | "NOT_IMPLEMENTED"
   | "BAD_REQUEST"
+  | "PAYLOAD_TOO_LARGE"
   | "INTERNAL_ERROR";
 
 export class AppError extends Error {
@@ -32,6 +33,13 @@ export class UnauthorizedError extends AppError {
   constructor(message = "Unauthorized") {
     super(401, "UNAUTHORIZED", message);
     this.name = "UnauthorizedError";
+  }
+}
+
+export class PayloadTooLargeError extends AppError {
+  constructor(message = "Payload too large") {
+    super(413, "PAYLOAD_TOO_LARGE", message);
+    this.name = "PayloadTooLargeError";
   }
 }
 
