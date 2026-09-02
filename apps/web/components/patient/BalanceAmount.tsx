@@ -1,22 +1,22 @@
 "use client";
 
-import { useState } from "react";
 import { Eye, EyeOff } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { useBalanceVisibility } from "@/lib/useBalanceVisibility";
 
 function koboToNaira(kobo: string) {
   return `₦${(Number(kobo) / 100).toLocaleString("en-NG", { minimumFractionDigits: 2 })}`;
 }
 
 export function BalanceAmount({ balanceKobo, className }: { balanceKobo: string | undefined; className?: string }) {
-  const [revealed, setRevealed] = useState(true);
+  const { revealed, toggle } = useBalanceVisibility();
 
   return (
     <span className={cn("inline-flex items-center gap-2", className)}>
       {revealed ? (balanceKobo ? koboToNaira(balanceKobo) : "—") : "₦••••••"}
       <button
         type="button"
-        onClick={() => setRevealed((r) => !r)}
+        onClick={toggle}
         className="text-current opacity-70 transition-opacity duration-fast hover:opacity-100"
         aria-label={revealed ? "Hide balance" : "Show balance"}
       >

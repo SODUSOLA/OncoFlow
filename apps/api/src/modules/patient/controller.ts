@@ -217,7 +217,10 @@ export async function updatePatientHandler(req: Request, res: Response) {
     const updates: Record<string, unknown> = {};
     for (const field of allowedFields) {
       if (req.body[field] !== undefined) {
-        updates[field] = req.body[field];
+        // Clearing an optional contact field arrives as "" from a form input; store it as NULL
+        // rather than an empty string so "unset" has one representation in the database.
+        const value = req.body[field];
+        updates[field] = field === "secondaryEmail" && value === "" ? null : value;
       }
     }
 

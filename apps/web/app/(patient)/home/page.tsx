@@ -13,6 +13,7 @@ import { api } from "@/lib/api";
 import { useMyPatient } from "@/lib/useMyPatient";
 import { useCountdown } from "@/lib/useCountdown";
 import type { Invoice, TimelineEvent, CountdownCase, LabRequest, Appointment } from "@/lib/types";
+import { useBalanceVisibility } from "@/lib/useBalanceVisibility";
 
 const EVENT_LABELS: Record<TimelineEvent["eventType"], string> = {
   REGISTRATION: "Registered",
@@ -93,7 +94,8 @@ export default function HomePage() {
   const [countdown, setCountdown] = useState<CountdownCase | null>(null);
   const [pendingLabRequest, setPendingLabRequest] = useState<LabRequest | null>(null);
   const [appointments, setAppointments] = useState<Appointment[]>([]);
-  const [balanceRevealed, setBalanceRevealed] = useState(true);
+  // Shared with the wallet page and remembered between screens — see lib/useBalanceVisibility.
+  const { revealed: balanceRevealed, toggle: toggleBalance } = useBalanceVisibility();
 
   useEffect(() => {
     if (!patient) return;
@@ -161,7 +163,7 @@ export default function HomePage() {
               <span className="text-xs font-medium text-white/80">Available Balance</span>
               <button
                 type="button"
-                onClick={() => setBalanceRevealed((r) => !r)}
+                onClick={toggleBalance}
                 aria-label={balanceRevealed ? "Hide balance" : "Show balance"}
                 className="text-white/70 hover:text-white"
               >

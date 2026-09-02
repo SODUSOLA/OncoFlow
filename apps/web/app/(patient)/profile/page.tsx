@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import Link from "next/link";
-import { Settings, Camera, IdCard } from "lucide-react";
+import { Settings, Camera, IdCard, Pencil } from "lucide-react";
 import { Card } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
 import { FieldWrapper, Input } from "@/components/ui/Field";
@@ -45,6 +45,10 @@ export default function ProfilePage() {
 function ProfileForm({ patient, onUpdated }: { patient: Patient; onUpdated: () => void }) {
   const [phone, setPhone] = useState(patient.phone ?? "");
   const [secondaryEmail, setSecondaryEmail] = useState(patient.secondaryEmail ?? "");
+  // Contact details are read-only until Edit is pressed. Rendering live inputs by default made
+  // the card look like a form waiting to be filled in, and put a patient one stray keystroke
+  // away from changing the number their care team uses to reach them.
+  const [editing, setEditing] = useState(false);
   const [saving, setSaving] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [result, setResult] = useState<string | null>(null);
@@ -55,6 +59,7 @@ function ProfileForm({ patient, onUpdated }: { patient: Patient; onUpdated: () =
     try {
       await api.put(`/patients/${patient.id}`, { phone, secondaryEmail });
       onUpdated();
+      setEditing(false);
       setResult("Profile updated");
     } catch (err) {
       setResult(err instanceof Error ? err.message : "Update failed");
@@ -131,22 +136,66 @@ function ProfileForm({ patient, onUpdated }: { patient: Patient; onUpdated: () =
       </Card>
 
       <Card className="space-y-4">
-        <h2 className="text-sm font-semibold text-neutral-700">Contact Details</h2>
-        <FieldWrapper label="Phone Number" htmlFor="phone">
-          <Input id="phone" type="tel" value={phone} onChange={(e) => setPhone(e.target.value)} />
-        </FieldWrapper>
-        <FieldWrapper label="Secondary Email" htmlFor="secondaryEmail">
-          <Input
-            id="secondaryEmail"
-            type="email"
-            value={secondaryEmail}
-            onChange={(e) => setSecondaryEmail(e.target.value)}
-            placeholder="Optional"
-          />
-        </FieldWrapper>
-        <Button className="w-full" onClick={handleSave} loading={saving}>
-          Save Changes
-        </Button>
+        <div className="flex items-center justify-between">
+          <h2 className="text-sm font-semibold text-neutral-700">Contact Details</h2>
+          {!editing && (
+            <button
+              type="button"
+              onClick={() => setEditing(true)}
+              className="flex items-center gap-1 text-xs font-semibold text-primary hover:underline"
+            >
+              <Pencil className="size-3.5" aria-hidden="true" /> Edit
+            </button>
+          )}
+        </div>
+
+        {editing ? (
+          <>
+            <FieldWrapper label="Phone Number" htmlFor="phone">
+              <Input id="phone" type="tel" value={phone} onChange={(e) => setPhone(e.target.value)} />
+            </FieldWrapper>
+            <FieldWrapper label="Secondary Email" htmlFor="secondaryEmail">
+              <Input
+                id="secondaryEmail"
+                type="email"
+                value={secondaryEmail}
+                onChange={(e) => setSecondaryEmail(e.target.value)}
+                placeholder="Optional"
+              />
+            </FieldWrapper>
+            <div className="flex gap-3">
+              <Button
+                variant="outline"
+                className="flex-1"
+                onClick={() => {
+                  // Discard edits rather than leaving them staged — reopening Edit should show
+                  // what is actually saved, not what was abandoned last time.
+                  setPhone(patient.phone ?? "");
+                  setSecondaryEmail(patient.secondaryEmail ?? "");
+                  setEditing(false);
+                  setResult(null);
+                }}
+                disabled={saving}
+              >
+                Cancel
+              </Button>
+              <Button className="flex-1" onClick={handleSave} loading={saving}>
+                Save Changes
+              </Button>
+            </div>
+          </>
+        ) : (
+          <div className="space-y-3">
+            <div>
+              <p className="text-xs text-neutral-500">Phone Number</p>
+              <p className="text-sm text-neutral-900">{patient.phone || "Not provided"}</p>
+            </div>
+            <div>
+              <p className="text-xs text-neutral-500">Secondary Email</p>
+              <p className="text-sm text-neutral-900">{patient.secondaryEmail || "Not provided"}</p>
+            </div>
+          </div>
+        )}
       </Card>
 
       {result && (

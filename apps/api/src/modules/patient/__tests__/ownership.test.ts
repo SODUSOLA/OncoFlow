@@ -73,6 +73,25 @@ describe("GET /patients/me — self-lookup entry point", () => {
 });
 
 describe("GET /patients/:id — ownership (no blanket patient:read needed for own record)", () => {
+  // secondaryEmail is presented as optional, but the update schema required a valid email with
+  // no empty-string case, so once set it could never be removed.
+  it("lets the patient clear their own secondary email", async () => {
+    await request(app)
+      .put(`/patients/${ownPatientId}`)
+      .set("Cookie", ownCookie)
+      .send({ secondaryEmail: "clearable@example.com" })
+      .expect(200);
+
+    const cleared = await request(app)
+      .put(`/patients/${ownPatientId}`)
+      .set("Cookie", ownCookie)
+      .send({ secondaryEmail: "" });
+
+    expect(cleared.status).toBe(200);
+    // Stored as NULL, not "", so "unset" has a single representation.
+    expect(cleared.body.patient.secondaryEmail).toBeNull();
+  });
+
   it("lets the linked user read their own record (toOwnJSON — includes phone)", async () => {
     const res = await request(app).get(`${base}/${ownPatientId}`).set("Cookie", ownCookie);
     expect(res.status).toBe(200);

@@ -1,8 +1,9 @@
 "use client";
 
 import { useEffect, useState, useCallback } from "react";
+import Link from "next/link";
 import {
-  ShieldCheck, Plus, CircleAlert, CircleX, CircleCheck, RotateCw, ArrowLeft,
+  ShieldCheck, Plus, CircleAlert, CircleX, CircleCheck, RotateCw, ArrowLeft, ChevronRight,
 } from "lucide-react";
 import { Card } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
@@ -278,6 +279,16 @@ export default function WalletPage() {
             <span className="truncate">Manage Methods</span>
           </Button>
         </div>
+
+        {/* The ledger was reachable only from the home screen, so anyone who navigated straight
+            to Wallet — the obvious place to look for it — had no way through. */}
+        <Link
+          href="/wallet/transactions"
+          className="mt-3.5 flex items-center justify-between border-t border-neutral-200 pt-3.5 text-sm font-semibold text-primary"
+        >
+          Transaction History
+          <ChevronRight className="size-4" aria-hidden="true" />
+        </Link>
       </Card>
 
       <div className="flex gap-3">

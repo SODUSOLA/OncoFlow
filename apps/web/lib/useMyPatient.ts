@@ -102,9 +102,14 @@ export function useMyPatient() {
 
   // Forces a refetch even when one has already completed — used after an action that changes
   // the record (profile edit, wallet top-up) rather than on mount.
+  //
+  // Deliberately does NOT flip `loading`. Callers gate their first paint on it (`if (loading)
+  // return <spinner>`), so raising it for a background refresh tore the screen down and rebuilt
+  // it: saving a profile edit unmounted the very form that had just saved, discarding its
+  // "Profile updated" confirmation. `loading` means "nothing to show yet", not "a request is
+  // in flight" — the existing data stays on screen while the refresh completes.
   const reload = useCallback(() => {
     inFlight = null;
-    publish({ ...state, loading: true });
     return load();
   }, []);
 

@@ -42,7 +42,10 @@ const updatePatientSchema = z.object({
   status: z.string().trim().min(1).max(32).optional(),
   // Self-editable only (see controller.ts SELF_EDITABLE_FIELDS) — accepted here regardless
   // of caller, the controller decides which fields actually apply.
-  secondaryEmail: z.string().trim().email().optional(),
+  // The empty string is accepted so a patient can *clear* this field. It is presented as
+  // optional in the UI, but .email() alone rejected "" — meaning it could be set once and then
+  // never removed. The controller normalises "" to NULL (the column is nullable).
+  secondaryEmail: z.union([z.string().trim().email(), z.literal("")]).optional(),
   profilePictureFileId: z.string().uuid().optional(),
 });
 
