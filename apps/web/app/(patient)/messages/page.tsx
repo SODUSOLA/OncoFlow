@@ -29,6 +29,14 @@ const TYPE_ICONS: Record<Conversation["conversationType"], typeof MessageSquare>
   MO_SIDE_EFFECT: Activity,
 };
 
+// Appending is idempotent by message id because the same message arrives twice by design: once
+// as the POST response and once as the socket broadcast, and either can win the race. Only the
+// socket path guarded against this, so when the broadcast landed before the POST resolved the
+// message was rendered twice and React warned about duplicate keys.
+function appendMessage(prev: Message[], msg: Message): Message[] {
+  return prev.some((m) => m.id === msg.id) ? prev : [...prev, msg];
+}
+
 function blobToBase64(blob: Blob): Promise<string> {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
@@ -182,7 +190,7 @@ function MessagesPageInner() {
 
     function onNewMessage(msg: Message & { conversationId: string }) {
       if (msg.conversationId !== selected!.id) return;
-      setMessages((prev) => (prev.some((m) => m.id === msg.id) ? prev : [...prev, msg]));
+      setMessages((prev) => appendMessage(prev, msg));
     }
     socket.on("message:new", onNewMessage);
 
@@ -305,7 +313,7 @@ function MessagesPageInner() {
         type: "TEXT",
         content: newMessage.trim(),
       });
-      setMessages((prev) => [...prev, res.message]);
+      setMessages((prev) => appendMessage(prev, res.message));
       setNewMessage("");
       loadConversations();
     } catch (err) {
@@ -330,7 +338,7 @@ function MessagesPageInner() {
         type,
         content: uploadRes.file.id,
       });
-      setMessages((prev) => [...prev, res.message]);
+      setMessages((prev) => appendMessage(prev, res.message));
       loadConversations();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to send attachment");

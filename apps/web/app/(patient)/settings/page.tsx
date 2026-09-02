@@ -8,6 +8,7 @@ import { Button } from "@/components/ui/Button";
 import { Badge } from "@/components/ui/Badge";
 import { api } from "@/lib/api";
 import type { AuthSession } from "@/lib/types";
+import { invalidateMyPatient } from "@/lib/useMyPatient";
 
 function ComingSoonRow({ icon: Icon, label, description }: { icon: typeof Bell; label: string; description: string }) {
   return (
@@ -89,6 +90,10 @@ export default function SettingsPage() {
     await api.post("/auth/logout").catch(() => {
       /* clear the client-visible session regardless of whether the API call succeeded */
     });
+    // The patient record is cached in a module-level store that outlives this component, so it
+    // has to be cleared explicitly — otherwise the next account to sign in on this tab would
+    // briefly render the previous patient's name, ID and wallet balance.
+    invalidateMyPatient();
     router.push("/login");
   }
 
