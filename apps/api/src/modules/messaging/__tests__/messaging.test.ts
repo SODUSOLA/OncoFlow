@@ -1,5 +1,7 @@
 import { describe, it, expect, beforeAll } from "vitest";
 import crypto from "node:crypto";
+import request from "supertest";
+import { createApp } from "../../../app.js";
 import { MessagingService } from "../service.js";
 import { MessagingJobService } from "../services/MessagingJobService.js";
 import { ConversationRepository, MessageRepository } from "../repository.js";
@@ -9,6 +11,7 @@ import { facility } from "../../facility/schema.js";
 import { user } from "../../auth/schema.js";
 import { NotificationRepository } from "../../notification/index.js";
 
+const app = createApp();
 const messagingSvc = new MessagingService();
 const jobSvc = new MessagingJobService();
 const conversationRepo = new ConversationRepository();
@@ -75,7 +78,7 @@ describe("MessagingService — first_response_at (F3.1 DoD)", () => {
     // SUPER_ADMIN as caller (bypasses ownership/permission) — this test is about the SYSTEM
     // message type's stamping behavior, not about who's authorized to post as staff.
     await messagingSvc.postMessage({
-      conversationId: convo.id, senderId: testStaffId, type: "SYSTEM", content: "We'll respond within 5 minutes.",
+      conversationId: convo.id, type: "SYSTEM", content: "We'll respond within 5 minutes.",
     }, process.env.TEST_USER_ID!);
     const after = await messagingSvc.getConversation(convo.id, testPatientUserId);
     expect(after.firstResponseAt).toBeNull();
@@ -83,14 +86,14 @@ describe("MessagingService — first_response_at (F3.1 DoD)", () => {
 
   it("stamps first_response_at on the first real message, not on later ones", async () => {
     const convo = await messagingSvc.startConversation({ patientId: testPatientId, conversationType: "ADMIN_INQUIRY" }, testPatientUserId);
-    await messagingSvc.postMessage({ conversationId: convo.id, senderId: testPatientUserId, type: "TEXT", content: "Hello" }, testPatientUserId);
+    await messagingSvc.postMessage({ conversationId: convo.id, type: "TEXT", content: "Hello" }, testPatientUserId);
     const first = await messagingSvc.getConversation(convo.id, testPatientUserId);
     expect(first.firstResponseAt).not.toBeNull();
 
     const firstStamp = first.firstResponseAt;
     await new Promise((r) => setTimeout(r, 10));
     await messagingSvc.postMessage({
-      conversationId: convo.id, senderId: testStaffId, type: "TEXT", content: "Reply",
+      conversationId: convo.id, type: "TEXT", content: "Reply",
     }, process.env.TEST_USER_ID!);
     const second = await messagingSvc.getConversation(convo.id, testPatientUserId);
     expect(second.firstResponseAt).toBe(firstStamp);
@@ -196,11 +199,46 @@ describe("MessagingJobService — SLA breach sweep (F3.1 DoD)", () => {
   });
 });
 
+// A patient could post into their own conversation with senderId set to any user id — the
+// service authorized the caller against the conversation but then persisted the body's
+// senderId verbatim. Storing clinical advice under a doctor's name is the worst case, and it
+// was reachable over plain HTTP by anyone who could post at all.
+describe("MessagingService — message attribution", () => {
+  it("attributes a message to the caller, not to a senderId supplied by the client", async () => {
+    const convo = await messagingSvc.startConversation(
+      { patientId: testPatientId, conversationType: "ADMIN_INQUIRY" }, testPatientUserId,
+    );
+
+    const posted = await messagingSvc.postMessage(
+      { conversationId: convo.id, type: "TEXT", content: "Who sent this?" }, testPatientUserId,
+    );
+
+    const rows = await messageRepo.findByConversation(convo.id);
+    const stored = rows.find((r) => r.id === posted.id);
+    expect(stored!.senderId).toBe(testPatientUserId);
+    expect(stored!.senderId).not.toBe(testStaffId);
+  });
+
+  it("rejects a request body that still carries senderId", async () => {
+    const convo = await messagingSvc.startConversation(
+      { patientId: testPatientId, conversationType: "ADMIN_INQUIRY" }, testPatientUserId,
+    );
+
+    // Schema-level: a client attempting to choose the sender fails loudly rather than having
+    // the field quietly dropped, so an old client cannot appear to work while being ignored.
+    const res = await request(app)
+      .post(`/conversations/${convo.id}/messages`)
+      .send({ senderId: testStaffId, type: "TEXT", content: "Forged" });
+
+    expect(res.status).toBe(400);
+  });
+});
+
 describe("MessagingService — WhatsApp-style delivery/read status", () => {
   it("marks a staff message DELIVERED when the patient fetches their conversation list", async () => {
     const convo = await messagingSvc.startConversation({ patientId: testPatientId, conversationType: "ADMIN_INQUIRY" }, testPatientUserId);
     const posted = await messagingSvc.postMessage({
-      conversationId: convo.id, senderId: testStaffId, type: "TEXT", content: "We're looking into it.",
+      conversationId: convo.id, type: "TEXT", content: "We're looking into it.",
     }, process.env.TEST_USER_ID!);
     expect(posted.status).toBe("SENT");
 
@@ -214,7 +252,7 @@ describe("MessagingService — WhatsApp-style delivery/read status", () => {
   it("does not mark the viewer's own messages as delivered", async () => {
     const convo = await messagingSvc.startConversation({ patientId: testPatientId, conversationType: "ADMIN_INQUIRY" }, testPatientUserId);
     const posted = await messagingSvc.postMessage(
-      { conversationId: convo.id, senderId: testPatientUserId, type: "TEXT", content: "Hello" }, testPatientUserId,
+      { conversationId: convo.id, type: "TEXT", content: "Hello" }, testPatientUserId,
     );
 
     await messagingSvc.listByPatient(testPatientId, testPatientUserId);
@@ -227,7 +265,7 @@ describe("MessagingService — WhatsApp-style delivery/read status", () => {
   it("marks a patient's message READ when staff opens the thread", async () => {
     const convo = await messagingSvc.startConversation({ patientId: testPatientId, conversationType: "ADMIN_INQUIRY" }, testPatientUserId);
     const posted = await messagingSvc.postMessage(
-      { conversationId: convo.id, senderId: testPatientUserId, type: "TEXT", content: "Any update?" }, testPatientUserId,
+      { conversationId: convo.id, type: "TEXT", content: "Any update?" }, testPatientUserId,
     );
     expect(posted.status).toBe("SENT");
 
@@ -241,7 +279,7 @@ describe("MessagingService — WhatsApp-style delivery/read status", () => {
   it("marks a staff message READ when the patient opens the thread, even if never fetched as a list first", async () => {
     const convo = await messagingSvc.startConversation({ patientId: testPatientId, conversationType: "ADMIN_INQUIRY" }, testPatientUserId);
     const posted = await messagingSvc.postMessage({
-      conversationId: convo.id, senderId: testStaffId, type: "TEXT", content: "Reply",
+      conversationId: convo.id, type: "TEXT", content: "Reply",
     }, process.env.TEST_USER_ID!);
 
     await messagingSvc.listMessages(convo.id, testPatientUserId);

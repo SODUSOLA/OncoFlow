@@ -143,7 +143,7 @@ describe("Socket.IO — real connection, emit on real events", () => {
     let receivedTooEarly = false;
     clientSocket.once("message:new", () => { receivedTooEarly = true; });
     await messagingSvc.postMessage(
-      { conversationId: convo.id, senderId: testPatientUserId, type: "TEXT", content: "before join" },
+      { conversationId: convo.id, type: "TEXT", content: "before join" },
       testPatientUserId,
     );
     await new Promise((r) => setTimeout(r, 100));
@@ -182,7 +182,7 @@ describe("Socket.IO — real connection, emit on real events", () => {
       patientClient.once("message:new", resolve);
     });
     await messagingSvc.postMessage(
-      { conversationId: convo.id, senderId: testPatientUserId, type: "TEXT", content: "after join" },
+      { conversationId: convo.id, type: "TEXT", content: "after join" },
       testPatientUserId,
     );
     const payload = await messageReceived;

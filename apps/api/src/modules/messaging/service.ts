@@ -147,7 +147,7 @@ export class MessagingService {
 
     const conversationRow = await this.createConversationRecord(patientId, "MO_SIDE_EFFECT");
     const messageResult = await this.postMessage(
-      { conversationId: conversationRow.id, senderId: callerId, type: "TEXT", content: message },
+      { conversationId: conversationRow.id, type: "TEXT", content: message },
       callerId,
     );
 
@@ -202,8 +202,13 @@ export class MessagingService {
 
   // Stamps first_response_at exactly once, only for a real (non-SYSTEM) message, and only
   // the first one — everything downstream (SLA breach sweep) reads that single stamp.
+  // senderId is deliberately NOT part of `data`: it is always the authenticated caller.
+  // It used to be taken from the request body while only the *caller* was authorized against
+  // the conversation, so any participant could post a message attributed to someone else —
+  // a patient could store clinical advice under their doctor's name, and both the patient and
+  // staff would see it rendered as having come from that doctor.
   async postMessage(
-    data: { conversationId: string; senderId: string; type: MessageType; content: string },
+    data: { conversationId: string; type: MessageType; content: string },
     callerId: string,
   ) {
     const conversationRow = await conversationRepo.findById(data.conversationId);
@@ -220,7 +225,7 @@ export class MessagingService {
     const messageRow = await messageRepo.create({
       id: crypto.randomUUID(),
       conversationId: data.conversationId,
-      senderId: data.senderId,
+      senderId: callerId,
       type: data.type,
       content: data.content,
     });

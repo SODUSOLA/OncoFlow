@@ -105,8 +105,9 @@ describe("Side-effect report lifecycle — close, reopen, and re-report", () => 
   });
 
   it("rejects a new message to a closed conversation", async () => {
+    // No senderId — the server attributes the message to the authenticated session, and the
+    // route now rejects a body that supplies one.
     const res = await request(app).post(`/conversations/${sharedState.openConversationId}/messages`).set("Cookie", patientCookie).send({
-      senderId: (await db.select().from(patient).where(eq(patient.id, patientId)).limit(1))[0]!.userId,
       type: "TEXT",
       content: "Are you still there?",
     });

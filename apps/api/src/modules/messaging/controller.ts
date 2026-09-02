@@ -65,10 +65,10 @@ export async function listConversationsHandler(req: Request, res: Response) {
 
 export async function postMessageHandler(req: Request, res: Response) {
   try {
-    const { senderId, type, content } = req.body;
+    const { type, content } = req.body;
     const callerId = (req as AuthenticatedRequest).userId;
     const result = await messagingSvc.postMessage({
-      conversationId: String(req.params.id), senderId, type, content,
+      conversationId: String(req.params.id), type, content,
     }, callerId);
     res.status(201).json({ message: result });
   } catch (err) {

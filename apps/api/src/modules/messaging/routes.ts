@@ -33,10 +33,12 @@ const listConversationsQuerySchema = z.object({
 });
 
 const postMessageSchema = z.object({
-  senderId: z.string().uuid(),
+  // No senderId: the sender is the authenticated caller. Accepting one here is what allowed
+  // messages to be attributed to another user. Left out of the schema entirely so a client
+  // still sending it fails loudly rather than having it silently ignored.
   type: z.enum(messageTypeEnum.enumValues),
   content: z.string().trim().min(1).max(4000),
-});
+}).strict();
 
 const startSideEffectReportSchema = z.object({
   patientId: z.string().uuid(),

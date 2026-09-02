@@ -308,8 +308,9 @@ function MessagesPageInner() {
     setSending(true);
     setError(null);
     try {
+      // No senderId: the server attributes the message to the authenticated session. Sending
+      // one was how a message could be stored under another user's name.
       const res = await api.post<{ message: Message }>(`/conversations/${selected.id}/messages`, {
-        senderId: patient.userId,
         type: "TEXT",
         content: newMessage.trim(),
       });
@@ -334,7 +335,6 @@ function MessagesPageInner() {
         patientId: patient.id, mimeType, content,
       });
       const res = await api.post<{ message: Message }>(`/conversations/${selected.id}/messages`, {
-        senderId: patient.userId,
         type,
         content: uploadRes.file.id,
       });
