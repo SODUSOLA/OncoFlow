@@ -13,6 +13,9 @@ import { timelineService } from "./services/TimelineService.js";
 import { placeCall } from "./services/CallService.js";
 import { maskPhone } from "../../lib/maskPhone.js";
 import { resolveScopeOrDeny } from "../../lib/facility-scope.js";
+// Cross-module read, same pattern as billing/controller.ts's PatientRepository import: this
+// module needs the facility's label, which it does not own.
+import { FacilityRepository } from "../facility/index.js";
 
 const patientSvc = new PatientService();
 const patientRepo = new PatientRepository();
@@ -20,6 +23,7 @@ const addressRepo = new AddressRepository();
 const contactRepo = new EmergencyContactRepository();
 const walletRepo = new WalletRepository();
 const registrationRequestRepo = new PatientRegistrationRequestRepository();
+const facilityRepo = new FacilityRepository();
 
 export async function registerPatientHandler(req: Request, res: Response) {
   try {
@@ -75,9 +79,14 @@ export async function getMyPatientHandler(req: Request, res: Response) {
     const addresses = await addressRepo.findByPatient(patientRow.id);
     const contacts = await contactRepo.findByPatient(patientRow.id);
     const wallet = await walletRepo.findByPatient(patientRow.id);
+    // Resolved here rather than left to the client: the patient's own profile wants the
+    // facility's *name*, and patient.facilityId alone would force every screen showing it to
+    // fetch the whole facility list just to look up one label.
+    const facilityRow = patientRow.facilityId ? await facilityRepo.findById(patientRow.facilityId) : null;
 
     res.json({
       patient: entity.toOwnJSON(),
+      facility: facilityRow ? { id: facilityRow.id, name: facilityRow.name, region: facilityRow.region } : null,
       addresses: addresses.map((a) => ({ id: a.id, country: a.country, state: a.state, city: a.city, address: a.address })),
       emergencyContacts: contacts.map((c) => ({ id: c.id, name: c.name, relationship: c.relationship, phone: c.phone })),
       wallet: wallet ? new Wallet(wallet).toJSON() : null,

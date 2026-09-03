@@ -56,6 +56,24 @@ async function callerOwnsPatient(callerId: string, patientId: string): Promise<b
   return !!patientRow?.userId && patientRow.userId === callerId;
 }
 
+// Attaches each conversation's most recent message so a list view can show a preview without
+// opening the thread. Non-TEXT messages carry a file id in `content`, never something a UI
+// should print, so the shape flags the type and lets the client render its own label.
+async function withLastMessage(rows: Awaited<ReturnType<ConversationRepository["findByPatient"]>>) {
+  const latest = await messageRepo.findLatestByConversations(rows.map((r) => r.id));
+  const byConversation = new Map(latest.map((m) => [m.conversationId, m]));
+
+  return rows.map((r) => {
+    const m = byConversation.get(r.id);
+    return {
+      ...new Conversation(r).toJSON(),
+      lastMessage: m
+        ? { id: m.id, senderId: m.senderId, type: m.type, content: m.content, createdAt: m.createdAt }
+        : null,
+    };
+  });
+}
+
 export class MessagingService {
   async startConversation(
     data: { patientId: string; conversationType: ConversationType; assignedTo?: string },
@@ -183,7 +201,7 @@ export class MessagingService {
     for (const row of rows) {
       await messageRepo.markDeliveredForViewer(row.id, patientRow?.userId ?? null, isSelf);
     }
-    return rows.map((r) => new Conversation(r).toJSON());
+    return withLastMessage(rows);
   }
 
   // Staff-only path (a patient never has a conversation "assigned" to them) — no ownership
@@ -197,7 +215,7 @@ export class MessagingService {
       const patientRow = await patientRepo.findById(row.patientId);
       await messageRepo.markDeliveredForViewer(row.id, patientRow?.userId ?? null, false);
     }
-    return rows.map((r) => new Conversation(r).toJSON());
+    return withLastMessage(rows);
   }
 
   // Stamps first_response_at exactly once, only for a real (non-SYSTEM) message, and only

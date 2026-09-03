@@ -203,6 +203,56 @@ describe("MessagingJobService — SLA breach sweep (F3.1 DoD)", () => {
 // service authorized the caller against the conversation but then persisted the body's
 // senderId verbatim. Storing clinical advice under a doctor's name is the worst case, and it
 // was reachable over plain HTTP by anyone who could post at all.
+// The conversation list feeds a card that previews the thread, so it has to carry the latest
+// message. Previously the list returned conversation rows only, and every card could show was
+// the conversation type — making two threads of the same type indistinguishable.
+describe("MessagingService — conversation list previews", () => {
+  it("attaches the most recent message to each conversation", async () => {
+    const convo = await messagingSvc.startConversation(
+      { patientId: testPatientId, conversationType: "ADMIN_INQUIRY" }, testPatientUserId,
+    );
+    await messagingSvc.postMessage(
+      { conversationId: convo.id, type: "TEXT", content: "First" }, testPatientUserId,
+    );
+    await new Promise((r) => setTimeout(r, 10));
+    await messagingSvc.postMessage(
+      { conversationId: convo.id, type: "TEXT", content: "Most recent" }, testPatientUserId,
+    );
+
+    const list = await messagingSvc.listByPatient(testPatientId, testPatientUserId);
+    const listed = list.find((c) => c.id === convo.id);
+    expect(listed!.lastMessage).not.toBeNull();
+    expect(listed!.lastMessage!.content).toBe("Most recent");
+    expect(listed!.lastMessage!.senderId).toBe(testPatientUserId);
+  });
+
+  it("returns a null preview for a conversation with no messages", async () => {
+    const convo = await messagingSvc.startConversation(
+      { patientId: testPatientId, conversationType: "ADMIN_INQUIRY" }, testPatientUserId,
+    );
+
+    const list = await messagingSvc.listByPatient(testPatientId, testPatientUserId);
+    expect(list.find((c) => c.id === convo.id)!.lastMessage).toBeNull();
+  });
+
+  // One query for the whole list, not one per conversation — the preview must not turn the
+  // list endpoint into an N+1 that grows with the number of threads.
+  it("resolves previews for several conversations at once", async () => {
+    const a = await messagingSvc.startConversation(
+      { patientId: testPatientId, conversationType: "ADMIN_INQUIRY" }, testPatientUserId,
+    );
+    const b = await messagingSvc.startConversation(
+      { patientId: testPatientId, conversationType: "ADMIN_INQUIRY" }, testPatientUserId,
+    );
+    await messagingSvc.postMessage({ conversationId: a.id, type: "TEXT", content: "In A" }, testPatientUserId);
+    await messagingSvc.postMessage({ conversationId: b.id, type: "TEXT", content: "In B" }, testPatientUserId);
+
+    const list = await messagingSvc.listByPatient(testPatientId, testPatientUserId);
+    expect(list.find((c) => c.id === a.id)!.lastMessage!.content).toBe("In A");
+    expect(list.find((c) => c.id === b.id)!.lastMessage!.content).toBe("In B");
+  });
+});
+
 describe("MessagingService — message attribution", () => {
   it("attributes a message to the caller, not to a senderId supplied by the client", async () => {
     const convo = await messagingSvc.startConversation(

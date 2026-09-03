@@ -2,12 +2,17 @@
 
 import { useState } from "react";
 import Link from "next/link";
-import { Settings, Camera, IdCard, Pencil } from "lucide-react";
+import { Settings, Camera, IdCard, Pencil, MapPin, Users, Hospital } from "lucide-react";
 import { Card } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
 import { FieldWrapper, Input } from "@/components/ui/Field";
 import { api } from "@/lib/api";
-import { useMyPatient } from "@/lib/useMyPatient";
+import {
+  useMyPatient,
+  type PatientAddress,
+  type PatientEmergencyContact,
+  type PatientFacility,
+} from "@/lib/useMyPatient";
 import type { Patient } from "@/lib/types";
 
 function fileToBase64(file: File): Promise<string> {
@@ -23,7 +28,7 @@ function fileToBase64(file: File): Promise<string> {
 // server-side (SELF_EDITABLE_FIELDS in patient/controller.ts); this mirrors it so the UI
 // doesn't show inputs for fields a patient's own edit can never actually change.
 export default function ProfilePage() {
-  const { patient, loading, notLinked, reload } = useMyPatient();
+  const { patient, facility, addresses, emergencyContacts, loading, notLinked, reload } = useMyPatient();
 
   if (loading) {
     return <p className="p-6 text-center text-sm text-neutral-400">Loading your profile…</p>;
@@ -39,10 +44,26 @@ export default function ProfilePage() {
     );
   }
 
-  return <ProfileForm patient={patient} onUpdated={reload} />;
+  return (
+    <ProfileForm
+      patient={patient}
+      facility={facility}
+      addresses={addresses}
+      emergencyContacts={emergencyContacts}
+      onUpdated={reload}
+    />
+  );
 }
 
-function ProfileForm({ patient, onUpdated }: { patient: Patient; onUpdated: () => void }) {
+function ProfileForm({
+  patient, facility, addresses, emergencyContacts, onUpdated,
+}: {
+  patient: Patient;
+  facility: PatientFacility | null;
+  addresses: PatientAddress[];
+  emergencyContacts: PatientEmergencyContact[];
+  onUpdated: () => void;
+}) {
   const [phone, setPhone] = useState(patient.phone ?? "");
   const [secondaryEmail, setSecondaryEmail] = useState(patient.secondaryEmail ?? "");
   // Contact details are read-only until Edit is pressed. Rendering live inputs by default made
@@ -125,8 +146,12 @@ function ProfileForm({ patient, onUpdated }: { patient: Patient; onUpdated: () =
             <p className="text-sm text-neutral-900">{new Date(patient.dob).toLocaleDateString()}</p>
           </div>
           <div>
-            <p className="text-xs text-neutral-500">Gender</p>
+            <p className="text-xs text-neutral-500">Biological Sex</p>
             <p className="text-sm text-neutral-900">{patient.gender}</p>
+          </div>
+          <div className="col-span-2">
+            <p className="text-xs text-neutral-500">Account Email</p>
+            <p className="truncate text-sm text-neutral-900">{patient.email}</p>
           </div>
         </div>
         <p className="text-xs text-neutral-400">
@@ -195,6 +220,73 @@ function ProfileForm({ patient, onUpdated }: { patient: Patient; onUpdated: () =
               <p className="text-sm text-neutral-900">{patient.secondaryEmail || "Not provided"}</p>
             </div>
           </div>
+        )}
+      </Card>
+
+      <Card className="space-y-4">
+        <h2 className="flex items-center gap-2 text-sm font-semibold text-neutral-700">
+          <Hospital className="size-4" aria-hidden="true" /> Care Facility
+        </h2>
+        {facility ? (
+          <div className="space-y-3">
+            <div>
+              <p className="text-xs text-neutral-500">Treating Facility</p>
+              <p className="text-sm text-neutral-900">{facility.name}</p>
+            </div>
+            <div>
+              <p className="text-xs text-neutral-500">Region</p>
+              <p className="text-sm text-neutral-900">{facility.region}</p>
+            </div>
+            {/* facilityConfirmedAt is null until a Regional Admin confirms the choice made at
+                registration — the record is fully usable meanwhile, so this is status, not a
+                warning. */}
+            <div>
+              <p className="text-xs text-neutral-500">Status</p>
+              <p className="text-sm text-neutral-900">
+                {patient.facilityConfirmedAt ? "Confirmed by your care team" : "Awaiting care team confirmation"}
+              </p>
+            </div>
+          </div>
+        ) : (
+          <p className="text-sm text-neutral-400">No facility on record yet.</p>
+        )}
+      </Card>
+
+      <Card className="space-y-4">
+        <h2 className="flex items-center gap-2 text-sm font-semibold text-neutral-700">
+          <MapPin className="size-4" aria-hidden="true" /> Address
+        </h2>
+        {addresses.length === 0 ? (
+          <p className="text-sm text-neutral-400">No address on record. Your care team can add one for you.</p>
+        ) : (
+          <ul className="space-y-3">
+            {addresses.map((a) => (
+              <li key={a.id} className="text-sm text-neutral-900">
+                {a.address}
+                <span className="block text-xs text-neutral-500">{[a.city, a.state, a.country].filter(Boolean).join(", ")}</span>
+              </li>
+            ))}
+          </ul>
+        )}
+      </Card>
+
+      <Card className="space-y-4">
+        <h2 className="flex items-center gap-2 text-sm font-semibold text-neutral-700">
+          <Users className="size-4" aria-hidden="true" /> Emergency Contacts
+        </h2>
+        {emergencyContacts.length === 0 ? (
+          <p className="text-sm text-neutral-400">
+            No emergency contact on record. Your care team can add one for you.
+          </p>
+        ) : (
+          <ul className="space-y-3">
+            {emergencyContacts.map((c) => (
+              <li key={c.id}>
+                <p className="text-sm text-neutral-900">{c.name}</p>
+                <p className="text-xs text-neutral-500">{c.relationship} · {c.phone}</p>
+              </li>
+            ))}
+          </ul>
         )}
       </Card>
 

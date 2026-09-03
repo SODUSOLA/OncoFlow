@@ -4,13 +4,42 @@ import { useCallback, useSyncExternalStore } from "react";
 import { api } from "./api";
 import type { Patient, Wallet } from "./types";
 
+export interface PatientAddress {
+  id: string;
+  country: string;
+  state: string;
+  city: string;
+  address: string;
+}
+
+export interface PatientEmergencyContact {
+  id: string;
+  name: string;
+  relationship: string;
+  phone: string;
+}
+
+export interface PatientFacility {
+  id: string;
+  name: string;
+  region: string;
+}
+
 interface MyPatientResponse {
   patient: Patient;
+  facility: PatientFacility | null;
+  addresses: PatientAddress[];
+  emergencyContacts: PatientEmergencyContact[];
   wallet: Wallet | null;
 }
 
 interface MyPatientState {
   patient: Patient | null;
+  facility: PatientFacility | null;
+  // GET /patients/me has always returned these; they were simply dropped on the floor here, so
+  // no screen could show a patient their own address or emergency contacts.
+  addresses: PatientAddress[];
+  emergencyContacts: PatientEmergencyContact[];
   wallet: Wallet | null;
   loading: boolean;
   error: string | null;
@@ -30,6 +59,9 @@ interface MyPatientState {
 // not an error, so callers check `notLinked` rather than treating `error` as fatal.
 const initialState: MyPatientState = {
   patient: null,
+  facility: null,
+  addresses: [],
+  emergencyContacts: [],
   wallet: null,
   loading: true,
   error: null,
@@ -53,12 +85,24 @@ function load(): Promise<void> {
   inFlight = (async () => {
     try {
       const res = await api.get<MyPatientResponse>("/patients/me");
-      publish({ patient: res.patient, wallet: res.wallet, loading: false, error: null, notLinked: false });
+      publish({
+        patient: res.patient,
+        facility: res.facility ?? null,
+        addresses: res.addresses ?? [],
+        emergencyContacts: res.emergencyContacts ?? [],
+        wallet: res.wallet,
+        loading: false,
+        error: null,
+        notLinked: false,
+      });
     } catch (err) {
       const message = err instanceof Error ? err.message : "Failed to load patient record";
       const notLinked = message.includes("No patient record linked");
       publish({
         patient: null,
+        facility: null,
+        addresses: [],
+        emergencyContacts: [],
         wallet: null,
         loading: false,
         error: notLinked ? null : message,
@@ -115,6 +159,9 @@ export function useMyPatient() {
 
   return {
     patient: snapshot.patient,
+    facility: snapshot.facility,
+    addresses: snapshot.addresses,
+    emergencyContacts: snapshot.emergencyContacts,
     wallet: snapshot.wallet,
     loading: snapshot.loading,
     error: snapshot.error,

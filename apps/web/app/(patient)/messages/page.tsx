@@ -37,6 +37,35 @@ function appendMessage(prev: Message[], msg: Message): Message[] {
   return prev.some((m) => m.id === msg.id) ? prev : [...prev, msg];
 }
 
+// A conversation card shows the thread's latest message, so the patient can tell threads apart
+// without opening each one. IMAGE and VOICE messages carry a file id in `content` — never
+// printable — so they get a label instead.
+function lastMessagePreview(c: Conversation, ownUserId: string | null | undefined): string {
+  const m = c.lastMessage;
+  if (!m) return "No messages yet";
+
+  const body =
+    m.type === "IMAGE" ? "Photo"
+      : m.type === "VOICE" ? "Voice note"
+        : m.content;
+
+  // "You:" mirrors the convention every messaging app uses; a message from the care team is
+  // left unprefixed rather than guessing at a role the list response does not carry.
+  return ownUserId && m.senderId === ownUserId ? `You: ${body}` : body;
+}
+
+// Short, relative, and stable enough for a list: minutes within the hour, hours within the day,
+// then the calendar date. Long-form timestamps belong in the thread, not the card.
+function shortTimestamp(iso: string): string {
+  const then = new Date(iso);
+  const minutes = Math.floor((Date.now() - then.getTime()) / 60_000);
+  if (minutes < 1) return "now";
+  if (minutes < 60) return `${minutes}m`;
+  const hours = Math.floor(minutes / 60);
+  if (hours < 24) return `${hours}h`;
+  return then.toLocaleDateString(undefined, { day: "numeric", month: "short" });
+}
+
 function blobToBase64(blob: Blob): Promise<string> {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
@@ -688,7 +717,22 @@ function MessagesPageInner() {
                     <div className="flex size-9 shrink-0 items-center justify-center rounded-full bg-primary-50 text-primary">
                       <Icon className="size-4.5" aria-hidden="true" />
                     </div>
-                    <span className="flex-1 text-sm font-medium text-neutral-900">{TYPE_LABELS[c.conversationType]}</span>
+                    {/* min-w-0 so the preview can truncate instead of forcing the row wider. */}
+                    <div className="min-w-0 flex-1">
+                      <div className="flex items-baseline justify-between gap-2">
+                        <span className="truncate text-sm font-medium text-neutral-900">
+                          {TYPE_LABELS[c.conversationType]}
+                        </span>
+                        {c.lastMessage && (
+                          <span className="shrink-0 text-xs text-neutral-400">
+                            {shortTimestamp(c.lastMessage.createdAt)}
+                          </span>
+                        )}
+                      </div>
+                      <p className="truncate text-xs text-neutral-500">
+                        {lastMessagePreview(c, patient?.userId)}
+                      </p>
+                    </div>
                     <SlaBadge conversation={c} />
                   </Card>
                 </button>

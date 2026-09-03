@@ -1,5 +1,5 @@
 import { db } from "../../db/index.js";
-import { eq, ne, sql, and, isNull, lt } from "drizzle-orm";
+import { eq, ne, sql, and, isNull, lt, inArray, desc } from "drizzle-orm";
 import {
   conversation, participant, message, meeting, transcript, transcriptionAssignment, conversationFeedback,
 } from "./schema.js";
@@ -87,6 +87,21 @@ export class MessageRepository {
       .from(message)
       .where(eq(message.conversationId, conversationId))
       .orderBy(message.createdAt);
+  }
+
+  // Latest message for each of several conversations, in one query rather than one per
+  // conversation — this feeds the conversation list, so a per-row lookup would be an N+1 that
+  // grows with the number of threads a patient has.
+  //
+  // DISTINCT ON is Postgres-specific and needs its ORDER BY to lead with the same expression,
+  // hence ordering by conversation_id first and only then by recency.
+  async findLatestByConversations(conversationIds: string[]) {
+    if (conversationIds.length === 0) return [];
+    return db
+      .selectDistinctOn([message.conversationId])
+      .from(message)
+      .where(inArray(message.conversationId, conversationIds))
+      .orderBy(message.conversationId, desc(message.createdAt));
   }
 
   // First non-SYSTEM message in the conversation, if any — used to determine whether this

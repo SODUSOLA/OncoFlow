@@ -14,6 +14,9 @@ export interface Patient {
   profilePictureFileId: string | null;
   status: string;
   facilityId: string;
+  // Null until a Regional Admin confirms the facility chosen at registration. Not a gate on
+  // access — the record is usable immediately — just onboarding status the UI can surface.
+  facilityConfirmedAt: string | null;
   // Only present on GET /patients/me (toOwnJSON) — never on staff-facing responses.
   phone?: string;
   secondaryEmail?: string | null;
@@ -72,6 +75,16 @@ export interface Conversation {
   firstResponseAt: string | null;
   slaBreached: boolean;
   assignedTo: string | null;
+  // Most recent message in the thread, for the list preview. Null for a conversation that has
+  // no messages yet. `content` is a file id for IMAGE/VOICE, so callers must branch on `type`
+  // rather than printing it.
+  lastMessage: {
+    id: string;
+    senderId: string;
+    type: "TEXT" | "IMAGE" | "VOICE" | "SYSTEM";
+    content: string;
+    createdAt: string;
+  } | null;
 }
 
 export interface Message {
