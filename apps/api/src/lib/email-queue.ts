@@ -1,3 +1,4 @@
+import crypto from "node:crypto";
 import { Queue } from "bullmq";
 import { Redis as IORedis } from "ioredis";
 import { config } from "../config.js";
@@ -7,7 +8,15 @@ import { sendEmail } from "./email.js";
 // null and doesn't get along with lib/redis.ts's keyPrefix-tuned connection, so it gets its own.
 const connection = new IORedis(config.redisUrl, { maxRetriesPerRequest: null });
 
-export const EMAIL_QUEUE_NAME = "email";
+// Namespaced per process under test so a vitest run and a dev server running alongside it do
+// not share one BullMQ queue. They otherwise compete for the same jobs against the same Redis:
+// the dev server's worker consumes a job the test enqueued, and the test sees fewer attempts
+// than it made — which surfaced as the retry test failing only while a dev server happened to
+// be running, and passing the moment it was stopped. Same reasoning as the rate limiter's key
+// namespace in lib/rate-limit.ts. Plain "email" everywhere else, which is what production uses.
+export const EMAIL_QUEUE_NAME = config.isTest
+  ? `email-test-${process.pid}-${crypto.randomBytes(3).toString("hex")}`
+  : "email";
 
 export interface EmailJobData {
   to: string;
