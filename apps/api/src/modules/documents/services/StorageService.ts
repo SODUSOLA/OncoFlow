@@ -5,6 +5,23 @@ const R2_ACCOUNT_ID = process.env.R2_ACCOUNT_ID ?? "";
 const R2_ACCESS_KEY_ID = process.env.R2_ACCESS_KEY_ID ?? "";
 const R2_SECRET_ACCESS_KEY = process.env.R2_SECRET_ACCESS_KEY ?? "";
 const R2_BUCKET_NAME = process.env.R2_BUCKET_NAME ?? "oncoflow-uploads";
+const R2_JURISDICTION = (process.env.R2_JURISDICTION ?? "").trim().toLowerCase();
+
+// Cloudflare serves each R2 jurisdiction from its own endpoint host, and a bucket created in
+// one jurisdiction is completely invisible from another: every request for it comes back as
+// NoSuchBucket, which is indistinguishable from a misspelt bucket name. Building the endpoint
+// from an explicit jurisdiction is what makes that difference configurable instead of a puzzle.
+const R2_JURISDICTIONS = new Set(["", "eu", "fedramp"]);
+
+function r2Endpoint(): string {
+  if (!R2_JURISDICTIONS.has(R2_JURISDICTION)) {
+    throw new Error(
+      `Unsupported R2_JURISDICTION "${R2_JURISDICTION}". Use "eu", "fedramp", or leave it unset for the default jurisdiction.`,
+    );
+  }
+  const host = R2_JURISDICTION ? `${R2_ACCOUNT_ID}.${R2_JURISDICTION}` : R2_ACCOUNT_ID;
+  return `https://${host}.r2.cloudflarestorage.com`;
+}
 
 function createS3Client(): S3Client {
   if (!R2_ACCOUNT_ID || !R2_ACCESS_KEY_ID || !R2_SECRET_ACCESS_KEY) {
@@ -12,7 +29,7 @@ function createS3Client(): S3Client {
   }
   return new S3Client({
     region: "auto",
-    endpoint: `https://${R2_ACCOUNT_ID}.r2.cloudflarestorage.com`,
+    endpoint: r2Endpoint(),
     credentials: {
       accessKeyId: R2_ACCESS_KEY_ID,
       secretAccessKey: R2_SECRET_ACCESS_KEY,
