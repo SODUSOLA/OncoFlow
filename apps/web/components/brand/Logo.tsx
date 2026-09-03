@@ -2,12 +2,13 @@
 
 import { motion, useReducedMotion } from "framer-motion";
 import { cn } from "@/lib/utils";
+import { siteConfig } from "@/lib/site-config";
 import { MOTION_MS } from "@/lib/motion";
 import { RIBBON_FACET_PATHS, RIBBON_PATH, RIBBON_VIEWBOX } from "./ribbon-paths";
 
 interface LogoProps {
   className?: string;
-  /** Hide the "OncoFlow" wordmark — icon only (e.g. compact mobile header). */
+  /** Hide the wordmark — icon only (e.g. compact mobile header). */
   iconOnly?: boolean;
   /** Render for a dark (navy) background — e.g. the footer. */
   onDark?: boolean;
@@ -90,7 +91,9 @@ export function Logo({ className, iconOnly = false, onDark = false }: LogoProps)
               : { duration: WORDMARK_LIFT_S, ease: "easeOut", delay: RIBBON_DRAW_S }
           }
         >
-          OncoFlow
+          {/* The registered company name, not the short product name — sourced from
+              siteConfig.legalName so the mark and the footer copyright cannot drift apart. */}
+          {siteConfig.legalName}
         </motion.span>
       )}
     </span>

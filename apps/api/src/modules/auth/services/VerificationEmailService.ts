@@ -27,5 +27,5 @@ export async function sendVerificationEmail(email: string, code: string): Promis
     <p style="color: #888; font-size: 13px;">Or open this link on the device you registered from: <a href="${link}">${link}</a></p>
   `;
 
-  await enqueueEmail(email, "OncoFlow — Your verification code", html);
+  await enqueueEmail(email, "OncoFlow Limited — Your verification code", html);
 }

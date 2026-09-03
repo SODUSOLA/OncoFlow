@@ -56,7 +56,7 @@ export function RegionalAdminLayout() {
         <div className={cn("flex items-center pt-6", collapsed ? "justify-center px-2" : "justify-between px-6")}>
           {!collapsed && (
             <div>
-              <p className="text-lg font-bold tracking-tight text-white">ONCOFLOW</p>
+              <p className="text-lg font-bold tracking-tight text-white">ONCOFLOW LIMITED</p>
               <p className="text-[11px] font-semibold uppercase tracking-widest text-white/40">Regional Operations</p>
             </div>
           )}

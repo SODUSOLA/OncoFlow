@@ -18,5 +18,5 @@ export async function sendRegistrationConfirmedEmail(
     <p>Keep your Unique Patient ID somewhere safe — you'll be asked for it at appointments.</p>
   `;
 
-  await enqueueEmail(email, "OncoFlow — Registration confirmed", html);
+  await enqueueEmail(email, "OncoFlow Limited — Registration confirmed", html);
 }

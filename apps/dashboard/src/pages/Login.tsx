@@ -46,8 +46,8 @@ export default function Login() {
     <div className="flex min-h-screen items-center justify-center bg-gray-50 px-4">
       <div className="w-full max-w-sm">
         <div className="mb-8 flex flex-col items-center">
-          <img src="/oncoflow-logo.svg" alt="OncoFlow" className="size-12" />
-          <p className="mt-3 text-lg font-bold tracking-tight text-ink">ONCOFLOW</p>
+          <img src="/oncoflow-logo.svg" alt="OncoFlow Limited" className="size-12" />
+          <p className="mt-3 text-lg font-bold tracking-tight text-ink">ONCOFLOW LIMITED</p>
           <p className="text-[11px] font-semibold uppercase tracking-widest text-gray-400">Staff Portal</p>
         </div>
 

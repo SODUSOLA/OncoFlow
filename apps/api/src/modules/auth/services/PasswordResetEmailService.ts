@@ -21,5 +21,5 @@ export async function sendPasswordResetEmail(email: string, token: string): Prom
     <p>This link expires in 1 hour. If you didn't request this, you can safely ignore this email — your password won't change.</p>
   `;
 
-  await enqueueEmail(email, "OncoFlow — Reset your password", html);
+  await enqueueEmail(email, "OncoFlow Limited — Reset your password", html);
 }
