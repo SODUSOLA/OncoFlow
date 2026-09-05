@@ -101,4 +101,13 @@ describe("GET /files/:id — INFECTED gate", () => {
     expect(res.status).toBe(403);
     expect(res.body.error).toContain("infected");
   });
+
+  // Never reaches getSignedUrl, so this needs no s3-request-presigner mock — the 403 fires
+  // from the same virusScanStatus check before any signing would happen, same as the assertion
+  // above for the metadata route.
+  it("blocks the content route for the same infected file (403)", async () => {
+    const res = await request(app).get(`/files/${infectedFileId}/content`);
+    expect(res.status).toBe(403);
+    expect(res.body.error).toContain("infected");
+  });
 });

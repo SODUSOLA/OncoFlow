@@ -5,10 +5,13 @@ import { createApp } from "../../../app.js";
 import { db } from "../../../db/index.js";
 import { facility } from "../../facility/schema.js";
 import { patient } from "../../patient/schema.js";
+import { user, session } from "../../auth/schema.js";
+import { SESSION_COOKIE_NAME } from "../../../lib/session-cookie.js";
 import { FileRepository } from "../repository.js";
 import { File } from "../entities/File.js";
 import { computeFileHash, buildStorageKey } from "../services/StorageService.js";
 import { config } from "../../../config.js";
+import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
 
 // file.patient_id has a real FK to patient.id — a bare crypto.randomUUID() with no matching
 // row (what several tests below used to pass) trips that constraint. This creates one real
@@ -26,13 +29,42 @@ async function createTestPatient(): Promise<string> {
   return patRows[0]!.id;
 }
 
+// A logged-in user with no roles/permissions at all — "not this patient's owner, and not
+// staff either" — for asserting the download route 403s the same way the metadata route does.
+// Session-cookie login, not a synthetic req.userId, since the ownership check depends on the
+// real cookie -> session -> userId derivation.
+async function createSessionCookie(): Promise<{ userId: string; cookie: string }> {
+  const userId = crypto.randomUUID();
+  await db.insert(user).values({
+    id: userId, email: `doc-owner-test-${crypto.randomUUID()}@example.com`, passwordHash: "test",
+  });
+  const sessionId = crypto.randomUUID();
+  await db.insert(session).values({
+    id: sessionId, userId, device: "test", ip: "127.0.0.1",
+    expiresAt: new Date(Date.now() + 30 * 60_000), mfaVerified: true,
+  });
+  return { userId, cookie: `${SESSION_COOKIE_NAME}=${sessionId}` };
+}
+
 vi.mock("@aws-sdk/client-s3", () => {
   const send = vi.fn().mockResolvedValue({});
   return {
     S3Client: vi.fn(() => ({ send })),
     PutObjectCommand: vi.fn(),
+    GetObjectCommand: vi.fn((input: { Bucket: string; Key: string }) => input),
   };
 });
+
+// getSignedUrl computes a real signature from the client's config (region, credentials), which
+// the bare { send } mock above doesn't have — mocked here the same way PutObjectCommand's
+// actual network call is mocked, so the download tests exercise the route's own logic
+// (authorization, infected-file block, the redirect itself) without needing real R2 signing.
+vi.mock("@aws-sdk/s3-request-presigner", () => ({
+  getSignedUrl: vi.fn(
+    (_client: unknown, command: { Bucket: string; Key: string }) =>
+      `https://mock-r2.example.com/${command.Bucket}/${command.Key}?mock-signature=1`,
+  ),
+}));
 
 const app = createApp();
 const repo = new FileRepository();
@@ -246,6 +278,65 @@ describe("FileService — get file by id", () => {
   it("returns 404 for non-existent file", async () => {
     const res = await request(app).get(`/files/${crypto.randomUUID()}`);
     expect(res.status).toBe(404);
+  });
+});
+
+// The bug this route fixes: uploads wrote to R2 and GET /files/:id returned metadata only —
+// storage_key, mime type, scan status — with nothing anywhere that read the object back out,
+// so an uploaded avatar or lab document had no way to ever reach a browser. This is the
+// content-serving half of the pair.
+describe("GET /files/:id/content — signed download", () => {
+  let uploadedId: string;
+  let uploadedStorageKey: string;
+
+  beforeAll(async () => {
+    const content = Buffer.from("download-route-test").toString("base64");
+    const res = await request(app)
+      .post("/files/upload")
+      .send({ mimeType: "application/pdf", content });
+    uploadedId = res.body.file.id;
+    uploadedStorageKey = res.body.file.storageKey;
+  });
+
+  it("redirects to a signed URL rather than returning JSON", async () => {
+    const res = await request(app).get(`/files/${uploadedId}/content`);
+    expect(res.status).toBe(302);
+    expect(res.headers.location).toContain("mock-r2.example.com");
+    expect(res.headers.location).toContain(uploadedStorageKey);
+  });
+
+  it("marks the redirect uncacheable, per Gate 6's 'fresh check on every access' rule", async () => {
+    const res = await request(app).get(`/files/${uploadedId}/content`);
+    expect(res.headers["cache-control"]).toBe("no-store");
+  });
+
+  it("does not force a download by default — an <img> tag should render it inline", async () => {
+    vi.mocked(getSignedUrl).mockClear();
+    await request(app).get(`/files/${uploadedId}/content`);
+    const [, command] = vi.mocked(getSignedUrl).mock.calls.at(-1)!;
+    expect((command as { ResponseContentDisposition?: string }).ResponseContentDisposition).toBeUndefined();
+  });
+
+  it("sets Content-Disposition: attachment with the file's own id and extension when ?download=true", async () => {
+    vi.mocked(getSignedUrl).mockClear();
+    await request(app).get(`/files/${uploadedId}/content?download=true`);
+    const [, command] = vi.mocked(getSignedUrl).mock.calls.at(-1)!;
+    expect((command as { ResponseContentDisposition?: string }).ResponseContentDisposition)
+      .toBe(`attachment; filename="${uploadedId}.pdf"`);
+  });
+
+  it("returns 404 for a non-existent file", async () => {
+    const res = await request(app).get(`/files/${crypto.randomUUID()}/content`);
+    expect(res.status).toBe(404);
+  });
+
+  // Same authorization as GET /files/:id (ownership-or-permission) — this file has no
+  // patientId, so an outsider with no file:read grant must be refused the bytes exactly as
+  // they're already refused the metadata.
+  it("returns 403 for a caller who is neither the file's owner nor holds file:read", async () => {
+    const outsider = await createSessionCookie();
+    const res = await request(app).get(`/files/${uploadedId}/content`).set("Cookie", outsider.cookie);
+    expect(res.status).toBe(403);
   });
 });
 

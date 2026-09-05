@@ -1,7 +1,7 @@
 import crypto from "node:crypto";
 import { FileRepository } from "./repository.js";
 import { File } from "./entities/File.js";
-import { computeFileHash, buildStorageKey, uploadToR2 } from "./services/StorageService.js";
+import { computeFileHash, buildStorageKey, uploadToR2, getSignedDownloadUrl } from "./services/StorageService.js";
 import { NotFoundError } from "../../lib/errors.js";
 import { virusScanQueue } from "./queue.js";
 
@@ -49,5 +49,16 @@ export class FileService {
   async findByPatient(patientId: string) {
     const rows = await fileRepo.findByPatient(patientId);
     return { files: rows.map((r) => new File(r).toJSON()) };
+  }
+
+  // Turns an already-authorized file record into somewhere its bytes can actually be fetched
+  // from. This method does not itself decide who may see the file — the controller runs the
+  // caller-specific ownership/permission and infected-status checks against the record from
+  // findById() before ever calling this, same as it already did for the metadata endpoint.
+  async getSignedUrl(file: ReturnType<File["toJSON"]>, opts: { forceDownload?: boolean } = {}) {
+    const ext = file.mimeType.split("/").pop() ?? "bin";
+    return getSignedDownloadUrl(file.storageKey, {
+      downloadFileName: opts.forceDownload ? `${file.id}.${ext}` : undefined,
+    });
   }
 }

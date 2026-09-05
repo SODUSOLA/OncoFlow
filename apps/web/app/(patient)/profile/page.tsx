@@ -73,6 +73,9 @@ function ProfileForm({
   const [saving, setSaving] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [result, setResult] = useState<string | null>(null);
+  // Falls back to initials if the photo 404s/403s (e.g. flagged infected and blocked) or the
+  // browser otherwise can't load it — a broken-image icon is worse than no photo at all.
+  const [pictureFailed, setPictureFailed] = useState(false);
 
   async function handleSave() {
     setSaving(true);
@@ -103,6 +106,7 @@ function ProfileForm({
       });
       await api.put(`/patients/${patient.id}`, { profilePictureFileId: uploadRes.file.id });
       onUpdated();
+      setPictureFailed(false);
       setResult("Profile picture updated");
     } catch (err) {
       setResult(err instanceof Error ? err.message : "Upload failed");
@@ -124,8 +128,23 @@ function ProfileForm({
       </div>
 
       <Card className="flex flex-col items-center gap-2 text-center">
-        <label className="group relative flex size-20 cursor-pointer items-center justify-center rounded-full bg-primary text-2xl font-bold text-accent">
-          {initials}
+        <label className="group relative flex size-20 cursor-pointer items-center justify-center overflow-hidden rounded-full bg-primary text-2xl font-bold text-accent">
+          {patient.profilePictureFileId && !pictureFailed ? (
+            // Same-origin path through the Next.js rewrite (next.config.ts), so the session
+            // cookie rides along automatically — no need to fetch and blob it in JS. The API
+            // route checks ownership/permission and the infected-file flag on every request
+            // before redirecting to a short-TTL signed R2 URL; onError here just means "that
+            // check failed or the file isn't there," so fall back to initials rather than a
+            // broken-image icon.
+            <img
+              src={`/api/files/${patient.profilePictureFileId}/content`}
+              alt={`${patient.firstName} ${patient.lastName}`}
+              className="size-full object-cover"
+              onError={() => setPictureFailed(true)}
+            />
+          ) : (
+            initials
+          )}
           <span className="absolute inset-0 flex items-center justify-center rounded-full bg-black/40 opacity-0 transition-opacity group-hover:opacity-100">
             <Camera className="size-5 text-white" aria-hidden="true" />
           </span>

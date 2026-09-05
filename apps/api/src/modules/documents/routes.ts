@@ -1,5 +1,5 @@
 import { Router } from "express";
-import { uploadFileHandler, getFileHandler, listPatientFilesHandler } from "./controller.js";
+import { uploadFileHandler, getFileHandler, downloadFileHandler, listPatientFilesHandler } from "./controller.js";
 import { requireAuthenticated } from "../../lib/rbac.js";
 import { validateBody, validateParams, validateQuery } from "../../lib/validation.js";
 import { z } from "zod";
@@ -25,6 +25,9 @@ const router = Router();
 // lives in the controller (callerOwnsPatient), which needs the record loaded first.
 router.post("/files/upload", requireAuthenticated(), validateBody(uploadSchema), uploadFileHandler);
 router.get("/files/:id", requireAuthenticated(), validateParams(fileIdParamSchema), getFileHandler);
+// Separate from /files/:id (metadata) on purpose — a browser <img>/<a> tag hits this one
+// directly and expects a redirect to bytes, not a JSON body.
+router.get("/files/:id/content", requireAuthenticated(), validateParams(fileIdParamSchema), downloadFileHandler);
 router.get("/files", requireAuthenticated(), validateQuery(listFilesQuerySchema), listPatientFilesHandler);
 
 export { router as documentRoutes };

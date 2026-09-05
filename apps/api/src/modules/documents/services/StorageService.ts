@@ -1,4 +1,5 @@
 import { S3Client, PutObjectCommand, GetObjectCommand } from "@aws-sdk/client-s3";
+import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
 import crypto from "node:crypto";
 
 const R2_ACCOUNT_ID = process.env.R2_ACCOUNT_ID ?? "";
@@ -77,6 +78,34 @@ export async function downloadFromR2(storageKey: string): Promise<Buffer> {
   const res = await client.send(new GetObjectCommand({ Bucket: R2_BUCKET_NAME, Key: storageKey }));
   const bytes = await res.Body!.transformToByteArray();
   return Buffer.from(bytes);
+}
+
+// Per docs/build-plan/10-security-gates.md Gate 6: "Never a public R2 bucket. Every file
+// access goes through a short-TTL signed URL, generated server-side after an object-level
+// authorization check." Five minutes is long enough to actually fetch the object (including a
+// slow connection) but short enough that a leaked or logged URL is worthless shortly after —
+// the authorization check is what runs again on every request, not the URL's own secrecy.
+//
+// getSignedUrl computes the signature locally from the client's own credentials; it makes no
+// request to R2 itself, so calling this before an authorization decision is settled costs a
+// few CPU cycles, not a network round trip or a real access to the object.
+const SIGNED_URL_TTL_SECONDS = 300;
+
+export async function getSignedDownloadUrl(
+  storageKey: string,
+  opts: { downloadFileName?: string } = {},
+): Promise<string> {
+  const client = getS3Client();
+  const command = new GetObjectCommand({
+    Bucket: R2_BUCKET_NAME,
+    Key: storageKey,
+    // Only set when the caller explicitly asked to download rather than view — forcing this
+    // unconditionally would make every image open a save dialog instead of rendering inline.
+    ...(opts.downloadFileName
+      ? { ResponseContentDisposition: `attachment; filename="${opts.downloadFileName}"` }
+      : {}),
+  });
+  return getSignedUrl(client, command, { expiresIn: SIGNED_URL_TTL_SECONDS });
 }
 
 export function resetS3ClientForTest(): void {

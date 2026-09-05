@@ -91,6 +91,53 @@ export async function getFileHandler(req: Request, res: Response) {
   }
 }
 
+// Serves the actual bytes. GET /files/:id only ever returned metadata — storage_key, mime
+// type, scan status — and nothing in the codebase read the object back out of R2 except the
+// virus-scan worker, so an uploaded avatar or lab document had no way to reach a browser at
+// all. This runs the exact same authorization as getFileHandler (ownership-or-permission,
+// then the infected-file block) before minting a fresh, short-TTL signed URL and redirecting
+// to it — never a public bucket link, per docs/build-plan/10-security-gates.md Gate 6.
+export async function downloadFileHandler(req: Request, res: Response) {
+  try {
+    const result = await fileSvc.findById(String(req.params.id));
+
+    const callerId = (req as AuthenticatedRequest).userId;
+    const isSelf = !!result.file.patientId && await callerOwnsPatient(callerId, result.file.patientId);
+    if (!isSelf && !(await userHasPermission(callerId, "file", "read"))) {
+      res.status(403).json({ error: "Forbidden" });
+      return;
+    }
+
+    // Same F4.6 rule as getFileHandler: an infected file is blocked outright, not just hidden
+    // from the metadata response — otherwise the flag would be cosmetic while the bytes stayed
+    // fetchable through this route.
+    if (result.file.virusScanStatus === "INFECTED") {
+      res.status(403).json({ error: "File blocked: flagged as infected, pending review" });
+      return;
+    }
+
+    // ?download=true asks for Content-Disposition: attachment (a save dialog) instead of
+    // letting the browser render the file inline — useful for a lab PDF, wrong default for an
+    // avatar `<img>` or an inline chat image.
+    const forceDownload = req.query.download === "true";
+    const url = await fileSvc.getSignedUrl(result.file, { forceDownload });
+
+    // Never cached: per Gate 6, every access mints a fresh signed URL after a fresh
+    // authorization check, not a URL an intermediary could hand out again without that check
+    // re-running.
+    res.set("Cache-Control", "no-store");
+    res.redirect(url);
+  } catch (err) {
+    if (err instanceof Error && err.message === "File not found") {
+      res.status(404).json({ error: "File not found" });
+      return;
+    }
+    const message = err instanceof Error ? err.message : "Internal server error";
+    const status = message.includes("not configured") ? 502 : 500;
+    res.status(status).json({ error: message });
+  }
+}
+
 export async function listPatientFilesHandler(req: Request, res: Response) {
   try {
     const patientId = typeof req.query.patientId === "string" ? req.query.patientId : undefined;

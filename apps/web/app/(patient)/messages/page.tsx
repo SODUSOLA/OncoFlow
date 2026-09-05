@@ -103,16 +103,38 @@ function DeliveryStatus({ status }: { status: Message["status"] }) {
   );
 }
 
-// The documents API only stores file metadata (no content-serving route yet — uploads write to
-// R2 but nothing reads them back), so an attached image/voice note can't actually be previewed
-// here. We show a plain attachment chip rather than a broken <img>/<audio> tag.
-function AttachmentChip({ type }: { type: "IMAGE" | "VOICE" }) {
-  const Icon = type === "IMAGE" ? Paperclip : Mic;
-  const label = type === "IMAGE" ? "Photo attachment" : "Voice note";
+// `content` is the attached file's id for IMAGE/VOICE messages (never printable text — see
+// lastMessagePreview above). GET /api/files/:id/content redirects to a short-TTL signed R2 URL
+// after checking the caller actually owns or is staff on this conversation's patient, so a
+// same-origin <img>/<audio> tag can point straight at it — no separate fetch-and-blob step, the
+// browser's normal cookie-bearing request handles the auth.
+function MessageAttachment({ type, fileId }: { type: "IMAGE" | "VOICE"; fileId: string }) {
+  const [failed, setFailed] = useState(false);
+  const src = `/api/files/${fileId}/content`;
+
+  if (type === "VOICE") {
+    // <audio> shows its own disabled/broken control on error — no separate fallback needed
+    // the way a broken <img> needs one.
+    return <audio controls src={src} className="h-9 max-w-[220px]" />;
+  }
+
+  if (failed) {
+    return (
+      <span className="flex items-center gap-2 text-sm">
+        <Paperclip className="size-4" aria-hidden="true" /> Photo unavailable
+      </span>
+    );
+  }
+
   return (
-    <span className="flex items-center gap-2 text-sm">
-      <Icon className="size-4" aria-hidden="true" /> {label}
-    </span>
+    <a href={`${src}?download=true`} target="_blank" rel="noopener noreferrer">
+      <img
+        src={src}
+        alt="Attached photo"
+        className="max-h-60 max-w-full rounded-lg object-contain"
+        onError={() => setFailed(true)}
+      />
+    </a>
   );
 }
 
@@ -563,7 +585,7 @@ function MessagesPageInner() {
                   {m.type === "TEXT" || m.type === "SYSTEM" ? (
                     <p>{m.content}</p>
                   ) : (
-                    <AttachmentChip type={m.type} />
+                    <MessageAttachment type={m.type} fileId={m.content} />
                   )}
                   {isMine && m.type !== "SYSTEM" ? (
                     <DeliveryStatus status={m.status} />
