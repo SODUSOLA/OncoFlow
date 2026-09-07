@@ -39,10 +39,9 @@ function StepCard({
 }) {
   return (
     <Card
-      blueprint
       className={cn(
-        "overflow-hidden transition-colors",
-        status === "active" && "border-2 border-ink",
+        "overflow-hidden border-admin-border transition-colors",
+        status === "active" && "border-2 border-admin-sidebar-cta shadow-admin-card",
         status === "pending" && "opacity-60",
       )}
     >
@@ -50,23 +49,23 @@ function StepCard({
         <div className="flex items-center gap-3">
           <span
             className={cn(
-              "flex size-6 shrink-0 items-center justify-center rounded-full text-xs font-semibold",
-              status === "done" ? "bg-green-600 text-white" : status === "active" ? "bg-ink text-white" : "border border-gray-300 text-gray-400",
+              "flex size-6 shrink-0 items-center justify-center rounded-full text-admin-caption font-semibold",
+              status === "done" ? "bg-admin-success text-white" : status === "active" ? "bg-admin-sidebar-cta text-white" : "border border-admin-border text-admin-text-secondary",
             )}
           >
             {status === "done" ? <Check className="size-3.5" aria-hidden="true" /> : index}
           </span>
-          <p className={cn("text-sm font-semibold", status === "pending" ? "text-gray-400" : "text-gray-800")}>{title}</p>
+          <p className={cn("text-admin-body-sm font-semibold", status === "pending" ? "text-admin-text-secondary" : "text-admin-text")}>{title}</p>
         </div>
         {status === "done" && onEdit && (
-          <button onClick={onEdit} className="text-xs font-medium text-ink hover:underline">Edit</button>
+          <button onClick={onEdit} className="text-admin-caption font-medium text-admin-sidebar-cta hover:underline">Edit</button>
         )}
       </div>
       {status === "done" && doneSummary && (
-        <div className="border-t border-gray-100 bg-gray-50 px-5 py-3 text-sm text-gray-600">{doneSummary}</div>
+        <div className="border-t border-admin-border bg-admin-card-alt px-5 py-3 text-admin-body-sm text-admin-text-secondary">{doneSummary}</div>
       )}
       {status === "active" && children && (
-        <div className="border-t border-gray-100 px-5 py-4">{children}</div>
+        <div className="border-t border-admin-border px-5 py-4">{children}</div>
       )}
     </Card>
   );
@@ -146,10 +145,10 @@ export default function BillingPage() {
   return (
     <div className="space-y-5">
       <div>
-        <h2 className="flex items-center gap-2 text-2xl font-bold text-gray-900">
-          <Receipt className="size-6 text-ink" aria-hidden="true" /> Invoice Generator
+        <h2 className="flex items-center gap-2 text-admin-h2 text-admin-text">
+          <Receipt className="size-6 text-admin-sidebar-cta" aria-hidden="true" /> Invoice Generator
         </h2>
-        <p className="mt-1 text-sm text-gray-500">
+        <p className="mt-1 text-admin-body-sm text-admin-text-secondary">
           Secure financial reconciliation. Complete the required fields sequentially to generate a locked preview. Manual numeric entry is strictly prohibited for compliance.
         </p>
       </div>
@@ -165,11 +164,11 @@ export default function BillingPage() {
               <p><span className="font-medium text-gray-800">{genPatient.firstName} {genPatient.lastName}</span> · ID: {genPatient.uniquePatientId}</p>
             )}
           >
-            <label className="mb-1 block text-xs font-medium text-gray-500">Select patient</label>
+            <label className="mb-1 block text-admin-caption font-medium text-admin-text-secondary">Select patient</label>
             <select
               value={genPatientId}
               onChange={(e) => { setGenPatientId(e.target.value); setEditingStep(null); }}
-              className="w-full rounded border border-gray-300 px-3 py-2 text-sm"
+              className="w-full rounded-admin-sm border border-admin-border px-3 py-2 text-admin-body-sm"
             >
               <option value="">Select from patient registry...</option>
               {patients.map((p) => (
@@ -183,21 +182,21 @@ export default function BillingPage() {
             title="Service Classification"
             status={step2Status}
             onEdit={() => setEditingStep(2)}
-            doneSummary={genClassification && <p className="font-medium text-gray-800">{genClassification.name.replace(/_/g, " ")}</p>}
+            doneSummary={genClassification && <p className="font-medium text-admin-text">{genClassification.name.replace(/_/g, " ")}</p>}
           >
-            <label className="mb-1 block text-xs font-medium text-gray-500">Select Primary Classification</label>
+            <label className="mb-1 block text-admin-caption font-medium text-admin-text-secondary">Select Primary Classification</label>
             <select
               value={genClassificationId}
               onChange={(e) => { setGenClassificationId(e.target.value); setEditingStep(null); }}
-              className="w-full rounded border border-gray-300 px-3 py-2 text-sm"
+              className="w-full rounded-admin-sm border border-admin-border px-3 py-2 text-admin-body-sm"
             >
               <option value="">Select from compliant dropdown...</option>
               {classifications.map((c) => (
                 <option key={c.id} value={c.id}>{c.name.replace(/_/g, " ")}</option>
               ))}
             </select>
-            <label className="mb-1 mt-3 block text-xs font-medium text-gray-400">Secondary Code (Optional)</label>
-            <div className="flex items-center gap-2 rounded border border-gray-200 bg-gray-50 px-3 py-2 text-sm text-gray-400">
+            <label className="mb-1 mt-3 block text-admin-caption font-medium text-admin-text-secondary">Secondary Code (Optional)</label>
+            <div className="flex items-center gap-2 rounded-admin-sm border border-admin-border bg-admin-card-alt px-3 py-2 text-admin-body-sm text-admin-text-secondary">
               <Lock className="size-3.5 shrink-0" aria-hidden="true" /> Requires Primary Classification First
             </div>
           </StepCard>
@@ -207,13 +206,13 @@ export default function BillingPage() {
             title="Facility"
             status={step3Status}
             onEdit={() => setEditingStep(3)}
-            doneSummary={genFacility && <p className="font-medium text-gray-800">{genFacility.name}</p>}
+            doneSummary={genFacility && <p className="font-medium text-admin-text">{genFacility.name}</p>}
           >
-            <label className="mb-1 block text-xs font-medium text-gray-500">Select facility</label>
+            <label className="mb-1 block text-admin-caption font-medium text-admin-text-secondary">Select facility</label>
             <select
               value={genFacilityId}
               onChange={(e) => { setGenFacilityId(e.target.value); setEditingStep(null); }}
-              className="w-full rounded border border-gray-300 px-3 py-2 text-sm"
+              className="w-full rounded-admin-sm border border-admin-border px-3 py-2 text-admin-body-sm"
             >
               <option value="">Select facility...</option>
               {facilitiesInRegion.map((f) => (
@@ -223,7 +222,7 @@ export default function BillingPage() {
           </StepCard>
 
           <StepCard index={4} title="Review & Send" status={step4Status}>
-            <p className="text-sm text-gray-500">
+            <p className="text-admin-body-sm text-admin-text-secondary">
               {allComplete
                 ? "All required fields are set — the computed preview on the right is locked and ready. Use “Send to Patient” to issue."
                 : "No tariff is configured for this facility/classification pair."}
@@ -231,77 +230,77 @@ export default function BillingPage() {
           </StepCard>
 
           {genResult && (
-            <p className={cn("text-sm", genResult.includes("successfully") ? "text-green-600" : "text-red-600")}>{genResult}</p>
+            <p className={cn("text-admin-body-sm", genResult.includes("successfully") ? "text-admin-success" : "text-admin-danger")}>{genResult}</p>
           )}
         </div>
 
         <div>
-          <Card blueprint className="sticky top-4 overflow-hidden">
+          <Card className="sticky top-4 overflow-hidden border-admin-border">
             <div className="relative overflow-hidden">
               {!allComplete && (
                 <p
-                  className="pointer-events-none absolute inset-x-0 top-1/3 select-none text-center text-4xl font-black uppercase tracking-widest text-gray-100"
+                  className="pointer-events-none absolute inset-x-0 top-1/3 select-none text-center text-4xl font-black uppercase tracking-widest text-admin-disabled"
                   style={{ transform: "rotate(-18deg)" }}
                   aria-hidden="true"
                 >
                   Draft
                 </p>
               )}
-              <div className="relative flex items-center gap-2 border-b border-gray-100 px-5 py-3.5">
-                <Lock className="size-3.5 text-gray-400" aria-hidden="true" />
-                <p className="text-sm font-semibold text-gray-800">Computed Preview</p>
+              <div className="relative flex items-center gap-2 border-b border-admin-border px-5 py-3.5">
+                <Lock className="size-3.5 text-admin-text-secondary" aria-hidden="true" />
+                <p className="text-admin-body-sm font-semibold text-admin-text">Computed Preview</p>
               </div>
               <div className="relative space-y-3 p-5">
-                <div className="flex items-start justify-between text-sm">
+                <div className="flex items-start justify-between text-admin-body-sm">
                   <div>
-                    <p className="text-[10px] uppercase tracking-wide text-gray-400">Billed To</p>
-                    <p className="font-medium text-gray-800">{genPatient ? `${genPatient.firstName} ${genPatient.lastName}` : "—"}</p>
-                    <p className="text-xs text-gray-400">{genPatient?.uniquePatientId ?? ""}</p>
+                    <p className="text-admin-micro uppercase tracking-wide text-admin-text-secondary">Billed To</p>
+                    <p className="font-medium text-admin-text">{genPatient ? `${genPatient.firstName} ${genPatient.lastName}` : "—"}</p>
+                    <p className="text-admin-caption text-admin-text-secondary">{genPatient?.uniquePatientId ?? ""}</p>
                   </div>
                   <div className="text-right">
-                    <p className="text-[10px] uppercase tracking-wide text-gray-400">Invoice Date</p>
-                    <p className="font-medium text-gray-800">{new Date().toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" })}</p>
+                    <p className="text-admin-micro uppercase tracking-wide text-admin-text-secondary">Invoice Date</p>
+                    <p className="font-medium text-admin-text">{new Date().toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" })}</p>
                   </div>
                 </div>
-                <div className="space-y-1.5 border-t border-gray-100 pt-3 text-sm">
+                <div className="space-y-1.5 border-t border-admin-border pt-3 text-admin-body-sm">
                   <div className="flex justify-between">
-                    <span className="text-gray-600">Network Fee</span>
-                    <span className={genTariff ? "font-medium text-gray-800" : "text-gray-300"}>
+                    <span className="text-admin-text-secondary">Network Fee</span>
+                    <span className={genTariff ? "font-medium text-admin-text" : "text-admin-text-secondary/50"}>
                       {genTariff ? koboToNaira(Number(genTariff.networkFeeKobo)) : "Pending..."}
                     </span>
                   </div>
                   <div className="flex justify-between">
-                    <span className="text-gray-600">Facility Fees</span>
-                    <span className={genTariff ? "font-medium text-gray-800" : "text-gray-300"}>
+                    <span className="text-admin-text-secondary">Facility Fees</span>
+                    <span className={genTariff ? "font-medium text-admin-text" : "text-admin-text-secondary/50"}>
                       {genTariff ? koboToNaira(Number(genTariff.facilityBedFeeKobo)) : "Facility Fees Pending... --"}
                     </span>
                   </div>
                   <div className="flex justify-between">
-                    <span className="text-gray-600">Professional Fee</span>
-                    <span className={genTariff ? "font-medium text-gray-800" : "text-gray-300"}>
+                    <span className="text-admin-text-secondary">Professional Fee</span>
+                    <span className={genTariff ? "font-medium text-admin-text" : "text-admin-text-secondary/50"}>
                       {genTariff ? koboToNaira(Number(genTariff.professionalFeeKobo)) : "Pending..."}
                     </span>
                   </div>
                   <div className="flex justify-between">
-                    <span className="text-gray-600">Medications</span>
-                    <span className={genTariff ? "font-medium text-gray-800" : "text-gray-300"}>
+                    <span className="text-admin-text-secondary">Medications</span>
+                    <span className={genTariff ? "font-medium text-admin-text" : "text-admin-text-secondary/50"}>
                       {genTariff ? koboToNaira(Number(genTariff.drugPriceKobo)) : "Medications Pending... --"}
                     </span>
                   </div>
                 </div>
-                <div className="flex items-baseline justify-between border-t border-gray-200 pt-3">
-                  <span className="text-sm font-semibold text-gray-800">Total</span>
-                  <span className="text-2xl font-bold text-ink">{koboToNaira(total)}</span>
+                <div className="flex items-baseline justify-between border-t border-admin-border pt-3">
+                  <span className="text-admin-body-sm font-semibold text-admin-text">Total</span>
+                  <span className="text-2xl font-bold text-admin-sidebar-cta">{koboToNaira(total)}</span>
                 </div>
                 <Button
                   onClick={generateInvoice}
                   loading={genLoading}
                   disabled={!allComplete}
-                  className="w-full justify-center"
+                  className="w-full justify-center rounded-admin-xs bg-admin-sidebar-cta hover:bg-admin-sidebar-cta/90"
                 >
                   <Send className="size-4" aria-hidden="true" /> Send to Patient
                 </Button>
-                <p className="text-center text-[11px] text-gray-400">
+                <p className="text-center text-admin-micro text-admin-text-secondary">
                   {allComplete ? "Amount computed from the regional tariff table." : "Complete all steps to unlock submission."}
                 </p>
               </div>
@@ -310,15 +309,15 @@ export default function BillingPage() {
         </div>
       </div>
 
-      <Card blueprint className="overflow-hidden">
-        <div className="border-b border-gray-100 px-5 py-3.5">
-          <p className="text-sm font-semibold text-gray-800">Invoice & payment status — region</p>
+      <Card className="overflow-hidden border-admin-border">
+        <div className="border-b border-admin-border px-5 py-3.5">
+          <p className="text-admin-body-sm font-semibold text-admin-text">Invoice & payment status — region</p>
         </div>
         {invoicesInRegion.length === 0 ? (
-          <div className="p-8 text-center text-gray-400">No invoices found</div>
+          <div className="p-8 text-center text-admin-text-secondary">No invoices found</div>
         ) : (
-          <table className="w-full text-sm">
-            <thead className="text-left text-xs text-gray-400">
+          <table className="w-full text-admin-body-sm">
+            <thead className="text-left text-admin-caption text-admin-text-secondary">
               <tr>
                 <th className="px-5 py-2 font-medium">Invoice</th>
                 <th className="px-5 py-2 font-medium">Patient</th>
@@ -328,15 +327,15 @@ export default function BillingPage() {
                 <th className="px-5 py-2 font-medium">Issued</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-gray-50">
+            <tbody className="divide-y divide-admin-border">
               {invoicesInRegion.map((inv) => (
                 <tr key={inv.id}>
-                  <td className="px-5 py-3 font-mono text-xs text-gray-500">{inv.id.slice(0, 8).toUpperCase()}</td>
-                  <td className="px-5 py-3 font-medium text-gray-800">{patients.find((p) => p.id === inv.patientId)?.firstName ?? inv.patientId.slice(0, 8)}</td>
-                  <td className="px-5 py-3 text-gray-500">{facilitiesInRegion.find((f) => f.id === inv.facilityId)?.name ?? "—"}</td>
+                  <td className="px-5 py-3 font-mono text-admin-caption text-admin-text-secondary">{inv.id.slice(0, 8).toUpperCase()}</td>
+                  <td className="px-5 py-3 font-medium text-admin-text">{patients.find((p) => p.id === inv.patientId)?.firstName ?? inv.patientId.slice(0, 8)}</td>
+                  <td className="px-5 py-3 text-admin-text-secondary">{facilitiesInRegion.find((f) => f.id === inv.facilityId)?.name ?? "—"}</td>
                   <td className="px-5 py-3">{koboToNaira(inv.totalKobo)}</td>
                   <td className="px-5 py-3"><Badge variant={STATUS_VARIANT[inv.status]}>{inv.status}</Badge></td>
-                  <td className="px-5 py-3 text-gray-500">{inv.issuedAt ? new Date(inv.issuedAt).toLocaleDateString() : "—"}</td>
+                  <td className="px-5 py-3 text-admin-text-secondary">{inv.issuedAt ? new Date(inv.issuedAt).toLocaleDateString() : "—"}</td>
                 </tr>
               ))}
             </tbody>

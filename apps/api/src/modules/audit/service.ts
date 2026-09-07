@@ -4,6 +4,24 @@ import { AuditRepository, type AuditAction, type AuditResult } from "./repositor
 const auditRepo = new AuditRepository();
 
 export class AuditService {
+  // `allowedFacilityIds` is the caller's own resolved scope (lib/facility-scope.js's
+  // accessibleFacilityIds) — passed in rather than resolved here so this module never imports
+  // lib/facility-scope.js, which itself imports this module's index.js to write ACCESS_DENIED
+  // rows. Resolving it in the controller instead keeps that a one-way dependency, not a cycle.
+  async getActivityFeed(allowedFacilityIds: string[] | null, limit: number) {
+    const actorIds = allowedFacilityIds === null ? null : await auditRepo.findUserIdsByFacilityIds(allowedFacilityIds);
+    const rows = await auditRepo.findRecent(actorIds, limit);
+    return rows.map((r) => ({
+      id: r.id,
+      action: r.action,
+      resource: r.resource,
+      resourceId: r.resourceId,
+      result: r.result,
+      createdAt: r.createdAt.toISOString(),
+      actorEmail: r.actorEmail,
+    }));
+  }
+
   async recordEvent(data: {
     actorId?: string;
     action: AuditAction;

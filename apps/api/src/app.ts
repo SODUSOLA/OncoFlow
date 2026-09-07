@@ -16,6 +16,10 @@ import { notificationRoutes } from "./modules/notification/index.js";
 import { inquiryRoutes } from "./modules/inquiry/index.js";
 import { staffingRoutes } from "./modules/staffing/index.js";
 import { inventoryRoutes } from "./modules/inventory/index.js";
+// Imported directly from routes.js, not modules/audit/index.js — that index re-exports
+// service/repository only, deliberately not routes, to avoid a circular import (see the comment
+// in modules/audit/index.js for why).
+import { auditRoutes } from "./modules/audit/routes.js";
 import { config } from "./config.js";
 
 // The one route that accepts a base64 file body — see the body-limit split below.
@@ -65,6 +69,7 @@ export function createApp() {
   app.use(inquiryRoutes);
   app.use(staffingRoutes);
   app.use(inventoryRoutes);
+  app.use(auditRoutes);
 
   app.use(notFoundHandler);
   app.use(errorHandler);

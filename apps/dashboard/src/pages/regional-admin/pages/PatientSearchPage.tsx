@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { useSearchParams } from "react-router-dom";
 import { Search, Lock } from "lucide-react";
 import { api } from "../../../lib/api";
 import { useAuth } from "../../../lib/auth";
@@ -57,7 +58,7 @@ function PatientDetailPanel({ patient, facilities }: { patient: Patient; facilit
   const facility = facilities.find((f) => f.id === patient.facilityId);
 
   return (
-    <Card blueprint className="flex flex-col overflow-hidden">
+    <Card className="flex flex-col overflow-hidden">
       <div className="border-b border-gray-100 px-5 py-4">
         <p className="text-xs font-semibold uppercase tracking-wide text-gray-400">Restricted patient record</p>
         <h3 className="mt-0.5 text-lg font-bold text-gray-900">{patient.firstName} {patient.lastName}</h3>
@@ -335,9 +336,13 @@ function ApprovalQueueSection({ facilities }: { facilities: Facility[] }) {
 
 export default function PatientSearchPage() {
   const { facilities } = useRegionScope();
+  // The topbar's global search (RegionalAdminLayout) has nowhere of its own to show results,
+  // so it navigates here with ?q= and this page runs the real search — no separate search
+  // implementation, just seeding this page's own existing query state from the URL once.
+  const [searchParams] = useSearchParams();
   const [tab, setTab] = useState<"search" | "approval-queue">("search");
   const [patients, setPatients] = useState<Patient[]>([]);
-  const [query, setQuery] = useState("");
+  const [query, setQuery] = useState(searchParams.get("q") ?? "");
   const [facilityFilter, setFacilityFilter] = useState("all");
   const [loading, setLoading] = useState(false);
   const [selectedId, setSelectedId] = useState<string | null>(null);
@@ -409,7 +414,7 @@ export default function PatientSearchPage() {
               <Button type="submit">Search</Button>
             </form>
 
-            <Card blueprint className="overflow-hidden">
+            <Card className="overflow-hidden">
               <div className="border-b border-gray-100 px-5 py-3">
                 <p className="text-sm font-semibold text-gray-800">
                   {loading ? "Searching…" : `${patients.length} result${patients.length === 1 ? "" : "s"}`}
@@ -454,7 +459,7 @@ export default function PatientSearchPage() {
             {selected ? (
               <PatientDetailPanel patient={selected} facilities={facilities} />
             ) : (
-              <Card blueprint className="flex h-full items-center justify-center p-8 text-center text-sm text-gray-400">
+              <Card className="flex h-full items-center justify-center p-8 text-center text-sm text-gray-400">
                 Select a patient to view their restricted record
               </Card>
             )}

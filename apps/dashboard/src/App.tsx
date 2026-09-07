@@ -1,5 +1,6 @@
 import { lazy, Suspense, type ReactNode } from "react";
 import { BrowserRouter, Routes, Route, Navigate, useLocation } from "react-router-dom";
+import { BookOpen, FileBarChart } from "lucide-react";
 import { DashboardLayout } from "./components/DashboardLayout";
 import { AuthProvider, useAuth } from "./lib/auth";
 import { dashboardPathForRoles, hasStaffAccess } from "./lib/roleRouting";
@@ -26,6 +27,11 @@ const RaScheduling = lazy(() => import("./pages/regional-admin/pages/SchedulingP
 const RaBilling = lazy(() => import("./pages/regional-admin/pages/BillingPage"));
 const RaInventory = lazy(() => import("./pages/regional-admin/pages/InventoryPage"));
 const RaGeneralInquiry = lazy(() => import("./pages/regional-admin/pages/GeneralInquiryPage"));
+const RaNotifications = lazy(() => import("./pages/regional-admin/pages/NotificationCenterPage"));
+const RaSettings = lazy(() => import("./pages/regional-admin/pages/SettingsPage"));
+const RaComingSoon = lazy(() =>
+  import("./pages/regional-admin/pages/ComingSoon").then((m) => ({ default: m.ComingSoon })),
+);
 
 const roles = [
   { path: "virtual-medical-officer", component: vmo, label: "Virtual Medical Officer" },
@@ -126,6 +132,32 @@ function AppRoutes() {
         <Route path="billing" element={<Suspense fallback={<FullScreenLoading />}><RaBilling /></Suspense>} />
         <Route path="inventory" element={<Suspense fallback={<FullScreenLoading />}><RaInventory /></Suspense>} />
         <Route path="inquiry" element={<Suspense fallback={<FullScreenLoading />}><RaGeneralInquiry /></Suspense>} />
+        <Route path="notifications" element={<Suspense fallback={<FullScreenLoading />}><RaNotifications /></Suspense>} />
+        <Route path="settings" element={<Suspense fallback={<FullScreenLoading />}><RaSettings /></Suspense>} />
+        <Route
+          path="guidelines"
+          element={
+            <Suspense fallback={<FullScreenLoading />}>
+              <RaComingSoon
+                icon={BookOpen}
+                title="Clinical Guidelines"
+                description="Treatment protocols and dosing references — not yet built. Shown in the design as a standing reference library, not tied to any one patient's record."
+              />
+            </Suspense>
+          }
+        />
+        <Route
+          path="reports"
+          element={
+            <Suspense fallback={<FullScreenLoading />}>
+              <RaComingSoon
+                icon={FileBarChart}
+                title="Reports"
+                description="Regional analytics and exports — not yet built. No reporting endpoint exists yet to back this page."
+              />
+            </Suspense>
+          }
+        />
       </Route>
       {roles.map(({ path, component: Component, label }) => (
         <Route

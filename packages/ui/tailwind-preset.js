@@ -24,6 +24,52 @@ module.exports = {
         gold: {
           DEFAULT: "#E9B21A",
         },
+        // Regional Admin's own locked palette, pulled directly from Figma (see
+        // ONCOFLOW_DESIGN_SYSTEM.md, "Palette A — LOCKED"). Kept separate from `ink`/`gold`
+        // above rather than repointing them, since those are the app-wide brand tokens already
+        // used on Login and the Patient views — this palette is specific to the Regional Admin
+        // rebuild and shouldn't leak brand changes into screens that were never re-specced.
+        admin: {
+          "sidebar-cta": "#002147",
+          gold: "#FED65B",
+          "gold-text": "#745C00",
+          border: "#C4C6CF",
+          text: "#000A1E",
+          "text-secondary": "#44474E",
+          disabled: "#E3E2E6",
+          "disabled-alt": "#E9E7EB",
+          danger: "#C92A2A",
+          "danger-text": "#93000A",
+          warning: "#E67E22",
+          success: "#2D6A4F",
+          "page-bg": "#FAF9FD",
+          "canvas-bg": "#F8F9FA",
+          card: "#FFFFFF",
+          "card-alt": "#F4F3F7",
+        },
+      },
+      fontFamily: {
+        "public-sans": ['"Public Sans"', "system-ui", "sans-serif"],
+      },
+      fontSize: {
+        "admin-h1": ["32px", { lineHeight: "40px", letterSpacing: "-0.64px", fontWeight: "700" }],
+        "admin-h2": ["24px", { lineHeight: "32px", fontWeight: "700" }],
+        "admin-h3": ["20px", { lineHeight: "28px", fontWeight: "600" }],
+        "admin-h4": ["16px", { lineHeight: "24px", fontWeight: "600" }],
+        "admin-body": ["16px", { lineHeight: "24px", fontWeight: "400" }],
+        "admin-body-sm": ["14px", { lineHeight: "20px" }],
+        "admin-caption": ["12px", { lineHeight: "16px" }],
+        "admin-micro": ["10px", { lineHeight: "20px" }],
+      },
+      borderRadius: {
+        "admin-xs": "2px",
+        "admin-sm": "4px",
+        "admin-md": "8px",
+        "admin-lg": "12px",
+      },
+      boxShadow: {
+        "admin-card": "0px 1px 2px rgba(0,0,0,0.05)",
+        "admin-warning": "0px 2px 8px rgba(230,126,34,0.15)",
       },
     },
   },

@@ -93,6 +93,7 @@ const PERMISSIONS: { resource: string; action: string; description: string }[] =
   { resource: "inventory", action: "update", description: "Record a purchase/dispatch movement and resolve a reconciliation variance" },
   { resource: "transferRequest", action: "create", description: "Initiate a patient facility transfer request" },
   { resource: "transferRequest", action: "read", description: "Read facility transfer requests" },
+  { resource: "audit", action: "read", description: "Read a region-scoped activity feed (logins, logouts, access-denied events) for own facility-scoped staff" },
 ];
 
 export async function seedIdentity() {
@@ -182,6 +183,7 @@ export async function seedIdentity() {
     "staffing:read", "staffing:update",
     "inventory:read", "inventory:update",
     "transferRequest:create", "transferRequest:read",
+    "audit:read",
   ]);
 
   // Second real per-role grant — the Virtual Medical Officer handling MO_SIDE_EFFECT reports:

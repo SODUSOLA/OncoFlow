@@ -15,8 +15,11 @@ export const buttonVariants = cva(
         // Main content-area CTA (Publish Schedule, Approve, Confirm, Next Step) — matches the
         // mockups' dark-navy filled buttons.
         primary: "bg-ink text-white hover:bg-ink-600",
-        // The one gold-filled CTA reserved for the sidebar's "+ New Consultation" — a
-        // deliberately distinct, more prominent accent, not reused for ordinary actions.
+        // Gold is this app's accent color, but it's spoken for elsewhere: the newer mockups
+        // (Sept 2026 pass) use it for the sidebar's active-nav-item highlight
+        // (RegionalAdminLayout), not for a button. This variant is currently unused — kept
+        // in case a genuinely distinct, more-prominent CTA is needed later, but don't reach
+        // for it as "the gold button" without checking it doesn't clash with that nav highlight.
         accent: "bg-gold text-ink hover:bg-gold/90",
         outline: "border border-gray-300 bg-white text-gray-700 hover:border-ink hover:text-ink",
         ghost: "bg-transparent text-gray-600 hover:bg-gray-100",

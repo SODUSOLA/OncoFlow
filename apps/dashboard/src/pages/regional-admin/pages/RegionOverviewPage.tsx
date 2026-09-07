@@ -77,22 +77,22 @@ export default function RegionOverviewPage() {
   return (
     <div className="space-y-6">
       <div className="grid grid-cols-4 gap-3">
-        <Card blueprint className="p-4">
+        <Card className="p-4">
           <p className="text-xs font-semibold uppercase tracking-wide text-gray-400">Active Countdown Cases</p>
           <p className="mt-1 text-3xl font-bold text-gray-900">{casesInRegion.filter((c) => c.status === "ACTIVE").length}</p>
           <p className="mt-1 text-xs text-gray-400">across {facilitiesInRegion.length} facilities in region</p>
         </Card>
-        <Card blueprint className="border-blue-200 bg-blue-50 p-4">
+        <Card className="border-blue-200 bg-blue-50 p-4">
           <p className="text-xs font-semibold uppercase tracking-wide text-blue-700">Escalated to You</p>
           <p className="mt-1 text-3xl font-bold text-blue-900">{escalated.length}</p>
           <p className="mt-1 text-xs text-blue-600">cases past SLA</p>
         </Card>
-        <Card blueprint className="p-4">
+        <Card className="p-4">
           <p className="text-xs font-semibold uppercase tracking-wide text-gray-400">Invoices Awaiting Payment</p>
           <p className="mt-1 text-3xl font-bold text-gray-900">{awaitingPayment.length}</p>
           <p className="mt-1 text-xs text-gray-400">{koboToNaira(outstandingKobo)} outstanding</p>
         </Card>
-        <Card blueprint className="p-4">
+        <Card className="p-4">
           <p className="text-xs font-semibold uppercase tracking-wide text-gray-400">Stock Variances Open</p>
           <p className="mt-1 text-3xl font-bold text-gray-900">{stock?.variancesOpen ?? "—"}</p>
           <p className="mt-1 text-xs text-gray-400">from latest reconciliation</p>
@@ -100,7 +100,7 @@ export default function RegionOverviewPage() {
       </div>
 
       <div className="grid grid-cols-3 gap-4">
-        <Card blueprint className="col-span-2 overflow-hidden">
+        <Card className="col-span-2 overflow-hidden">
           <div className="flex items-center justify-between border-b border-gray-100 px-5 py-3.5">
             <div>
               <p className="text-sm font-semibold text-gray-800">Escalations awaiting action</p>
@@ -142,7 +142,7 @@ export default function RegionOverviewPage() {
           )}
         </Card>
 
-        <Card blueprint className="flex flex-col overflow-hidden">
+        <Card className="flex flex-col overflow-hidden">
           <div className="flex items-center justify-between border-b border-gray-100 px-5 py-3.5">
             <p className="text-sm font-semibold text-gray-800">Inquiry queue</p>
             <span className="rounded border border-gray-200 px-2 py-0.5 text-[10px] font-medium text-gray-500">5-min SLA</span>
@@ -169,7 +169,7 @@ export default function RegionOverviewPage() {
         </Card>
       </div>
 
-      <Card blueprint className="p-5">
+      <Card className="p-5">
         <p className="text-sm font-semibold text-gray-800">Region scope enforcement</p>
         <p className="mt-1 text-xs text-gray-500">
           Every list, board and search result on this console is pre-filtered to facilities tagged{" "}

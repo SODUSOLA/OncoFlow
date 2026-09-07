@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Lock, TriangleAlert, ChevronLeft, ChevronRight, LayoutList, Map as MapIcon } from "lucide-react";
 import { api } from "../../../lib/api";
 import { useAuth } from "../../../lib/auth";
@@ -8,6 +8,8 @@ import { Button } from "../../../components/ui/Button";
 import { Badge } from "../../../components/ui/Badge";
 import { cn } from "../../../lib/utils";
 import { useRegionScope } from "../lib/useRegionScope";
+import { getIsoWeek } from "../lib/isoWeek";
+import { isStaffingConflict } from "../lib/alertRules";
 
 const WEEKDAY_LABELS = ["Mon", "Tue", "Wed", "Thu", "Fri"] as const;
 const PAGE_SIZE = 5;
@@ -17,20 +19,15 @@ function initialOf(email: string) {
   return email.slice(0, 1).toUpperCase();
 }
 
-// Small radial gauge, matching the designer mockup's "Regional Staffing Utilization" diamond
-// gauge — plain SVG, no charting library needed for one ring.
-function RadialGauge({ percent }: { percent: number }) {
-  const r = 38;
-  const c = 2 * Math.PI * r;
-  const clamped = Math.max(0, Math.min(100, percent));
-  const color = clamped < 80 ? "#d97706" : "#15803d";
+// The design system treats this as "a static SVG asset, not a chart component" — a decorative
+// rotated-square frame around the real utilization number, not a proportional gauge. (An earlier
+// pass here built an actual functional radial progress ring; per the locked spec that's more
+// sophistication than the design calls for, so it's replaced with the plainer static shape.)
+function UtilizationDiamond({ percent }: { percent: number }) {
+  const color = percent < 80 ? "#E67E22" : "#2D6A4F";
   return (
-    <svg viewBox="0 0 100 100" className="size-16 shrink-0 -rotate-90">
-      <circle cx="50" cy="50" r={r} fill="none" stroke="#e5e7eb" strokeWidth="9" />
-      <circle
-        cx="50" cy="50" r={r} fill="none" stroke={color} strokeWidth="9" strokeLinecap="round"
-        strokeDasharray={c} strokeDashoffset={c - (clamped / 100) * c}
-      />
+    <svg viewBox="0 0 100 100" className="size-16 shrink-0">
+      <rect x="18" y="18" width="64" height="64" rx="8" transform="rotate(45 50 50)" fill="none" stroke={color} strokeWidth="4" />
     </svg>
   );
 }
@@ -62,17 +59,9 @@ const TRANSFER_STATUS_VARIANT: Record<TransferRequestRow["status"], "warning" | 
   DECLINED: "critical",
 };
 
-// ISO 8601 week number (Monday-first, week 1 contains the year's first Thursday) — standard
-// algorithm, no library needed for this one calculation.
-function getIsoWeek(date: Date): { isoYear: number; isoWeek: number } {
-  const d = new Date(Date.UTC(date.getFullYear(), date.getMonth(), date.getDate()));
-  const dayNum = d.getUTCDay() || 7;
-  d.setUTCDate(d.getUTCDate() + 4 - dayNum);
-  const yearStart = new Date(Date.UTC(d.getUTCFullYear(), 0, 1));
-  const isoWeek = Math.ceil(((d.getTime() - yearStart.getTime()) / 86400000 + 1) / 7);
-  return { isoYear: d.getUTCFullYear(), isoWeek };
-}
-
+// Not part of the new design pass's spec (the mockup doesn't show a transfer panel at all), but
+// real, working functionality already in this app — kept and retokened, not removed, since
+// dropping a shipped feature is a scope decision of its own, not a restyle.
 function TransferPanel({ patients }: { patients: Patient[] }) {
   const { user } = useAuth();
   const { region, facilitiesInRegion, loading: scopeLoading } = useRegionScope();
@@ -117,12 +106,12 @@ function TransferPanel({ patients }: { patients: Patient[] }) {
 
   return (
     <div className="grid grid-cols-2 gap-4">
-      <Card blueprint className="p-5">
-        <p className="text-sm font-semibold text-gray-800">Initiate facility transfer</p>
+      <Card className="border-admin-border p-5">
+        <p className="text-admin-body-sm font-semibold text-admin-text">Initiate facility transfer</p>
         <div className="mt-4 space-y-3">
           <div>
-            <label className="mb-1 block text-xs font-medium text-gray-500">Patient</label>
-            <select value={patientId} onChange={(e) => setPatientId(e.target.value)} className="w-full rounded border border-gray-300 px-3 py-2 text-sm">
+            <label className="mb-1 block text-admin-caption font-medium text-admin-text-secondary">Patient</label>
+            <select value={patientId} onChange={(e) => setPatientId(e.target.value)} className="w-full rounded-admin-sm border border-admin-border px-3 py-2 text-admin-body-sm">
               <option value="">Select patient...</option>
               {patients.map((p) => (
                 <option key={p.id} value={p.id}>{p.firstName} {p.lastName} · {p.uniquePatientId}</option>
@@ -131,8 +120,8 @@ function TransferPanel({ patients }: { patients: Patient[] }) {
           </div>
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <label className="mb-1 block text-xs font-medium text-gray-500">From facility</label>
-              <select value={fromFacilityId} onChange={(e) => setFromFacilityId(e.target.value)} className="w-full rounded border border-gray-300 px-3 py-2 text-sm">
+              <label className="mb-1 block text-admin-caption font-medium text-admin-text-secondary">From facility</label>
+              <select value={fromFacilityId} onChange={(e) => setFromFacilityId(e.target.value)} className="w-full rounded-admin-sm border border-admin-border px-3 py-2 text-admin-body-sm">
                 <option value="">Select...</option>
                 {facilitiesInRegion.map((f) => (
                   <option key={f.id} value={f.id}>{f.name}</option>
@@ -140,8 +129,8 @@ function TransferPanel({ patients }: { patients: Patient[] }) {
               </select>
             </div>
             <div>
-              <label className="mb-1 block text-xs font-medium text-gray-500">To facility</label>
-              <select value={toFacilityId} onChange={(e) => setToFacilityId(e.target.value)} className="w-full rounded border border-gray-300 px-3 py-2 text-sm">
+              <label className="mb-1 block text-admin-caption font-medium text-admin-text-secondary">To facility</label>
+              <select value={toFacilityId} onChange={(e) => setToFacilityId(e.target.value)} className="w-full rounded-admin-sm border border-admin-border px-3 py-2 text-admin-body-sm">
                 <option value="">Select...</option>
                 {facilitiesInRegion.map((f) => (
                   <option key={f.id} value={f.id}>{f.name}</option>
@@ -149,27 +138,32 @@ function TransferPanel({ patients }: { patients: Patient[] }) {
               </select>
             </div>
           </div>
-          <Button onClick={submitTransfer} loading={submitting} disabled={!patientId || !fromFacilityId || !toFacilityId}>
+          <Button
+            onClick={submitTransfer}
+            loading={submitting}
+            disabled={!patientId || !fromFacilityId || !toFacilityId}
+            className="rounded-admin-xs bg-admin-sidebar-cta hover:bg-admin-sidebar-cta/90"
+          >
             Submit for approval
           </Button>
-          {result && <p className={`text-sm ${result.includes("submitted") ? "text-green-600" : "text-red-600"}`}>{result}</p>}
+          {result && <p className={cn("text-admin-body-sm", result.includes("submitted") ? "text-admin-success" : "text-admin-danger")}>{result}</p>}
         </div>
-        <div className="mt-4 flex items-start gap-2 rounded border border-gray-200 bg-gray-50 p-3">
-          <Lock className="mt-0.5 size-3.5 shrink-0 text-gray-300" aria-hidden="true" />
-          <p className="text-xs text-gray-500">
+        <div className="mt-4 flex items-start gap-2 rounded-admin-sm border border-admin-border bg-admin-card-alt p-3">
+          <Lock className="mt-0.5 size-3.5 shrink-0 text-admin-text-secondary" aria-hidden="true" />
+          <p className="text-admin-caption text-admin-text-secondary">
             You initiate; someone else approves. Your own requests appear below as read-only — the approve control is never rendered for the initiator.
           </p>
         </div>
       </Card>
 
-      <Card blueprint className="overflow-hidden">
-        <div className="border-b border-gray-100 px-5 py-3.5">
-          <p className="text-sm font-semibold text-gray-800">Transfer requests in region</p>
+      <Card className="overflow-hidden border-admin-border">
+        <div className="border-b border-admin-border px-5 py-3.5">
+          <p className="text-admin-body-sm font-semibold text-admin-text">Transfer requests in region</p>
         </div>
         {transfers.length === 0 ? (
-          <div className="p-8 text-center text-sm text-gray-400">No transfer requests</div>
+          <div className="p-8 text-center text-admin-body-sm text-admin-text-secondary">No transfer requests</div>
         ) : (
-          <ul className="divide-y divide-gray-50">
+          <ul className="divide-y divide-admin-border">
             {transfers.map((t) => {
               const patient = patientById.get(t.patientId);
               const isOwn = t.requestedBy === user?.id;
@@ -177,17 +171,17 @@ function TransferPanel({ patients }: { patients: Patient[] }) {
                 <li key={t.id} className="p-4">
                   <div className="flex items-center justify-between gap-2">
                     <div>
-                      <p className="text-sm font-medium text-gray-800">
+                      <p className="text-admin-body-sm font-medium text-admin-text">
                         {patient ? `${patient.firstName} ${patient.lastName}` : t.patientId.slice(0, 8)}
                       </p>
-                      <p className="text-xs text-gray-400">
+                      <p className="text-admin-caption text-admin-text-secondary">
                         {facilityById.get(t.fromFacilityId)?.name ?? "—"} → {facilityById.get(t.toFacilityId)?.name ?? "—"}
                       </p>
                     </div>
                     <Badge variant={TRANSFER_STATUS_VARIANT[t.status]}>{t.status}</Badge>
                   </div>
                   {isOwn && t.status === "PENDING" && (
-                    <p className="mt-1 text-[11px] text-gray-400">Approval blocked — initiator</p>
+                    <p className="mt-1 text-admin-micro text-admin-text-secondary">Approval blocked — initiator</p>
                   )}
                 </li>
               );
@@ -197,6 +191,19 @@ function TransferPanel({ patients }: { patients: Patient[] }) {
       </Card>
     </div>
   );
+}
+
+// Row-level severity: 0 conflict days -> fully staffed; a majority of the week's days short ->
+// critical; some but not most -> partial. Drives both the action button (below) and could drive
+// row styling — one function, not independently-styled cell/button logic per the acceptance
+// criteria ("Action button label/style derives from the same staffing-severity logic as the
+// cell styling").
+type RowSeverity = "none" | "partial" | "critical";
+function rowSeverity(row: WeekOverviewRow): RowSeverity {
+  const shortDays = row.weekdays.slice(0, 5).filter(isStaffingConflict).length;
+  if (shortDays === 0) return "none";
+  if (shortDays >= 3) return "critical";
+  return "partial";
 }
 
 export default function SchedulingPage() {
@@ -214,6 +221,7 @@ export default function SchedulingPage() {
   const [assignLoading, setAssignLoading] = useState(false);
   const [viewMode, setViewMode] = useState<"list" | "map">("list");
   const [page, setPage] = useState(0);
+  const tableRef = useRef<HTMLDivElement>(null);
 
   function load() {
     setLoading(true);
@@ -246,7 +254,7 @@ export default function SchedulingPage() {
       for (const day of row.weekdays.slice(0, 5)) {
         requiredTotal += day.requiredCount;
         assignedTotal += day.assigned.length;
-        if (day.assigned.length < day.requiredCount) shortageFacilities.add(row.facility.id);
+        if (isStaffingConflict(day)) shortageFacilities.add(row.facility.id);
       }
     }
     return {
@@ -313,90 +321,102 @@ export default function SchedulingPage() {
     <div className="space-y-5">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
-          <p className="text-lg font-bold text-gray-900">Week {isoWeek} Allocation Console</p>
-          <p className="text-sm text-gray-400">Manage nursing assignments and resolve cross-support conflicts across regions.</p>
+          <p className="text-admin-h3 text-admin-text">Week {isoWeek} Allocation Console</p>
+          <p className="text-admin-body-sm text-admin-text-secondary">Manage nursing assignments and resolve cross-support conflicts across regions.</p>
         </div>
         <div className="flex items-center gap-2">
-          <div className="flex rounded border border-gray-200 bg-white p-0.5 text-xs font-medium">
+          <div className="flex rounded-admin-sm border border-admin-border bg-white p-0.5 text-admin-caption font-medium">
             <button
               onClick={() => setViewMode("list")}
-              className={cn("flex items-center gap-1.5 rounded px-2.5 py-1.5", viewMode === "list" ? "bg-gray-100 text-gray-800" : "text-gray-400")}
+              className={cn("flex items-center gap-1.5 rounded-admin-xs px-2.5 py-1.5", viewMode === "list" ? "bg-admin-card-alt text-admin-text" : "text-admin-text-secondary")}
             >
               <LayoutList className="size-3.5" aria-hidden="true" /> List View
             </button>
             <button
               disabled
               title="Map View — no mapping library in this codebase yet"
-              className="flex cursor-not-allowed items-center gap-1.5 rounded px-2.5 py-1.5 text-gray-300"
+              className="flex cursor-not-allowed items-center gap-1.5 rounded-admin-xs px-2.5 py-1.5 text-admin-text-secondary/50"
             >
               <MapIcon className="size-3.5" aria-hidden="true" /> Map View
             </button>
           </div>
-          <span className="rounded border border-gray-200 bg-white px-3 py-1.5 text-xs font-medium text-gray-600">
+          {/* A real dropdown here would offer a choice this role doesn't have — Regional Admin
+              only ever sees their own region (derived from their own facility, not selectable).
+              Styled to match the mockup's control without pretending it does something it can't. */}
+          <span className="rounded-admin-sm border border-admin-border bg-white px-3 py-1.5 text-admin-caption font-medium text-admin-text-secondary">
             {region ?? "—"} Region
           </span>
-          <Button onClick={publishSchedule} loading={publishing}>↑ Publish Schedule</Button>
+          <Button onClick={publishSchedule} loading={publishing} className="rounded-admin-xs bg-admin-sidebar-cta hover:bg-admin-sidebar-cta/90">
+            ↑ Publish Schedule
+          </Button>
         </div>
       </div>
-      {publishResult && <p className="text-sm text-gray-500">{publishResult}</p>}
+      {publishResult && <p className="text-admin-body-sm text-admin-text-secondary">{publishResult}</p>}
 
       <div className="grid grid-cols-3 gap-4">
-        <Card blueprint className="p-4">
+        <Card className="border-admin-border p-4">
           <div className="flex items-start gap-2">
-            <TriangleAlert className="mt-0.5 size-4 shrink-0 text-red-500" aria-hidden="true" />
-            <p className="text-sm font-semibold text-gray-800">Critical Shortages</p>
-            <span className="ml-auto rounded bg-red-100 px-2 py-0.5 text-xs font-medium text-red-700">
+            <TriangleAlert className="mt-0.5 size-4 shrink-0 text-admin-danger" aria-hidden="true" />
+            <p className="text-admin-body-sm font-semibold text-admin-text">Critical Shortages</p>
+            <span className="ml-auto rounded-admin-xs bg-admin-danger/10 px-2 py-0.5 text-admin-caption font-medium text-admin-danger-text">
               {stats.shortageFacilities} {stats.shortageFacilities === 1 ? "Facility" : "Facilities"}
             </span>
           </div>
-          <p className="mt-2 text-xs text-gray-500">
+          <p className="mt-2 text-admin-caption text-admin-text-secondary">
             {stats.shortageFacilities > 0
               ? "Immediate cross-support required to meet clinical safety ratios."
               : "No shortages this week."}
           </p>
-          <p className="mt-2 text-xs font-medium text-ink">Review Conflicts →</p>
+          <button
+            onClick={() => tableRef.current?.scrollIntoView({ behavior: "smooth", block: "start" })}
+            className="mt-2 text-admin-caption font-medium text-admin-sidebar-cta hover:underline"
+          >
+            Review Conflicts →
+          </button>
         </Card>
-        <Card blueprint className="p-4">
-          <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-gray-500">Enforced Shift Policy</p>
-          <div className="grid grid-cols-2 gap-2 text-xs">
-            <div className="rounded border border-gray-200 p-2 text-center">
-              <p className="font-semibold text-gray-700">M / W / F</p>
-              <p className="text-gray-400">Virtual + Chemo</p>
+        <Card className="border-admin-border p-4">
+          <p className="mb-2 text-admin-caption font-semibold uppercase tracking-wide text-admin-text-secondary">Enforced Shift Policy</p>
+          <div className="grid grid-cols-2 gap-2 text-admin-caption">
+            <div className="rounded-admin-sm border border-admin-border p-2 text-center">
+              <p className="font-semibold text-admin-text">M / W / F</p>
+              <p className="text-admin-text-secondary">Virtual + Chemo</p>
             </div>
-            <div className="rounded border border-gray-200 p-2 text-center">
-              <p className="font-semibold text-gray-700">T / Th</p>
-              <p className="text-gray-400">Physical + Procedure</p>
+            <div className="rounded-admin-sm border border-admin-border p-2 text-center opacity-70">
+              <p className="font-semibold text-admin-text">T / Th</p>
+              <p className="text-admin-text-secondary">Physical + Procedure</p>
             </div>
           </div>
-          <p className="mt-2 flex items-center gap-1 text-[11px] text-gray-400">
+          <p className="mt-2 flex items-center gap-1 text-admin-micro text-admin-text-secondary">
             <Lock className="size-3" aria-hidden="true" /> Misscheduling prevented by system rules (FR-20).
           </p>
         </Card>
-        <Card blueprint className="flex items-center gap-3 p-4">
-          <RadialGauge percent={stats.utilization} />
+        <Card className="flex items-center gap-3 border-admin-border p-4">
+          <UtilizationDiamond percent={stats.utilization} />
           <div>
-            <p className="text-xs font-semibold uppercase tracking-wide text-gray-500">Regional Staffing Utilization</p>
-            <p className={cn("text-2xl font-bold", stats.utilization < 80 ? "text-amber-600" : "text-green-700")}>{stats.utilization}%</p>
+            <p className="text-admin-caption font-semibold uppercase tracking-wide text-admin-text-secondary">Regional Staffing Utilization</p>
+            <p className={cn("text-[48px] font-bold leading-[56px] tracking-[-0.96px]", stats.utilization < 80 ? "text-admin-warning" : "text-admin-success")}>
+              {stats.utilization}%
+            </p>
           </div>
         </Card>
       </div>
 
-      <Card blueprint className="overflow-hidden">
-        <div className="flex items-center justify-between border-b border-gray-100 px-5 py-3">
-          <p className="text-sm font-semibold text-gray-800">Facility Requirements & Assignments</p>
-          <div className="flex items-center gap-3 text-xs text-gray-500">
-            <span className="flex items-center gap-1"><span className="size-2 rounded-full bg-red-500" aria-hidden="true" /> Conflict Day</span>
-            <span className="flex items-center gap-1"><span className="size-2 rounded-full bg-green-500" aria-hidden="true" /> Fully Staffed</span>
+      <Card ref={tableRef} className="overflow-hidden border-admin-border">
+        <div className="flex items-center justify-between border-b border-admin-border px-5 py-3">
+          <p className="text-admin-body-sm font-semibold text-admin-text">Facility Requirements & Assignments</p>
+          <div className="flex items-center gap-3 text-admin-caption text-admin-text-secondary">
+            <span className="flex items-center gap-1"><span className="size-2 rounded-full bg-admin-danger" aria-hidden="true" /> Conflict Day</span>
+            <span className="flex items-center gap-1"><span className="size-2 rounded-full bg-admin-success" aria-hidden="true" /> Fully Staffed</span>
           </div>
         </div>
         {loading ? (
-          <div className="p-8 text-center text-gray-400">Loading…</div>
+          <div className="p-8 text-center text-admin-text-secondary">Loading…</div>
         ) : rows.length === 0 ? (
-          <div className="p-8 text-center text-gray-400">No facilities found</div>
+          <div className="p-8 text-center text-admin-text-secondary">No facilities found</div>
         ) : (
           <div className="overflow-x-auto">
-            <table className="w-full text-sm">
-              <thead className="border-b border-gray-100 text-left text-xs text-gray-400">
+            <table className="w-full text-admin-body-sm">
+              <thead className="border-b border-admin-border text-left text-admin-caption text-admin-text-secondary">
                 <tr>
                   <th className="px-4 py-3 font-medium">Facility & Location</th>
                   {WEEKDAY_LABELS.map((d) => (
@@ -405,28 +425,29 @@ export default function SchedulingPage() {
                   <th className="px-4 py-3 font-medium">Action</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-gray-50">
+              <tbody className="divide-y divide-admin-border">
                 {pagedRows.map((row) => {
-                  const shortDay = row.weekdays.slice(0, 5).find((d) => d.assigned.length < d.requiredCount);
+                  const severity = rowSeverity(row);
+                  const shortDay = row.weekdays.slice(0, 5).find(isStaffingConflict);
                   return (
-                    <tr key={row.facility.id} className={shortDay ? "border-l-2 border-l-red-400" : undefined}>
+                    <tr key={row.facility.id} className={severity !== "none" ? "border-l-2 border-l-admin-danger" : undefined}>
                       <td className="px-4 py-3">
-                        <p className="font-semibold text-gray-800">{row.facility.name}</p>
-                        <p className="text-xs text-gray-400">{row.facility.region} District</p>
-                        {shortDay && (
-                          <p className="mt-0.5 flex items-center gap-1 text-[11px] text-red-500">
-                            <TriangleAlert className="size-3" aria-hidden="true" /> High patient volume expected
+                        <p className="font-semibold text-admin-text">{row.facility.name}</p>
+                        <p className="text-admin-caption text-admin-text-secondary">{row.facility.region} District</p>
+                        {severity !== "none" && (
+                          <p className="mt-0.5 flex items-center gap-1 text-admin-micro text-admin-danger">
+                            <TriangleAlert className="size-3" aria-hidden="true" /> Nurse coverage below required ratio
                           </p>
                         )}
                       </td>
                       {row.weekdays.slice(0, 5).map((day) => {
-                        const short = day.assigned.length < day.requiredCount;
+                        const short = isStaffingConflict(day);
                         const missing = Math.max(0, day.requiredCount - day.assigned.length);
                         return (
                           <td key={day.weekday} className="px-4 py-3">
                             <span className={cn(
-                              "mb-1 inline-block rounded px-2 py-1 text-xs font-medium",
-                              short ? "bg-red-100 text-red-700" : "bg-green-100 text-green-700",
+                              "mb-1 inline-block rounded-admin-xs px-2 py-1 text-admin-caption font-medium",
+                              short ? "bg-admin-danger/10 text-admin-danger-text" : "bg-admin-success/10 text-admin-success",
                             )}>
                               {day.assigned.length}/{day.requiredCount} Nurses
                             </span>
@@ -446,7 +467,7 @@ export default function SchedulingPage() {
                               {Array.from({ length: missing }).map((_, i) => (
                                 <span
                                   key={`missing-${i}`}
-                                  className="flex size-5 items-center justify-center rounded-full border border-dashed border-red-300 text-[10px] text-red-300"
+                                  className="flex size-5 items-center justify-center rounded-full border border-dashed border-admin-danger/40 text-[10px] text-admin-danger/60"
                                 >
                                   ?
                                 </span>
@@ -456,10 +477,23 @@ export default function SchedulingPage() {
                         );
                       })}
                       <td className="px-4 py-3">
-                        {shortDay ? (
-                          <Button onClick={() => openAssign(row.facility.id, shortDay.weekday)} size="sm">Assign Nurse</Button>
+                        {severity === "critical" && shortDay ? (
+                          <Button onClick={() => openAssign(row.facility.id, shortDay.weekday)} size="sm" className="rounded-admin-xs bg-admin-danger hover:bg-admin-danger/90">
+                            Assign Nurse
+                          </Button>
+                        ) : severity === "partial" && shortDay ? (
+                          <Button
+                            onClick={() => openAssign(row.facility.id, shortDay.weekday)}
+                            variant="outline"
+                            size="sm"
+                            className="rounded-admin-xs border-admin-warning text-admin-warning hover:bg-admin-warning/10"
+                          >
+                            Review Gaps
+                          </Button>
                         ) : (
-                          <Button variant="outline" size="sm" title={`${rowUtilization(row)}% staffed`}>View Details</Button>
+                          <Button variant="outline" size="sm" title={`${rowUtilization(row)}% staffed`} className="rounded-admin-xs border-admin-border text-admin-text">
+                            View Details
+                          </Button>
                         )}
                       </td>
                     </tr>
@@ -469,20 +503,20 @@ export default function SchedulingPage() {
             </table>
           </div>
         )}
-        <div className="flex items-center justify-between border-t border-gray-100 px-5 py-3 text-xs text-gray-500">
+        <div className="flex items-center justify-between border-t border-admin-border px-5 py-3 text-admin-caption text-admin-text-secondary">
           <p>Showing {pagedRows.length} of {rows.length} {rows.length === 1 ? "Facility" : "Facilities"}</p>
           <div className="flex items-center gap-1">
             <button
               onClick={() => setPage((p) => Math.max(0, p - 1))}
               disabled={page === 0}
-              className="rounded border border-gray-200 p-1 disabled:opacity-30"
+              className="rounded-admin-sm border border-admin-border p-1 disabled:opacity-30"
             >
               <ChevronLeft className="size-3.5" aria-hidden="true" />
             </button>
             <button
               onClick={() => setPage((p) => Math.min(pageCount - 1, p + 1))}
               disabled={page >= pageCount - 1}
-              className="rounded border border-gray-200 p-1 disabled:opacity-30"
+              className="rounded-admin-sm border border-admin-border p-1 disabled:opacity-30"
             >
               <ChevronRight className="size-3.5" aria-hidden="true" />
             </button>
@@ -491,26 +525,28 @@ export default function SchedulingPage() {
       </Card>
 
       {assigning && (
-        <Card className="p-4">
-          <p className="mb-2 text-sm font-semibold text-gray-800">
+        <Card className="border-admin-border p-4">
+          <p className="mb-2 text-admin-body-sm font-semibold text-admin-text">
             Assign Nurse — {WEEKDAY_LABELS[assigning.weekday]}
           </p>
           <div className="flex items-center gap-2">
             <select
               value={selectedNurseId}
               onChange={(e) => setSelectedNurseId(e.target.value)}
-              className="flex-1 rounded border border-gray-300 px-3 py-2 text-sm"
+              className="flex-1 rounded-admin-sm border border-admin-border px-3 py-2 text-admin-body-sm"
             >
               <option value="">Select nurse...</option>
               {eligibleNurses.map((n) => (
                 <option key={n.id} value={n.id}>{n.email}</option>
               ))}
             </select>
-            <Button onClick={confirmAssign} loading={assignLoading} disabled={!selectedNurseId} size="sm">Assign</Button>
+            <Button onClick={confirmAssign} loading={assignLoading} disabled={!selectedNurseId} size="sm" className="rounded-admin-xs bg-admin-sidebar-cta hover:bg-admin-sidebar-cta/90">
+              Assign
+            </Button>
             <Button onClick={() => setAssigning(null)} variant="ghost" size="sm">Cancel</Button>
           </div>
           {eligibleNurses.length === 0 && (
-            <p className="mt-2 text-xs text-gray-400">No Onsite Nursing Officer is linked to this facility yet.</p>
+            <p className="mt-2 text-admin-caption text-admin-text-secondary">No Onsite Nursing Officer is linked to this facility yet.</p>
           )}
         </Card>
       )}
