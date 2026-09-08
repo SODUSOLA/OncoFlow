@@ -77,6 +77,28 @@ Sidebar active nav: #FED65B bg / #745C00 text
 
 ---
 
+## Consulting Oncologist persona — token reconciliation (2026-09)
+
+Same split as Regional Admin: Appointment Grid, Patient File, and the Video Consult screens use Palette A. System Settings and Notification Center for this persona were specced in Palette B again. Remapped to Palette A per the established rule:
+
+```
+#BA1A1A (danger)         → #C92A2A
+#C5C6CD (border)         → #C4C6CF
+#F5F3F5 (input/card bg)  → #F4F3F7
+#E1E4E8 (light border)   → #C4C6CF
+#2E7D32 (toggle-on green)→ #2D6A4F
+#EF6C00 (warning alt)    → #E67E22
+#0F1C30 (dark button)    → #002147
+```
+
+New tokens genuinely not covered by existing Palette A (kept, not remapped):
+```
+Info/ID accent:          #D6E3FF bg / #001B3D text   (patient ID badges)
+Dark-surface label text: #708AB5                      (labels on dark/video-room-only surfaces)
+```
+
+**Flagged for simplification, not carried forward as a token:** the pre-call briefing's "Next Action Recommendation" box used a one-off dark-amber treatment (`#3D1500` bg / `#B97958` text) found nowhere else in the file. Recommend using the standard warning treatment (light amber tint + dark text, same as other warning callouts) instead of introducing a dark-mode-only pattern for one component. Flag to design if intentional.
+
 ## Source node IDs (for re-verification against Figma)
 
 | Screen | node-id |

@@ -8,7 +8,7 @@ import { authRoutes } from "./modules/auth/index.js";
 import { patientRoutes } from "./modules/patient/index.js";
 import { facilityRoutes } from "./modules/facility/index.js";
 import { billingRoutes } from "./modules/billing/index.js";
-import { appointmentRoutes } from "./modules/appointment/index.js";
+import { appointmentRoutes } from "./modules/appointment/routes.js";
 import { clinicalRoutes } from "./modules/clinical/index.js";
 import { documentRoutes } from "./modules/documents/index.js";
 import { messagingRoutes } from "./modules/messaging/index.js";
@@ -16,6 +16,8 @@ import { notificationRoutes } from "./modules/notification/index.js";
 import { inquiryRoutes } from "./modules/inquiry/index.js";
 import { staffingRoutes } from "./modules/staffing/index.js";
 import { inventoryRoutes } from "./modules/inventory/index.js";
+import { clinicalMetricsRoutes } from "./modules/clinical-metrics/index.js";
+import { availabilityRoutes } from "./modules/availability/index.js";
 // Imported directly from routes.js, not modules/audit/index.js — that index re-exports
 // service/repository only, deliberately not routes, to avoid a circular import (see the comment
 // in modules/audit/index.js for why).
@@ -70,6 +72,8 @@ export function createApp() {
   app.use(staffingRoutes);
   app.use(inventoryRoutes);
   app.use(auditRoutes);
+  app.use(clinicalMetricsRoutes);
+  app.use(availabilityRoutes);
 
   app.use(notFoundHandler);
   app.use(errorHandler);

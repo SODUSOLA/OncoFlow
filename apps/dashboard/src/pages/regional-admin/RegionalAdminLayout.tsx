@@ -10,6 +10,7 @@ import { useRegionAlerts } from "./lib/useRegionAlerts";
 import { Sidebar } from "./shell/Sidebar";
 import { TopAppBar } from "./shell/TopAppBar";
 import { AppShell } from "./shell/AppShell";
+import { NewConsultationModal } from "./components/NewConsultationModal";
 
 // Regional Admin's own shell — rebuilt per ONCOFLOW_REGIONAL_ADMIN_BUILD_GUIDE.md Phase 1 against
 // ONCOFLOW_DESIGN_SYSTEM.md's locked Figma tokens, replacing the earlier ad hoc restyle. The
@@ -64,6 +65,7 @@ export function RegionalAdminLayout() {
   const { alerts } = useRegionAlerts();
   const [collapsed, setCollapsed] = useState(() => localStorage.getItem(SIDEBAR_COLLAPSED_KEY) === "1");
   const [search, setSearch] = useState("");
+  const [newConsultationOpen, setNewConsultationOpen] = useState(false);
 
   function toggleCollapsed() {
     setCollapsed((prev) => {
@@ -102,6 +104,7 @@ export function RegionalAdminLayout() {
           userSubtitle={`${roleLabel}${region ? ` · ${region}` : ""}`}
           initials={initials}
           onSignOut={() => logout()}
+          onNewConsultation={() => setNewConsultationOpen(true)}
         />
       }
       topBar={
@@ -119,6 +122,9 @@ export function RegionalAdminLayout() {
       }
     >
       <Outlet />
+      {newConsultationOpen && (
+        <NewConsultationModal onClose={() => setNewConsultationOpen(false)} onScheduled={() => {}} />
+      )}
     </AppShell>
   );
 }

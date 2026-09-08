@@ -14,6 +14,11 @@ export interface MeetingData {
   provider: string;
   roomId: string;
   status: MeetingStatus;
+  // Optional (not just nullable) so existing test fixtures built before this field existed don't
+  // all need updating — every real row from the repository has it, since the column itself is
+  // nullable-but-present.
+  endedAt?: Date | null;
+  dailyRoomExp?: Date | null;
   transcriptCorrectedAt: Date | null;
   transcriptCorrectedBy: string | null;
   transcriptSignedOffAt: Date | null;
@@ -28,6 +33,8 @@ export class Meeting {
   get provider() { return this.data.provider; }
   get roomId() { return this.data.roomId; }
   get status() { return this.data.status; }
+  get endedAt() { return this.data.endedAt; }
+  get dailyRoomExp() { return this.data.dailyRoomExp; }
   get transcriptCorrectedAt() { return this.data.transcriptCorrectedAt; }
   get transcriptCorrectedBy() { return this.data.transcriptCorrectedBy; }
   get transcriptSignedOffAt() { return this.data.transcriptSignedOffAt; }
@@ -78,6 +85,8 @@ export class Meeting {
       provider: this.data.provider,
       roomId: this.data.roomId,
       status: this.data.status,
+      endedAt: this.data.endedAt?.toISOString() ?? null,
+      dailyRoomExp: this.data.dailyRoomExp?.toISOString() ?? null,
       transcriptCorrectedAt: this.data.transcriptCorrectedAt?.toISOString() ?? null,
       transcriptCorrectedBy: this.data.transcriptCorrectedBy,
       transcriptSignedOffAt: this.data.transcriptSignedOffAt?.toISOString() ?? null,

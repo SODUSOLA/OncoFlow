@@ -10,6 +10,10 @@ import { appointmentTypeEnum } from "../../db/enums.js";
 import { PatientRepository } from "../patient/index.js";
 import { notificationService } from "../notification/index.js";
 import { FacilityRepository } from "../facility/index.js";
+import { availabilityService } from "../availability/index.js";
+import { ForbiddenError } from "../../lib/errors.js";
+
+const DEFAULT_DURATION_MINUTES = 30;
 
 type AppointmentType = (typeof appointmentTypeEnum.enumValues)[number];
 
@@ -34,7 +38,13 @@ export class AppointmentService {
     facilityId: string;
     appointmentType: string;
     scheduledAt: string;
+    durationMinutes?: number;
     overrideWeeklyStructure?: boolean;
+    // ONCOFLOW_SCHEDULING_AND_VIDEO_LIFECYCLE.md §2 — off by default so every existing caller
+    // of this method (and its tests) keeps behaving exactly as before; only the new Regional
+    // Admin "New Consultation" flow (routes.ts's /consultations) opts in, since that's the one
+    // path the doc actually wants server-side-constrained to a named consultant's real hours.
+    requireAvailabilityMatch?: boolean;
   }) {
     if (!appointmentTypeEnum.enumValues.includes(data.appointmentType as AppointmentType)) {
       throw new Error("Unsupported appointment type");
@@ -46,12 +56,21 @@ export class AppointmentService {
       if (!structure.allowed) throw new Error(structure.reason);
     }
 
+    const durationMinutes = data.durationMinutes ?? DEFAULT_DURATION_MINUTES;
+
+    if (data.requireAvailabilityMatch) {
+      if (!data.oncologistId) throw new Error("An assigned consultant is required to check availability");
+      const fits = await availabilityService.isWithinAvailability(data.oncologistId, scheduledAt, durationMinutes);
+      if (!fits) throw new ForbiddenError("Requested time falls outside the consultant's stated availability");
+    }
+
     const row = await repo.create({
       patientId: data.patientId,
       oncologistId: data.oncologistId ?? null,
       facilityId: data.facilityId,
       appointmentType: data.appointmentType as AppointmentType,
       scheduledAt,
+      durationMinutes,
     });
     return new Appointment(row).toJSON();
   }

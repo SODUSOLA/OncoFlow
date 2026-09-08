@@ -1,7 +1,7 @@
 import crypto from "node:crypto";
 import {
   ConversationRepository, ParticipantRepository, MessageRepository, MeetingRepository, TranscriptRepository,
-  TranscriptionAssignmentRepository, ConversationFeedbackRepository,
+  TranscriptionAssignmentRepository, ConversationFeedbackRepository, MeetingRecordingRepository,
 } from "./repository.js";
 import { Conversation } from "./entities/Conversation.js";
 import { Message } from "./entities/Message.js";
@@ -9,11 +9,11 @@ import { Meeting } from "./entities/Meeting.js";
 import { Transcript } from "./entities/Transcript.js";
 import { TranscriptionAssignment } from "./entities/TranscriptionAssignment.js";
 import { ConversationFeedback } from "./entities/ConversationFeedback.js";
-import { createDailyRoom } from "./services/DailyService.js";
+import { createDailyRoom, getDailyRoomPresence, createDailyMeetingToken, getDailyRoomUrl } from "./services/DailyService.js";
 import { ConflictError, ForbiddenError, NotFoundError } from "../../lib/errors.js";
 import { userHasRole, userHasPermission } from "../../lib/rbac.js";
 import { PatientRepository } from "../patient/index.js";
-import { AppointmentRepository } from "../appointment/index.js";
+import { AppointmentRepository, AppointmentParticipantRepository } from "../appointment/index.js";
 import { InvoiceService, InvoiceRepository, ServiceClassificationRepository } from "../billing/index.js";
 import { Invoice } from "../billing/entities/Invoice.js";
 import { PaymentService } from "../billing/services/PaymentService.js";
@@ -36,6 +36,8 @@ const transcriptRepo = new TranscriptRepository();
 const transcriptionAssignmentRepo = new TranscriptionAssignmentRepository();
 const feedbackRepo = new ConversationFeedbackRepository();
 const appointmentRepo = new AppointmentRepository();
+const apptParticipantRepo = new AppointmentParticipantRepository();
+const recordingRepo = new MeetingRecordingRepository();
 const invoiceSvc = new InvoiceService();
 const invoiceRepo = new InvoiceRepository();
 const classificationRepo = new ServiceClassificationRepository();
@@ -470,23 +472,53 @@ const transcriptionAssignmentSvc = new TranscriptionAssignmentService();
 // either webhook handler here is ever called — these methods assume the request is already
 // authenticated as genuinely from Daily.co, they don't re-verify it themselves.
 export class MeetingService {
-  async provisionRoom(appointmentId: string) {
+  // Two concurrent callers for the same appointment (React StrictMode's double-mount in dev,
+  // a genuine double-click, or two tabs) both pass the findByAppointment check above before
+  // either has inserted a row, then race on Daily's own room-name collision (a plain 400, not
+  // a distinguishable "already exists" code) and the DB's own unique appointment_id constraint.
+  // Rather than surfacing a false failure to whichever request loses the race, both failure
+  // points re-check our own row and hand back the winner's meeting — this endpoint is meant to
+  // be safely retryable, not a true create-or-conflict.
+  // opts is set by the scheduling-time caller (appointment module's /consultations
+  // orchestration) so the room's Daily-side expiry can be computed from the real appointment
+  // window; omitted by the legacy lazy-provisioning path, which has no scheduled end to compute
+  // it from.
+  async provisionRoom(appointmentId: string, opts?: { scheduledAt: Date; durationMinutes: number }) {
     const existing = await meetingRepo.findByAppointment(appointmentId);
     if (existing) {
       throw new ConflictError("A meeting already exists for this appointment");
     }
 
-    const { roomId } = await createDailyRoom(`appointment-${appointmentId}`);
+    // 30-minute grace buffer past the appointment's own end, per the lifecycle doc §3 — enough
+    // slack for a call that runs long without leaving the room joinable indefinitely.
+    const GRACE_MINUTES = 30;
+    const expDate = opts ? new Date(opts.scheduledAt.getTime() + (opts.durationMinutes + GRACE_MINUTES) * 60_000) : undefined;
+    const exp = expDate ? Math.floor(expDate.getTime() / 1000) : undefined;
 
-    const row = await meetingRepo.create({
-      id: crypto.randomUUID(),
-      appointmentId,
-      provider: "daily.co",
-      roomId,
-      status: "SCHEDULED",
-    });
+    let roomId: string;
+    try {
+      ({ roomId } = await createDailyRoom(`appointment-${appointmentId}`, { exp }));
+    } catch (err) {
+      const raced = await meetingRepo.findByAppointment(appointmentId);
+      if (raced) return new Meeting(raced).toJSON();
+      throw err;
+    }
 
-    return new Meeting(row).toJSON();
+    try {
+      const row = await meetingRepo.create({
+        id: crypto.randomUUID(),
+        appointmentId,
+        provider: "daily.co",
+        roomId,
+        status: "SCHEDULED",
+        dailyRoomExp: expDate ?? null,
+      });
+      return new Meeting(row).toJSON();
+    } catch (err) {
+      const raced = await meetingRepo.findByAppointment(appointmentId);
+      if (raced) return new Meeting(raced).toJSON();
+      throw err;
+    }
   }
 
   // Lets a patient join their own scheduled video consult without a blanket meeting:read
@@ -505,6 +537,111 @@ export class MeetingService {
     return row ? new Meeting(row).toJSON() : null;
   }
 
+  // Same ownership rule as getByAppointment (patient-self or a meeting:read grant) — this is
+  // what lets Phase 4's Pre-call Briefing honestly know "has the patient's client actually
+  // connected yet" instead of a clinician manually clicking through to the Room.
+  async getPresence(meetingId: string, callerId: string) {
+    const meetingRow = await meetingRepo.findById(meetingId);
+    if (!meetingRow) throw new NotFoundError("Meeting not found");
+    const appointmentRow = await appointmentRepo.findById(meetingRow.appointmentId);
+    if (!appointmentRow) throw new NotFoundError("Appointment not found");
+
+    const isSelf = await callerOwnsPatient(callerId, appointmentRow.patientId);
+    if (!isSelf && !(await userHasPermission(callerId, "meeting", "read"))) {
+      throw new ForbiddenError("Forbidden");
+    }
+    return getDailyRoomPresence(meetingRow.roomId);
+  }
+
+  // Decision 2 — role-scoped join tokens. isOwner is the appointment's own assigned oncologist
+  // (or SUPER_ADMIN, same break-glass precedent as signOffTranscript); everyone else who's
+  // allowed to join at all gets a plain participant token.
+  //
+  // ONCOFLOW_SCHEDULING_AND_VIDEO_LIFECYCLE.md §3: "must check participant membership, not just
+  // role-permission" — a token is consequential (it's literally a room join credential), so this
+  // deliberately does NOT fall back to a broad meeting:read grant the way getPresence/
+  // getByAppointment still do for read-only visibility. Membership is either the fixed
+  // oncologist/patient roles already on the appointment, or an explicit appointment_participant
+  // row (Admin's New Consultation flow adds one per invited participant at scheduling time) —
+  // this is what makes "only admin-selected participants can join" actually true.
+  async issueToken(meetingId: string, callerId: string, callerName: string) {
+    const meetingRow = await meetingRepo.findById(meetingId);
+    if (!meetingRow) throw new NotFoundError("Meeting not found");
+    const appointmentRow = await appointmentRepo.findById(meetingRow.appointmentId);
+    if (!appointmentRow) throw new NotFoundError("Appointment not found");
+
+    const isSuperAdmin = await userHasRole(callerId, "SUPER_ADMIN");
+    const isOncologist = appointmentRow.oncologistId === callerId;
+    const isSelf = await callerOwnsPatient(callerId, appointmentRow.patientId);
+    const isInvitedParticipant = isSuperAdmin || isOncologist || isSelf
+      ? true
+      : (await apptParticipantRepo.findByAppointment(appointmentRow.id)).some((p) => p.userId === callerId);
+    if (!isInvitedParticipant) {
+      throw new ForbiddenError("Forbidden");
+    }
+
+    const token = await createDailyMeetingToken(meetingRow.roomId, {
+      isOwner: isSuperAdmin || isOncologist,
+      userName: callerName,
+    });
+    return { token, roomId: meetingRow.roomId, roomUrl: getDailyRoomUrl(meetingRow.roomId), isOwner: isSuperAdmin || isOncologist };
+  }
+
+  // The clinician's own "End Call" action (Phase 5) — a second, client-driven path to ENDED
+  // alongside the webhook one below. Relying on the webhook alone means a dev environment with
+  // no public URL for Daily to call back to (or a genuinely dropped webhook in prod) never
+  // records endedAt, which would silently make Phase 6's post-consult SLA clock inert. Whoever
+  // ends the call is an authoritative-enough signal on its own; idempotent if the webhook (or a
+  // second click) already got there first.
+  async endCall(meetingId: string, callerId: string) {
+    const meetingRow = await meetingRepo.findById(meetingId);
+    if (!meetingRow) throw new NotFoundError("Meeting not found");
+    const appointmentRow = await appointmentRepo.findById(meetingRow.appointmentId);
+    if (!appointmentRow) throw new NotFoundError("Appointment not found");
+
+    const isSuperAdmin = await userHasRole(callerId, "SUPER_ADMIN");
+    if (!isSuperAdmin && appointmentRow.oncologistId !== callerId) {
+      throw new ForbiddenError("Only the appointment's assigned consultant can end this call");
+    }
+    if (meetingRow.status === "ENDED") {
+      return new Meeting(meetingRow).toJSON();
+    }
+
+    const updated = new Meeting(meetingRow).transitionTo("ENDED");
+    const saved = await meetingRepo.update(meetingId, { status: updated.status, endedAt: new Date() });
+    await transcriptionAssignmentSvc.queueForMeeting(meetingId);
+    return new Meeting(saved!).toJSON();
+  }
+
+  // §5 — Daily's recording webhook. Payload field names here are the best-effort read of
+  // Daily's own recording-webhook docs, same caveat as verifyDailyWebhookSignature's own
+  // comment: unverified against a real delivery (recording is gated behind
+  // DAILY_ENABLE_RECORDING, off by default, and no recording has actually run in this
+  // environment yet) — confirm exact field names against a real webhook before relying on this
+  // in production. Upserts by dailyRecordingId so a "started" event followed by a
+  // "ready-to-download" event for the same recording updates one row, not two.
+  async recordRecordingEvent(data: {
+    recordingId: string; roomName: string; status: "processing" | "ready" | "failed" | "cancelled";
+    downloadUrl?: string; durationSeconds?: number;
+  }) {
+    const meetingRow = await meetingRepo.findByRoomId(data.roomName);
+    if (!meetingRow) throw new NotFoundError("Meeting not found for this room");
+
+    const status = data.status === "ready" ? "AVAILABLE" : data.status === "failed" || data.status === "cancelled" ? "FAILED" : "PROCESSING";
+    const existing = await recordingRepo.findByDailyId(data.recordingId);
+    if (existing) {
+      return recordingRepo.update(existing.id, {
+        status, downloadUrl: data.downloadUrl ?? existing.downloadUrl, durationSeconds: data.durationSeconds ?? existing.durationSeconds,
+        completedAt: status === "AVAILABLE" || status === "FAILED" ? new Date() : existing.completedAt,
+      });
+    }
+    return recordingRepo.create({
+      id: crypto.randomUUID(), meetingId: meetingRow.id, dailyRecordingId: data.recordingId,
+      status, downloadUrl: data.downloadUrl ?? null, durationSeconds: data.durationSeconds ?? null,
+      startedAt: new Date(), completedAt: status === "AVAILABLE" || status === "FAILED" ? new Date() : null,
+    });
+  }
+
   // Driven by Daily.co's meeting-status webhook — maps its event types to our own
   // SCHEDULED/IN_PROGRESS/ENDED status via the entity's own transition guard. Daily.co
   // identifies the meeting by room id in the webhook payload, not our own meeting.id.
@@ -512,7 +649,10 @@ export class MeetingService {
     const row = await meetingRepo.findByRoomId(roomId);
     if (!row) throw new NotFoundError("Meeting not found for this room");
     const updated = new Meeting(row).transitionTo(targetStatus);
-    const saved = await meetingRepo.update(row.id, { status: updated.status });
+    const saved = await meetingRepo.update(row.id, {
+      status: updated.status,
+      ...(targetStatus === "ENDED" ? { endedAt: new Date() } : {}),
+    });
 
     // F3.11 — a meeting reaching ENDED is what queues its transcript for Scribe review.
     if (targetStatus === "ENDED") {

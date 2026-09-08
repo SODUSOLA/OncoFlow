@@ -1,6 +1,6 @@
 import { db } from "../../db/index.js";
-import { eq, sql, and, gt, inArray } from "drizzle-orm";
-import { countdownCase, triageChecklist, prescription, labRequest, labResult, clinicalDecision } from "./schema.js";
+import { eq, sql, and, gt, inArray, desc } from "drizzle-orm";
+import { countdownCase, triageChecklist, prescription, labRequest, labResult, clinicalDecision, medicalRecord, clinicalNote } from "./schema.js";
 
 export class CountdownCaseRepository {
   async findById(id: string) {
@@ -239,6 +239,58 @@ export class ClinicalDecisionRepository {
       .set({ ...data, updatedAt: new Date() })
       .where(and(eq(clinicalDecision.id, id), eq(clinicalDecision.isDeleted, false)))
       .returning();
+    return row[0] ?? null;
+  }
+}
+
+export class MedicalRecordRepository {
+  async create(data: typeof medicalRecord.$inferInsert) {
+    const row = await db.insert(medicalRecord).values(data).returning();
+    return row[0]!;
+  }
+}
+
+// The "Add Clinical Note" action on the Consulting Oncologist shell — a free-text note tied to
+// a patient. Every note gets its own MedicalRecord (recordType "CONSULT_NOTE") rather than
+// reusing one shared record per patient: MedicalRecord.summary is itself real content (not a
+// container title), so a shared record would mean each new note silently overwrote the last
+// summary. One record per note keeps that field meaningful.
+export class ClinicalNoteRepository {
+  async create(data: typeof clinicalNote.$inferInsert) {
+    const row = await db.insert(clinicalNote).values(data).returning();
+    return row[0]!;
+  }
+
+  async findByPatient(patientId: string) {
+    return db
+      .select({
+        id: clinicalNote.id,
+        note: clinicalNote.note,
+        authorId: clinicalNote.authorId,
+        createdAt: clinicalNote.createdAt,
+        recordType: medicalRecord.recordType,
+      })
+      .from(clinicalNote)
+      .innerJoin(medicalRecord, eq(medicalRecord.id, clinicalNote.medicalRecordId))
+      .where(and(eq(medicalRecord.patientId, patientId), eq(clinicalNote.isDeleted, false)))
+      .orderBy(desc(clinicalNote.createdAt));
+  }
+
+  // Phase 6's Post-call Summary — "has this specific meeting already been finalized" is a direct
+  // FK lookup (MedicalRecord.sourceMeetingId), not a date-proximity guess against a patient who
+  // may have several same-day appointments.
+  async findByMeeting(sourceMeetingId: string) {
+    const row = await db
+      .select({
+        id: clinicalNote.id,
+        note: clinicalNote.note,
+        authorId: clinicalNote.authorId,
+        createdAt: clinicalNote.createdAt,
+      })
+      .from(clinicalNote)
+      .innerJoin(medicalRecord, eq(medicalRecord.id, clinicalNote.medicalRecordId))
+      .where(and(eq(medicalRecord.sourceMeetingId, sourceMeetingId), eq(clinicalNote.isDeleted, false)))
+      .limit(1);
     return row[0] ?? null;
   }
 }

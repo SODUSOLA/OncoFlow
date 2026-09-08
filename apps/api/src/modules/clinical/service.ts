@@ -1,7 +1,7 @@
 import crypto from "node:crypto";
 import {
   TriageChecklistRepository, PrescriptionRepository, LabRequestRepository, LabResultRepository,
-  ClinicalDecisionRepository, CountdownCaseRepository,
+  ClinicalDecisionRepository, CountdownCaseRepository, MedicalRecordRepository, ClinicalNoteRepository,
 } from "./repository.js";
 import { TriageChecklist } from "./entities/TriageChecklist.js";
 import { Prescription } from "./entities/Prescription.js";
@@ -22,6 +22,8 @@ const labRequestRepo = new LabRequestRepository();
 const labResultRepo = new LabResultRepository();
 const clinicalDecisionRepo = new ClinicalDecisionRepository();
 const countdownCaseRepo = new CountdownCaseRepository();
+const medicalRecordRepo = new MedicalRecordRepository();
+const clinicalNoteRepo = new ClinicalNoteRepository();
 
 // F3.2 — one checklist per conversation, ever. The role restriction (must be a Virtual
 // Medical Officer) is enforced at the route layer via requireRole("VIRTUAL_MEDICAL_OFFICER"),
@@ -322,5 +324,43 @@ export class CountdownCaseService {
     const updated = new CountdownCase(row).paymentConfirmed();
     const saved = await countdownCaseRepo.update(id, { paymentConfirmedAt: updated.paymentConfirmedAt, status: updated.status });
     return new CountdownCase(saved!).toJSON();
+  }
+}
+
+// Backs the "Add Clinical Note" action present on every Consulting Oncologist screen — the
+// schema (MedicalRecord/ClinicalNote) already existed, but no route ever exposed writing to
+// it. A plain create+list pair, no entity/status-machine wrapper: unlike TriageChecklist or
+// CountdownCase, a clinical note has no state transitions to model.
+export class ClinicalNoteService {
+  // recordType defaults to the original free-text "Add Clinical Note" action's type.
+  // sourceMeetingId is only ever set for Phase 6's "Sync to EHR & Finalize" — it's what makes
+  // that write idempotent-checkable (getSummaryByMeeting) and is otherwise omitted.
+  async addNote(data: { patientId: string; authorId: string; note: string; recordType?: string; sourceMeetingId?: string }) {
+    const record = await medicalRecordRepo.create({
+      id: crypto.randomUUID(),
+      patientId: data.patientId,
+      createdBy: data.authorId,
+      recordType: data.recordType ?? "CONSULT_NOTE",
+      summary: data.note.slice(0, 200),
+      sourceMeetingId: data.sourceMeetingId,
+    });
+    const note = await clinicalNoteRepo.create({
+      id: crypto.randomUUID(),
+      medicalRecordId: record.id,
+      authorId: data.authorId,
+      note: data.note,
+    });
+    return { id: note.id, patientId: data.patientId, note: note.note, authorId: note.authorId, createdAt: note.createdAt };
+  }
+
+  async listForPatient(patientId: string) {
+    return clinicalNoteRepo.findByPatient(patientId);
+  }
+
+  // Post-call Summary reads this on mount to know whether it's already been finalized (survives
+  // reload — a real state transition, not just local component state) — see ClinicalNote has no
+  // update path, so "exists" IS "locked".
+  async getSummaryByMeeting(meetingId: string) {
+    return clinicalNoteRepo.findByMeeting(meetingId);
   }
 }

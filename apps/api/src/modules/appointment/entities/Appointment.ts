@@ -17,6 +17,10 @@ export interface AppointmentData {
   facilityId: string;
   appointmentType: string;
   scheduledAt: Date;
+  // Optional (not just nullable) so existing test fixtures built before this field existed
+  // don't all need updating — every real row from the repository has it, since the column
+  // itself is nullable-but-present.
+  durationMinutes?: number | null;
   status: AppointmentStatus;
   meetingId: string | null;
   paymentConfirmedAt: Date | null;
@@ -35,6 +39,7 @@ export class Appointment {
   get facilityId() { return this.data.facilityId; }
   get appointmentType() { return this.data.appointmentType; }
   get scheduledAt() { return this.data.scheduledAt; }
+  get durationMinutes() { return this.data.durationMinutes; }
   get status() { return this.data.status; }
   get paymentConfirmedAt() { return this.data.paymentConfirmedAt; }
 
@@ -82,6 +87,7 @@ export class Appointment {
       facilityId: this.data.facilityId,
       appointmentType: this.data.appointmentType,
       scheduledAt: this.data.scheduledAt.toISOString(),
+      durationMinutes: this.data.durationMinutes,
       status: this.data.status,
       paymentConfirmedAt: this.data.paymentConfirmedAt?.toISOString() ?? null,
       createdAt: this.data.createdAt.toISOString(),

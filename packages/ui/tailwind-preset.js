@@ -24,11 +24,15 @@ module.exports = {
         gold: {
           DEFAULT: "#E9B21A",
         },
-        // Regional Admin's own locked palette, pulled directly from Figma (see
-        // ONCOFLOW_DESIGN_SYSTEM.md, "Palette A — LOCKED"). Kept separate from `ink`/`gold`
-        // above rather than repointing them, since those are the app-wide brand tokens already
-        // used on Login and the Patient views — this palette is specific to the Regional Admin
-        // rebuild and shouldn't leak brand changes into screens that were never re-specced.
+        // The locked design system's own palette ("Palette A" in ONCOFLOW_DESIGN_SYSTEM.md),
+        // pulled directly from Figma. Kept separate from `ink`/`gold` above rather than
+        // repointing them, since those are the app-wide brand tokens already used on Login and
+        // the Patient views — this palette is specific to the screens re-specced against that
+        // doc. Originally scoped to Regional Admin (hence the `admin` name), now shared as-is
+        // by Consulting Oncologist too — same Palette A, same values, per the design system's
+        // "Consulting Oncologist persona — token reconciliation" section. Not renamed to avoid
+        // a disruptive find/replace across every already-shipped Regional Admin page; treat
+        // `admin-*` as "the locked design system's tokens," not "admin-only."
         admin: {
           "sidebar-cta": "#002147",
           gold: "#FED65B",
@@ -46,6 +50,11 @@ module.exports = {
           "canvas-bg": "#F8F9FA",
           card: "#FFFFFF",
           "card-alt": "#F4F3F7",
+          // Added for Consulting Oncologist: patient-ID-badge accent and the dim label color
+          // used on dark, video-room-only surfaces (the Video Consult Room's bottom HUD bar).
+          "info-bg": "#D6E3FF",
+          "info-text": "#001B3D",
+          "dark-label": "#708AB5",
         },
       },
       fontFamily: {

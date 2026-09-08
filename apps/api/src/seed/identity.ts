@@ -94,6 +94,17 @@ const PERMISSIONS: { resource: string; action: string; description: string }[] =
   { resource: "transferRequest", action: "create", description: "Initiate a patient facility transfer request" },
   { resource: "transferRequest", action: "read", description: "Read facility transfer requests" },
   { resource: "audit", action: "read", description: "Read a region-scoped activity feed (logins, logouts, access-denied events) for own facility-scoped staff" },
+  { resource: "clinicalNote", action: "create", description: "Add a free-text clinical note to a patient's medical record" },
+  { resource: "clinicalNote", action: "read", description: "Read a patient's clinical notes" },
+  { resource: "regimen", action: "read", description: "Read a patient's active treatment regimen and cycles" },
+  { resource: "vital", action: "read", description: "Read a patient's vital-sign readings" },
+  { resource: "vital", action: "create", description: "Record a vital-sign reading (e.g. logged during a video consult)" },
+  { resource: "clinicalMetrics", action: "read", description: "Read a patient's current BMI/BSA/CrCl snapshot and FBC/E-U-Cr values" },
+  { resource: "clinicalMetrics", action: "create", description: "Record a per-cycle clinical metrics snapshot (Nursing Officer)" },
+  { resource: "labDocument", action: "read", description: "Read a patient's lab document approval metadata (no analyte values)" },
+  { resource: "caseLock", action: "read", description: "Read whether a patient's case is currently locked" },
+  { resource: "activityLog", action: "read", description: "Read a patient's clinical activity log (union of clinical notes and lab documents)" },
+  { resource: "availability", action: "read", description: "Read another consultant's availability blocks (Regional Admin scheduling a New Consultation)" },
 ];
 
 export async function seedIdentity() {
@@ -176,7 +187,11 @@ export async function seedIdentity() {
     // patient record itself is auto-created at email verification.
     "patient:read", "patient:create", "patient:update", "patient:call",
     "invoice:create", "invoice:read", "tariff:read",
-    "appointment:read", "appointment:update",
+    // appointment:create + availability:read — ONCOFLOW_SCHEDULING_AND_VIDEO_LIFECYCLE.md's
+    // revived New Consultation flow: Admin picks a consultant, sees their real availability,
+    // and schedules into it.
+    "appointment:read", "appointment:update", "appointment:create",
+    "availability:read",
     "countdownCase:read",
     "labResult:read",
     "publicInquiry:read", "publicInquiry:update",
@@ -199,6 +214,23 @@ export async function seedIdentity() {
   // this round (docs/build-plan/08-stakeholder-role-matrix.md's Onsite Nursing Officer section
   // doesn't otherwise scope a real permission grant yet — that broader pass is still pending).
   await grantPermissionsToRole("ONSITE_NURSING_OFFICER", ["patient:call"]);
+
+  // Fourth real per-role grant — Consulting Oncologist's first-ever grant in this seed, scoped
+  // to what apps/dashboard's Consultant build actually exercises: the Appointment Grid, Patient
+  // File (read-only clinical history), the Video Consult room (provisioning/reading a Daily.co
+  // meeting and its transcript, signing off once corrected — meeting:update's ownership check
+  // is against appointment.oncologistId, not a broad grant), and adding clinical notes.
+  await grantPermissionsToRole("CONSULTING_ONCOLOGIST", [
+    "patient:read",
+    "appointment:read", "appointment:update",
+    "meeting:create", "meeting:read", "meeting:update",
+    "transcript:read",
+    "labRequest:read", "labResult:read",
+    "countdownCase:read",
+    "clinicalNote:create", "clinicalNote:read",
+    "regimen:read", "vital:read", "vital:create", "clinicalMetrics:read", "labDocument:read", "caseLock:read",
+    "activityLog:read",
+  ]);
 
   // Every other role still has zero grants — that real RBAC pass is still pending.
 

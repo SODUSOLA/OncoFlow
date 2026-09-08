@@ -53,6 +53,7 @@ export const conversationStatusEnum = pgEnum("conversation_status", ["OPEN", "CL
 export const messageTypeEnum = pgEnum("message_type", ["TEXT", "IMAGE", "VOICE", "SYSTEM"]);
 export const messageStatusEnum = pgEnum("message_status", ["SENT", "DELIVERED", "READ"]);
 export const meetingStatusEnum = pgEnum("meeting_status", ["SCHEDULED", "IN_PROGRESS", "ENDED"]);
+export const meetingRecordingStatusEnum = pgEnum("meeting_recording_status", ["PROCESSING", "AVAILABLE", "FAILED"]);
 export const transcriptionAssignmentStatusEnum = pgEnum("transcription_assignment_status", [
   "QUEUED", "CLAIMED", "IN_PROGRESS", "COMPLETED", "RELEASED",
 ]);
@@ -105,3 +106,58 @@ export const publicInquiryMessageSenderTypeEnum = pgEnum("public_inquiry_message
 // conversation (one per rater), not a single shared record — each side's rating/review stands
 // on its own regardless of what the other one said.
 export const conversationFeedbackRaterRoleEnum = pgEnum("conversation_feedback_rater_role", ["PATIENT", "STAFF"]);
+
+// ONCOFLOW_PATIENT_DATA_MODELS.md §1 — treatment protocol and its individual cycles.
+export const regimenStatusEnum = pgEnum("regimen_status", ["ACTIVE", "COMPLETED", "DISCONTINUED", "PAUSED"]);
+export const regimenCycleStatusEnum = pgEnum("regimen_cycle_status", ["SCHEDULED", "COMPLETED", "DELAYED", "SKIPPED"]);
+
+// ONCOFLOW_PATIENT_DATA_MODELS.md §2 — one row per reading, one reading per vital type (not a
+// wide table with a column per vital), so every surface that shows vitals queries one source.
+export const vitalTypeEnum = pgEnum("vital_type", [
+  "WEIGHT_KG", "BLOOD_PRESSURE_SYSTOLIC", "BLOOD_PRESSURE_DIASTOLIC",
+  "HEART_RATE_BPM", "TEMPERATURE_C", "SPO2_PERCENT",
+]);
+export const vitalSourceEnum = pgEnum("vital_source", ["MANUAL_ENTRY", "VIDEO_CONSULT", "DEVICE_SYNC"]);
+
+// ONCOFLOW_LAB_AND_METRICS_WORKFLOW.md Track 1 — biometric snapshot computed (and stored, as a
+// deliberate point-in-time exception) once per cycle by the Nursing Officer.
+// Distinct from patient.gender (a self-reported text field, potentially non-binary) — CrCl's
+// formula needs a specific binary clinical input (the 0.85 female multiplier), not an identity
+// field, so this is scoped to the calculation, not a general demographic column.
+export const biologicalSexEnum = pgEnum("biological_sex", ["MALE", "FEMALE"]);
+export const bmiClassificationEnum = pgEnum("bmi_classification", ["UNDERWEIGHT", "NORMAL", "OVERWEIGHT", "OBESE"]);
+export const crclTierEnum = pgEnum("crcl_tier", [
+  "NORMAL", "MILD_IMPAIRMENT", "MODERATE_3A", "MODERATE_SEVERE_3B", "SEVERE",
+]);
+// KDIGO CKD staging for eGFR — deliberately NOT the same boundaries as crclTierEnum above (CrCl
+// tiers came from the original source doc: 50-59/30-49; true KDIGO is 45-59/30-44). Two
+// separate calculations per the resolved doc, not one relabeled as the other.
+export const egfrStageEnum = pgEnum("egfr_stage", ["G1", "G2", "G3A", "G3B", "G4", "G5"]);
+
+// ONCOFLOW_LAB_AND_METRICS_WORKFLOW.md Track 2 — patient-uploaded lab document, reviewed
+// through an Admin (date-check only) → QA Officer (clinical) → Clinical Director (universal)
+// chain. Distinct from the pre-existing labRequest/labResult/clinicalDecision tables further up
+// this file: those model a staff-ORDERED lab request being fulfilled, and are effectively
+// unreachable today (neither QUALITY_ASSURANCE_OFFICER nor STATE_CLINICAL_DIRECTOR has ever
+// been granted a permission in seed/identity.ts, and the only frontend surface that touches
+// this area — Regional Admin's 7-Day Countdown — reads just a plain countdownCase timestamp,
+// never labResult/clinicalDecision content directly). Left in place rather than dropped (no
+// destructive migration), but new work builds on this model per the doc's explicit "Supersedes
+// Section 3" instruction.
+export const labDocumentWorkflowStatusEnum = pgEnum("lab_document_workflow_status", [
+  "PENDING_ADMIN_REVIEW", "ADMIN_REJECTED",
+  "PENDING_QA_REVIEW", "QA_HOLD", "QA_APPROVED",
+  "PENDING_CLINICAL_DIRECTOR_REVIEW", "CLINICAL_DIRECTOR_REVIEWED",
+]);
+export const labDocumentReviewStageEnum = pgEnum("lab_document_review_stage", [
+  "ADMIN_DATE_CHECK", "QA_CLINICAL_REVIEW", "CLINICAL_DIRECTOR_REVIEW",
+]);
+export const labDocumentReviewDecisionEnum = pgEnum("lab_document_review_decision", [
+  "APPROVED", "REJECTED", "PROCEED_TO_CHEMO", "HOLD_FROM_CHEMO", "REVIEWED",
+]);
+
+// ONCOFLOW_LAB_AND_METRICS_WORKFLOW.md — shared case-lock mechanism both tracks can trigger.
+export const caseLockTriggerEnum = pgEnum("case_lock_trigger", ["CRCL_CRITICAL", "EGFR_CRITICAL", "QA_HOLD"]);
+export const caseLockStatusEnum = pgEnum("case_lock_status", ["LOCKED", "SUPERSEDED"]);
+export const caseLockResolvedByRoleEnum = pgEnum("case_lock_resolved_by_role", ["CLINICAL_DIRECTOR", "CHIEF_CONSULTANT"]);
+export const caseLockResolutionEnum = pgEnum("case_lock_resolution", ["APPROVED_TO_PROCEED", "REMAINS_BLOCKED"]);

@@ -3,7 +3,7 @@ import {
   createAppointmentHandler, getAppointmentHandler, listAppointmentsHandler,
   updateAppointmentStatusHandler, addParticipantHandler, deleteAppointmentHandler,
   getUnifiedCalendarHandler, listPendingConfirmationQueueHandler,
-  initiateTransferHandler, listTransfersHandler,
+  initiateTransferHandler, listTransfersHandler, scheduleConsultationHandler,
 } from "./controller.js";
 import { requirePermission, requireAuthenticated } from "../../lib/rbac.js";
 import { validateBody, validateParams, validateQuery } from "../../lib/validation.js";
@@ -52,9 +52,19 @@ const listTransfersQuerySchema = z.object({
   region: z.string().trim().min(1).optional(),
 });
 
+const scheduleConsultationSchema = z.object({
+  patientId: z.string().uuid(),
+  oncologistId: z.string().uuid(),
+  facilityId: z.string().uuid(),
+  appointmentType: z.enum(appointmentTypeEnum.enumValues),
+  scheduledAt: z.string().trim().min(1).max(64),
+  durationMinutes: z.number().int().min(5).max(240).optional(),
+});
+
 const router = Router();
 
 router.post("/appointments", requirePermission("appointment", "create"), validateBody(createAppointmentSchema), createAppointmentHandler);
+router.post("/consultations", requirePermission("appointment", "create"), validateBody(scheduleConsultationSchema), scheduleConsultationHandler);
 // requireAuthenticated: a patient listing/reading their OWN appointments (e.g. to join a
 // scheduled video consult) is a right, not a grant — ownership-or-permission check lives in
 // the controller (callerOwnsPatient).

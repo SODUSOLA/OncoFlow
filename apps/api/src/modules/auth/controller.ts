@@ -1,11 +1,25 @@
 import type { Request, Response } from "express";
 import type { AuthenticatedRequest } from "../../lib/rbac.js";
 import { AuthService } from "./service.js";
-import { SessionRepository } from "./repository.js";
+import { SessionRepository, UserRepository } from "./repository.js";
 import { SESSION_COOKIE_NAME, getSessionCookieOptions } from "../../lib/session-cookie.js";
 
 const auth = new AuthService();
 const sessionRepo = new SessionRepository();
+const userRepo = new UserRepository();
+
+// Regional Admin's New Consultation consultant picker — scoped by requirePermission's
+// appointment:create in routes.ts, not a new broad staff-directory permission, since this
+// endpoint exists specifically to populate that flow's picker.
+export async function listConsultantsHandler(req: Request, res: Response) {
+  try {
+    const facilityId = typeof req.query.facilityId === "string" ? req.query.facilityId : undefined;
+    const rows = await userRepo.findConsultants(facilityId);
+    res.json({ consultants: rows.map((r) => ({ id: r.id, email: r.email, facilityId: r.facility_id, roleName: r.role_name })) });
+  } catch {
+    res.status(500).json({ error: "Internal server error" });
+  }
+}
 
 export async function registerHandler(req: Request, res: Response) {
   try {

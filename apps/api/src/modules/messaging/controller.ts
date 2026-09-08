@@ -170,6 +170,52 @@ export async function getMeetingHandler(req: Request, res: Response) {
   }
 }
 
+export async function getMeetingPresenceHandler(req: Request, res: Response) {
+  try {
+    const callerId = (req as AuthenticatedRequest).userId;
+    const result = await meetingSvc.getPresence(String(req.params.meetingId), callerId);
+    res.json(result);
+  } catch (err) {
+    const message = err instanceof Error ? err.message : "Internal server error";
+    const status = message === "Meeting not found" || message === "Appointment not found" ? 404
+      : message === "Forbidden" ? 403
+      : message.includes("not configured") ? 502
+      : 500;
+    res.status(status).json({ error: message });
+  }
+}
+
+export async function endMeetingHandler(req: Request, res: Response) {
+  try {
+    const callerId = (req as AuthenticatedRequest).userId;
+    const result = await meetingSvc.endCall(String(req.params.meetingId), callerId);
+    res.json({ meeting: result });
+  } catch (err) {
+    const message = err instanceof Error ? err.message : "Internal server error";
+    const status = message === "Meeting not found" || message === "Appointment not found" ? 404
+      : message.startsWith("Only the appointment's assigned consultant") ? 403
+      : message.startsWith("Cannot transition") ? 409
+      : 500;
+    res.status(status).json({ error: message });
+  }
+}
+
+export async function issueMeetingTokenHandler(req: Request, res: Response) {
+  try {
+    const callerId = (req as AuthenticatedRequest).userId;
+    const userName = typeof req.body?.userName === "string" && req.body.userName.trim() ? req.body.userName.trim() : "Participant";
+    const result = await meetingSvc.issueToken(String(req.params.meetingId), callerId, userName);
+    res.json(result);
+  } catch (err) {
+    const message = err instanceof Error ? err.message : "Internal server error";
+    const status = message === "Meeting not found" || message === "Appointment not found" ? 404
+      : message === "Forbidden" ? 403
+      : message.includes("not configured") ? 502
+      : 500;
+    res.status(status).json({ error: message });
+  }
+}
+
 function requireVerifiedDailyWebhook(req: Request, res: Response): string | null {
   const rawBody = (req as Request & { rawBody?: Buffer }).rawBody;
   const timestamp = req.header("X-Webhook-Timestamp");
@@ -205,6 +251,29 @@ export async function dailyMeetingStatusWebhookHandler(req: Request, res: Respon
     const message = err instanceof Error ? err.message : "Internal server error";
     const status = message === "Meeting not found for this room" ? 404 : message.startsWith("Cannot transition") ? 409 : 500;
     res.status(status).json({ error: message });
+  }
+}
+
+// §5 — best-effort payload shape, see MeetingService.recordRecordingEvent's comment.
+export async function dailyRecordingWebhookHandler(req: Request, res: Response) {
+  if (!requireVerifiedDailyWebhook(req, res)) return;
+  try {
+    const body = req.body as {
+      recording_id?: string; room_name?: string; status?: string; download_link?: string; duration?: number;
+    };
+    if (!body.recording_id || !body.room_name || !body.status) {
+      res.status(400).json({ error: "Missing recording_id/room_name/status" });
+      return;
+    }
+    const status = ["processing", "ready", "failed", "cancelled"].includes(body.status) ? body.status as "processing" | "ready" | "failed" | "cancelled" : "processing";
+    const result = await meetingSvc.recordRecordingEvent({
+      recordingId: body.recording_id, roomName: body.room_name, status,
+      downloadUrl: body.download_link, durationSeconds: body.duration,
+    });
+    res.json({ recording: result });
+  } catch (err) {
+    const message = err instanceof Error ? err.message : "Internal server error";
+    res.status(message === "Meeting not found for this room" ? 404 : 500).json({ error: message });
   }
 }
 

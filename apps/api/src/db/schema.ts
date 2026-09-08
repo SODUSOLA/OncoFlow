@@ -12,3 +12,5 @@ export * from "../modules/notification/schema.js";
 export * from "../modules/audit/schema.js";
 export * from "../modules/inquiry/schema.js";
 export * from "../modules/staffing/schema.js";
+export * from "../modules/clinical-metrics/schema.js";
+export * from "../modules/availability/schema.js";

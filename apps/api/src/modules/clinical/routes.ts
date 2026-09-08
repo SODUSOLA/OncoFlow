@@ -6,6 +6,7 @@ import {
   markLabRequestUploadedHandler, markLabRequestReviewedHandler,
   uploadLabResultHandler, getLabResultHandler, listLabResultsHandler,
   recordQaRecommendationHandler, recordFinalDecisionHandler, getClinicalDecisionHandler, sendResultsToQaHandler,
+  createClinicalNoteHandler, listClinicalNotesHandler, getClinicalNoteByMeetingHandler,
 } from "./controller.js";
 import { requirePermission, requireRole, requireAuthenticated } from "../../lib/rbac.js";
 import { validateBody, validateParams, validateQuery } from "../../lib/validation.js";
@@ -218,6 +219,42 @@ router.post(
   validateParams(clinicalDecisionIdParamSchema),
   validateBody(recordFinalDecisionSchema),
   recordFinalDecisionHandler,
+);
+
+const createClinicalNoteSchema = z.object({
+  patientId: z.string().uuid(),
+  note: z.string().trim().min(1).max(5000),
+  // Only ever sent by Phase 6's "Sync to EHR & Finalize" — every other caller (the sidebar's
+  // free-text "Add Clinical Note") omits both and gets the CONSULT_NOTE default.
+  recordType: z.enum(["CONSULT_NOTE", "POST_CALL_SUMMARY"]).optional(),
+  sourceMeetingId: z.string().uuid().optional(),
+});
+const listClinicalNotesQuerySchema = z.object({
+  patientId: z.string().uuid(),
+});
+const meetingIdParamSchema = z.object({
+  meetingId: z.string().uuid(),
+});
+
+router.post(
+  "/clinical-notes",
+  requirePermission("clinicalNote", "create"),
+  validateBody(createClinicalNoteSchema),
+  createClinicalNoteHandler,
+);
+router.get(
+  "/clinical-notes",
+  requirePermission("clinicalNote", "read"),
+  validateQuery(listClinicalNotesQuerySchema),
+  listClinicalNotesHandler,
+);
+// requirePermission("clinicalNote", "read") — same grant as the list route above; no separate
+// ownership path since only staff with that grant use the Post-call Summary screen at all.
+router.get(
+  "/clinical-notes/by-meeting/:meetingId",
+  requirePermission("clinicalNote", "read"),
+  validateParams(meetingIdParamSchema),
+  getClinicalNoteByMeetingHandler,
 );
 
 export { router as clinicalRoutes };

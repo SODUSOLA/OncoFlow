@@ -12,8 +12,9 @@ import {
   resendVerificationHandler,
   forgotPasswordHandler,
   resetPasswordHandler,
+  listConsultantsHandler,
 } from "./controller.js";
-import { requireAuthenticated, type AuthenticatedRequest } from "../../lib/rbac.js";
+import { requireAuthenticated, requirePermission, type AuthenticatedRequest } from "../../lib/rbac.js";
 import { validateBody, validateParams } from "../../lib/validation.js";
 import { createRateLimiter } from "../../lib/rate-limit.js";
 import { z } from "zod";
@@ -163,6 +164,7 @@ router.post("/auth/reset-password", resetPasswordRateLimiter, validateBody(reset
 // seed/identity.ts intentionally gets none) got a 403 here forever, breaking session-recovery
 // checks (page reload, or any client that resolves "am I logged in" via this endpoint).
 router.get("/auth/profile", requireAuthenticated(), profileHandler);
+router.get("/consultants", requirePermission("appointment", "create"), listConsultantsHandler);
 // Self-service session management — list/revoke your own active sessions, same class as
 // /auth/profile. Ownership of the target session is checked in the handler (revoking someone
 // else's session isn't a "read your own data" case requireAuthenticated alone can express).

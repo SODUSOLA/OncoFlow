@@ -2,6 +2,7 @@ import { db } from "../../db/index.js";
 import { eq, ne, sql, and, isNull, lt, inArray, desc } from "drizzle-orm";
 import {
   conversation, participant, message, meeting, transcript, transcriptionAssignment, conversationFeedback,
+  meetingRecording,
 } from "./schema.js";
 
 export class ConversationRepository {
@@ -178,6 +179,27 @@ export class MeetingRepository {
       .set({ ...data, updatedAt: new Date() })
       .where(eq(meeting.id, id))
       .returning();
+    return row[0] ?? null;
+  }
+}
+
+export class MeetingRecordingRepository {
+  async findByDailyId(dailyRecordingId: string) {
+    const row = await db.select().from(meetingRecording).where(eq(meetingRecording.dailyRecordingId, dailyRecordingId)).limit(1);
+    return row[0] ?? null;
+  }
+
+  async findByMeeting(meetingId: string) {
+    return db.select().from(meetingRecording).where(eq(meetingRecording.meetingId, meetingId)).orderBy(desc(meetingRecording.createdAt));
+  }
+
+  async create(data: typeof meetingRecording.$inferInsert) {
+    const row = await db.insert(meetingRecording).values(data).returning();
+    return row[0]!;
+  }
+
+  async update(id: string, data: Partial<typeof meetingRecording.$inferInsert>) {
+    const row = await db.update(meetingRecording).set(data).where(eq(meetingRecording.id, id)).returning();
     return row[0] ?? null;
   }
 }

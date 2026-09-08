@@ -1,9 +1,9 @@
 import {
-  pgTable, uuid, varchar, text, boolean, timestamp, uniqueIndex, index, smallint,
+  pgTable, uuid, varchar, text, boolean, timestamp, uniqueIndex, index, smallint, integer,
 } from "drizzle-orm/pg-core";
 import {
   conversationTypeEnum, conversationStatusEnum, messageTypeEnum, messageStatusEnum, meetingStatusEnum,
-  transcriptionAssignmentStatusEnum, conversationFeedbackRaterRoleEnum,
+  transcriptionAssignmentStatusEnum, conversationFeedbackRaterRoleEnum, meetingRecordingStatusEnum,
 } from "../../db/enums.js";
 import { patient } from "../patient/schema.js";
 import { user } from "../auth/schema.js";
@@ -64,6 +64,16 @@ export const meeting = pgTable("meeting", {
   provider: varchar("provider", { length: 100 }).notNull(),
   roomId: varchar("room_id", { length: 255 }).notNull(),
   status: meetingStatusEnum("status").notNull().default("SCHEDULED"),
+  // Set exactly once, in MeetingService.syncStatus when the Daily.co webhook reports ENDED —
+  // not derived from `updatedAt`, which keeps moving forward on every later mutation (transcript
+  // correction, sign-off). This is the one honest "call actually ended at" timestamp, and it's
+  // what the Post-call Summary's post-consult SLA countdown (Phase 6) is measured against.
+  endedAt: timestamp("ended_at"),
+  // Mirrors whatever was set on Daily's own `properties.exp` at room-creation time, for
+  // display/debugging only — Daily is the actual source of truth for when the room stops being
+  // joinable, per ONCOFLOW_SCHEDULING_AND_VIDEO_LIFECYCLE.md §3. Null for legacy lazily
+  // provisioned rooms that predate scheduling-time provisioning.
+  dailyRoomExp: timestamp("daily_room_exp"),
   // F3.11 two-stage sign-off, mirrors ClinicalDecision's qa_*/director_* pattern (ADR-0012).
   // Lives on Meeting (not per Transcript row) because "has this meeting's transcript been
   // reviewed" is a meeting-level state, and a meeting typically has many transcript segments.
@@ -79,6 +89,25 @@ export const meeting = pgTable("meeting", {
   updatedAt: timestamp("updated_at").notNull().defaultNow(),
 }, (t) => ({
   appointmentIdUnique: uniqueIndex("meeting_appointment_id_unique").on(t.appointmentId),
+}));
+
+// §5 — tracks Daily's own cloud recording (see DailyService.createDailyRoom's
+// DAILY_ENABLE_RECORDING comment for why this isn't a bring-your-own-S3-bucket setup). One row
+// per Daily recording, written by the recording webhook (dailyRecordingWebhookHandler) rather
+// than at room-creation time — Daily doesn't know a recording exists until the call actually
+// produces one.
+export const meetingRecording = pgTable("meeting_recording", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  meetingId: uuid("meeting_id").notNull().references(() => meeting.id),
+  dailyRecordingId: varchar("daily_recording_id", { length: 255 }).notNull(),
+  downloadUrl: text("download_url"),
+  durationSeconds: integer("duration_seconds"),
+  status: meetingRecordingStatusEnum("status").notNull().default("PROCESSING"),
+  startedAt: timestamp("started_at"),
+  completedAt: timestamp("completed_at"),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+}, (t) => ({
+  dailyRecordingIdUnique: uniqueIndex("meeting_recording_daily_id_unique").on(t.dailyRecordingId),
 }));
 
 export const transcript = pgTable("transcript", {

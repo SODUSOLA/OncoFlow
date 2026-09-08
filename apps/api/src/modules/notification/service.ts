@@ -10,7 +10,10 @@ export type NotificationType =
   | "APPOINTMENT_RESCHEDULED"
   | "LAB_RESULT_REVIEWED"
   | "SLA_BREACH"
-  | "CONVERSATION_FEEDBACK";
+  | "CONVERSATION_FEEDBACK"
+  | "AVAILABILITY_CHANGED"
+  | "APPOINTMENT_SCHEDULED"
+  | "APPOINTMENT_REMINDER";
 
 const notificationRepo = new NotificationRepository();
 

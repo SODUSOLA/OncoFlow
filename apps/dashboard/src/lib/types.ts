@@ -172,6 +172,7 @@ export interface Meeting {
   provider: string;
   roomId: string;
   status: "SCHEDULED" | "IN_PROGRESS" | "ENDED";
+  endedAt: string | null;
 }
 
 export interface PublicInquiry {
@@ -193,4 +194,12 @@ export interface PublicInquiryMessage {
   senderUserId: string | null;
   content: string;
   createdAt: string;
+}
+
+export interface ConsultantAvailability {
+  id: string;
+  consultantId: string;
+  availableDate: string;
+  startTime: string;
+  endTime: string;
 }

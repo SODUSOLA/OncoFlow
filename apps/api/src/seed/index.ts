@@ -6,6 +6,7 @@ import { seedDemoUsers } from "./demo-users.js";
 import { seedShowcasePatient } from "./showcase-patient.js";
 import { seedStaffing } from "./staffing.js";
 import { seedInventory } from "./inventory.js";
+import { seedClinicalMetrics } from "./clinicalMetrics.js";
 
 async function seed() {
   console.log("--- Seeding OncoFlow ---");
@@ -17,6 +18,7 @@ async function seed() {
   await seedShowcasePatient();
   await seedStaffing();
   await seedInventory();
+  await seedClinicalMetrics();
   console.log("--- Seeding complete ---");
   process.exit(0);
 }

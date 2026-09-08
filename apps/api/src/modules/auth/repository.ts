@@ -36,6 +36,22 @@ export class UserRepository {
       .set({ isDeleted: true, deletedAt: new Date() })
       .where(eq(user.id, id));
   }
+
+  // Backs Regional Admin's New Consultation consultant picker — every role name that starts
+  // with CONSULTING_ (see db/enums.ts's roleNameEnum comment: one shared frontend view, several
+  // distinct roles for specialty/display purposes), optionally narrowed to one facility.
+  async findConsultants(facilityId?: string) {
+    return db.execute<{ id: string; email: string; facility_id: string | null; role_name: string }>(sql`
+      SELECT DISTINCT u.id, u.email, u.facility_id, r.name::text AS role_name
+      FROM "user" u
+      JOIN user_role ur ON ur.user_id = u.id
+      JOIN role r ON r.id = ur.role_id
+      WHERE r.name::text LIKE 'CONSULTING_%'
+        AND u.is_deleted = false
+        ${facilityId ? sql`AND u.facility_id = ${facilityId}` : sql``}
+      ORDER BY u.email
+    `);
+  }
 }
 
 export class RoleRepository {

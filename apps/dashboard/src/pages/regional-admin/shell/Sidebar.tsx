@@ -1,6 +1,6 @@
 import type { ComponentType } from "react";
 import { NavLink } from "react-router-dom";
-import { Lock, PanelLeftClose, PanelLeftOpen } from "lucide-react";
+import { Lock, PanelLeftClose, PanelLeftOpen, CalendarPlus } from "lucide-react";
 import { cn } from "../../../lib/utils";
 
 export interface SidebarNavItem {
@@ -20,19 +20,21 @@ interface SidebarProps {
   userSubtitle: string;
   initials: string;
   onSignOut: () => void;
+  onNewConsultation: () => void;
 }
 
 // Phase 1 of ONCOFLOW_REGIONAL_ADMIN_BUILD_GUIDE.md — a single reusable instance mounted once by
 // RegionalAdminLayout, not duplicated per screen. Every color/radius value below is one of the
 // locked `admin-*` design tokens (see ONCOFLOW_DESIGN_SYSTEM.md); none are hardcoded hex/px.
 //
-// The spec's "New Consultation" CTA is deliberately not rendered here — it opens Clinical Chat,
-// which this role has no backend access to (file:read is SUPER_ADMIN-only) and no route for.
-// Confirmed with the user when these docs were introduced: keep it dropped rather than build a
-// button with nowhere to go, same call made before this doc existed.
+// "New Consultation" is revived here per ONCOFLOW_SCHEDULING_AND_VIDEO_LIFECYCLE.md — it was
+// dropped earlier for opening Clinical Chat (still correctly out of scope, RBAC-walled), but the
+// lifecycle doc reframes it as real appointment scheduling with a genuine backend
+// (POST /consultations), so it comes back pointed at that instead. Navy, not gold — gold is
+// reserved for the active-nav-item highlight (see Button.tsx's own note on this).
 export function Sidebar({
   navItems, comingSoonItems, notPermittedLabels, collapsed, onToggleCollapsed,
-  userName, userSubtitle, initials, onSignOut,
+  userName, userSubtitle, initials, onSignOut, onNewConsultation,
 }: SidebarProps) {
   return (
     <aside className={cn("flex h-full shrink-0 flex-col border-r border-admin-border bg-white transition-[width] duration-150", collapsed ? "w-16" : "w-64")}>
@@ -59,6 +61,20 @@ export function Sidebar({
           <PanelLeftOpen className="size-4" aria-hidden="true" />
         </button>
       )}
+
+      <div className={cn("mt-4", collapsed ? "px-2" : "px-4")}>
+        <button
+          onClick={onNewConsultation}
+          title={collapsed ? "New Consultation" : undefined}
+          className={cn(
+            "flex h-10 w-full items-center justify-center gap-2 rounded-admin-sm bg-admin-sidebar-cta text-admin-body-sm font-semibold text-white hover:bg-admin-sidebar-cta/90",
+            collapsed && "px-0",
+          )}
+        >
+          <CalendarPlus className="size-4 shrink-0" aria-hidden="true" />
+          {!collapsed && "New Consultation"}
+        </button>
+      </div>
 
       <nav className={cn("mt-4 flex flex-col gap-1", collapsed ? "px-2" : "px-4")}>
         {navItems.map(({ to, label, icon: Icon, end }) => (

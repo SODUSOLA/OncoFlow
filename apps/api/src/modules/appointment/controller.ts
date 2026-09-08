@@ -6,7 +6,9 @@ import { appointmentStatusEnum } from "../../db/enums.js";
 import { AppointmentService, TransferRequestService } from "./service.js";
 import { AppointmentRepository } from "./repository.js";
 import { CalendarService } from "./services/CalendarService.js";
+import { consultationService } from "./services/ConsultationService.js";
 import { PatientRepository } from "../patient/index.js";
+import { AppError } from "../../lib/errors.js";
 
 const apptSvc = new AppointmentService();
 const apptRepo = new AppointmentRepository();
@@ -40,6 +42,27 @@ export async function createAppointmentHandler(req: Request, res: Response) {
   } catch (err) {
     const message = err instanceof Error ? err.message : "Internal server error";
     const status = message.includes("Mon/Wed/Fri") || message.includes("Tue/Thu") ? 422 : 500;
+    res.status(status).json({ error: message });
+  }
+}
+
+// ONCOFLOW_SCHEDULING_AND_VIDEO_LIFECYCLE.md — Regional Admin's revived New Consultation
+// action. A distinct route from POST /appointments (which stays a generic, unopinionated
+// create): this one requires a named consultant, enforces their real availability server-side,
+// provisions the room at scheduling time, and fires the immediate notification + reminders —
+// the corrected end-to-end flow the doc describes, not just a row insert.
+export async function scheduleConsultationHandler(req: Request, res: Response) {
+  try {
+    const { patientId, oncologistId, facilityId, appointmentType, scheduledAt, durationMinutes } = req.body;
+    const result = await consultationService.scheduleConsultation({
+      patientId, oncologistId, facilityId, appointmentType, scheduledAt, durationMinutes,
+    });
+    res.status(201).json(result);
+  } catch (err) {
+    const message = err instanceof Error ? err.message : "Internal server error";
+    const status = err instanceof AppError ? err.statusCode
+      : message.includes("Mon/Wed/Fri") || message.includes("Tue/Thu") ? 422
+      : 500;
     res.status(status).json({ error: message });
   }
 }

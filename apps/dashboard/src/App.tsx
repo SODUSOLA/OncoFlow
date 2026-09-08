@@ -7,7 +7,6 @@ import { dashboardPathForRoles, hasStaffAccess } from "./lib/roleRouting";
 import Login from "./pages/Login";
 
 const vmo = lazy(() => import("./pages/virtual-medical-officer/Dashboard"));
-const oncologist = lazy(() => import("./pages/consulting-oncologist/Dashboard"));
 const scd = lazy(() => import("./pages/state-clinical-director/Dashboard"));
 const qao = lazy(() => import("./pages/quality-assurance-officer/Dashboard"));
 const ono = lazy(() => import("./pages/onsite-nursing-officer/Dashboard"));
@@ -33,9 +32,22 @@ const RaComingSoon = lazy(() =>
   import("./pages/regional-admin/pages/ComingSoon").then((m) => ({ default: m.ComingSoon })),
 );
 
+// Consulting Oncologist gets its own sidebar+topbar shell too (see
+// pages/consulting-oncologist/ConsultantLayout.tsx) — same reasoning as Regional Admin, and
+// explicitly not the same shell as Regional Admin's per the build guide's Phase 1.
+const ConsultantLayout = lazy(() =>
+  import("./pages/consulting-oncologist/ConsultantLayout").then((m) => ({ default: m.ConsultantLayout })),
+);
+const CoAppointmentGrid = lazy(() => import("./pages/consulting-oncologist/pages/AppointmentGridPage"));
+const CoPatientFile = lazy(() => import("./pages/consulting-oncologist/pages/PatientFilePage"));
+const CoPreCallBriefing = lazy(() => import("./pages/consulting-oncologist/pages/PreCallBriefingPage"));
+const CoVideoRoom = lazy(() => import("./pages/consulting-oncologist/pages/VideoRoomPage"));
+const CoPostCallSummary = lazy(() => import("./pages/consulting-oncologist/pages/PostCallSummaryPage"));
+const CoSettings = lazy(() => import("./pages/consulting-oncologist/pages/SettingsPage"));
+const CoNotifications = lazy(() => import("./pages/consulting-oncologist/pages/NotificationCenterPage"));
+
 const roles = [
   { path: "virtual-medical-officer", component: vmo, label: "Virtual Medical Officer" },
-  { path: "consulting-oncologist", component: oncologist, label: "Consulting Oncologist" },
   { path: "state-clinical-director", component: scd, label: "State Clinical Director" },
   { path: "quality-assurance-officer", component: qao, label: "Quality Assurance Officer" },
   { path: "onsite-nursing-officer", component: ono, label: "Onsite Nursing Officer" },
@@ -154,6 +166,60 @@ function AppRoutes() {
                 icon={FileBarChart}
                 title="Reports"
                 description="Regional analytics and exports — not yet built. No reporting endpoint exists yet to back this page."
+              />
+            </Suspense>
+          }
+        />
+      </Route>
+      <Route
+        path="dashboard/consulting-oncologist"
+        element={
+          <RequireAuth>
+            <Suspense fallback={<FullScreenLoading />}>
+              <ConsultantLayout />
+            </Suspense>
+          </RequireAuth>
+        }
+      >
+        <Route index element={<Suspense fallback={<FullScreenLoading />}><CoAppointmentGrid /></Suspense>} />
+        <Route path="patient/:patientId" element={<Suspense fallback={<FullScreenLoading />}><CoPatientFile /></Suspense>} />
+        <Route path="consult/:appointmentId" element={<Suspense fallback={<FullScreenLoading />}><CoPreCallBriefing /></Suspense>} />
+        <Route path="consult/:appointmentId/room" element={<Suspense fallback={<FullScreenLoading />}><CoVideoRoom /></Suspense>} />
+        <Route path="consult/:appointmentId/summary" element={<Suspense fallback={<FullScreenLoading />}><CoPostCallSummary /></Suspense>} />
+        <Route path="settings" element={<Suspense fallback={<FullScreenLoading />}><CoSettings /></Suspense>} />
+        <Route path="notifications" element={<Suspense fallback={<FullScreenLoading />}><CoNotifications /></Suspense>} />
+        <Route
+          path="patient-history"
+          element={
+            <Suspense fallback={<FullScreenLoading />}>
+              <RaComingSoon
+                icon={BookOpen}
+                title="Patient History"
+                description="A standalone patient-search/history browser — not yet built. Open a patient from an appointment card's Patient File button in the meantime."
+              />
+            </Suspense>
+          }
+        />
+        <Route
+          path="lab-results"
+          element={
+            <Suspense fallback={<FullScreenLoading />}>
+              <RaComingSoon
+                icon={FileBarChart}
+                title="Lab Results"
+                description="Lab results are file uploads per-patient today, not a standalone worklist — not yet built as its own screen."
+              />
+            </Suspense>
+          }
+        />
+        <Route
+          path="imaging"
+          element={
+            <Suspense fallback={<FullScreenLoading />}>
+              <RaComingSoon
+                icon={FileBarChart}
+                title="Imaging"
+                description="No imaging data model exists in this system yet."
               />
             </Suspense>
           }

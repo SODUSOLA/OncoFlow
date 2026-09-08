@@ -3,8 +3,8 @@ import {
   startConversationHandler, getConversationHandler, listConversationsHandler,
   postMessageHandler, listMessagesHandler, closeConversationHandler, startSideEffectReportHandler,
   submitFeedbackHandler, listFeedbackHandler,
-  provisionMeetingHandler, getMeetingHandler,
-  dailyMeetingStatusWebhookHandler, dailyTranscriptionWebhookHandler,
+  provisionMeetingHandler, getMeetingHandler, getMeetingPresenceHandler, issueMeetingTokenHandler, endMeetingHandler,
+  dailyMeetingStatusWebhookHandler, dailyTranscriptionWebhookHandler, dailyRecordingWebhookHandler,
   listTranscriptHandler, editTranscriptEntryHandler, signOffTranscriptHandler,
   listTranscriptionQueueHandler, listMyTranscriptionAssignmentsHandler,
   claimTranscriptionAssignmentHandler, releaseTranscriptionAssignmentHandler,
@@ -98,6 +98,19 @@ router.get("/conversations/:id/feedback", requireAuthenticated(), validateParams
 
 router.post("/meetings", requirePermission("meeting", "create"), validateBody(provisionMeetingSchema), provisionMeetingHandler);
 router.get("/meetings", requireAuthenticated(), validateQuery(meetingQuerySchema), getMeetingHandler);
+// requireAuthenticated, not requirePermission — ownership (patient-self or meeting:read) is
+// resolved inside the service, same pattern as GET /meetings above.
+router.get("/meetings/:meetingId/presence", requireAuthenticated(), validateParams(meetingIdParamSchema), getMeetingPresenceHandler);
+router.post(
+  "/meetings/:meetingId/token",
+  requireAuthenticated(),
+  validateParams(meetingIdParamSchema),
+  validateBody(z.object({ userName: z.string().trim().max(200).optional() })),
+  issueMeetingTokenHandler,
+);
+// requireAuthenticated, not requirePermission — ownership (the appointment's own assigned
+// consultant) is resolved inside the service, same pattern as the sign-off route below.
+router.post("/meetings/:meetingId/end", requireAuthenticated(), validateParams(meetingIdParamSchema), endMeetingHandler);
 router.get("/meetings/:meetingId/transcript", requirePermission("transcript", "read"), validateParams(meetingIdParamSchema), listTranscriptHandler);
 // F3.11: editing transcript content is the Scribe's job specifically — requireRole enforces
 // the specific role on top of requirePermission's generic resource:action grant, same pattern
@@ -151,5 +164,7 @@ router.post(
 router.post("/daily/webhooks/meeting-status", dailyMeetingStatusWebhookHandler);
 // public
 router.post("/daily/webhooks/transcription", dailyTranscriptionWebhookHandler);
+// public
+router.post("/daily/webhooks/recording", dailyRecordingWebhookHandler);
 
 export { router as messagingRoutes };

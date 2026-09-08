@@ -5,6 +5,8 @@ import type { Appointment, Meeting } from "../../lib/types";
 function AppointmentRow({ appointment }: { appointment: Appointment }) {
   const [meeting, setMeeting] = useState<Meeting | null>(null);
   const [checked, setChecked] = useState(false);
+  const [joining, setJoining] = useState(false);
+  const [joinError, setJoinError] = useState<string | null>(null);
 
   useEffect(() => {
     api.get<{ meeting: Meeting }>(`/meetings?appointmentId=${appointment.id}`)
@@ -13,25 +15,43 @@ function AppointmentRow({ appointment }: { appointment: Appointment }) {
       .finally(() => setChecked(true));
   }, [appointment.id]);
 
-  // Provisioning the room itself is a staff action (POST /meetings needs meeting:create) —
-  // a patient only ever joins a room staff already set up, never creates one.
+  // ONCOFLOW_SCHEDULING_AND_VIDEO_LIFECYCLE.md §3: "the patient never constructs a room URL or
+  // joins ad-hoc" — this used to build `https://${meeting.roomId}.daily.co` directly, which was
+  // never even the right shape for a Daily room URL (that's `https://<team-domain>.daily.co/
+  // <room-name>`, and the team domain isn't derivable client-side). Now it asks the real token
+  // endpoint for a join-ready URL, which also enforces this patient is an actual invited
+  // participant on this appointment (MeetingService.issueToken).
+  async function joinCall() {
+    if (!meeting) return;
+    setJoining(true);
+    setJoinError(null);
+    try {
+      const res = await api.post<{ roomUrl: string; token: string }>(`/meetings/${meeting.id}/token`, {});
+      window.open(`${res.roomUrl}?t=${encodeURIComponent(res.token)}`, "_blank", "noreferrer");
+    } catch (err) {
+      setJoinError(err instanceof Error ? err.message : "Could not join this call");
+    } finally {
+      setJoining(false);
+    }
+  }
+
   return (
     <li className="px-6 py-4 flex flex-wrap items-center justify-between gap-3">
       <div>
         <p className="text-sm font-medium text-gray-800">{new Date(appointment.scheduledAt).toLocaleString()}</p>
         <span className="px-2 py-0.5 rounded-full text-xs font-medium bg-gray-100 text-gray-600">{appointment.status}</span>
+        {joinError && <p className="mt-1 text-xs text-red-500">{joinError}</p>}
       </div>
       {!checked ? (
         <span className="text-xs text-gray-400">Checking...</span>
       ) : meeting ? (
-        <a
-          href={`https://${meeting.roomId}.daily.co`}
-          target="_blank"
-          rel="noreferrer"
-          className="px-3 py-1.5 bg-ink text-white rounded-lg hover:bg-ink-600 text-xs font-medium"
+        <button
+          onClick={joinCall}
+          disabled={joining}
+          className="px-3 py-1.5 bg-ink text-white rounded-lg hover:bg-ink-600 text-xs font-medium disabled:opacity-50"
         >
-          Join Call ({meeting.status})
-        </a>
+          {joining ? "Joining…" : `Join Call (${meeting.status})`}
+        </button>
       ) : (
         <span className="text-xs text-gray-400">Room not set up yet</span>
       )}

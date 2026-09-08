@@ -6,7 +6,7 @@ import { CountdownCaseRepository } from "./repository.js";
 import { CountdownCase } from "./entities/CountdownCase.js";
 import {
   TriageChecklistService, PrescriptionService, LabRequestService, LabResultService,
-  ClinicalDecisionService, CountdownCaseService,
+  ClinicalDecisionService, CountdownCaseService, ClinicalNoteService,
 } from "./service.js";
 // Cross-module read (same pattern as messaging/service.ts importing PatientRepository) —
 // needed to check "is this lab result's/query's patientId the caller's own patient record"
@@ -20,6 +20,7 @@ const labRequestSvc = new LabRequestService();
 const labResultSvc = new LabResultService();
 const clinicalDecisionSvc = new ClinicalDecisionService();
 const countdownCaseSvc = new CountdownCaseService();
+const clinicalNoteSvc = new ClinicalNoteService();
 const patientRepo = new PatientRepository();
 
 async function callerOwnsPatient(callerId: string, patientId: string): Promise<boolean> {
@@ -311,5 +312,35 @@ export async function sendResultsToQaHandler(req: Request, res: Response) {
     const message = err instanceof Error ? err.message : "Internal server error";
     const status = message === "Countdown case not found" ? 404 : message.includes("already exists") ? 409 : message.includes("Cannot") ? 422 : 500;
     res.status(status).json({ error: message });
+  }
+}
+
+export async function createClinicalNoteHandler(req: Request, res: Response) {
+  try {
+    const authorId = (req as AuthenticatedRequest).userId;
+    const { patientId, note, recordType, sourceMeetingId } = req.body;
+    const result = await clinicalNoteSvc.addNote({ patientId, authorId, note, recordType, sourceMeetingId });
+    res.status(201).json(result);
+  } catch {
+    res.status(500).json({ error: "Internal server error" });
+  }
+}
+
+export async function listClinicalNotesHandler(req: Request, res: Response) {
+  try {
+    const patientId = String(req.query.patientId);
+    const notes = await clinicalNoteSvc.listForPatient(patientId);
+    res.json({ notes });
+  } catch {
+    res.status(500).json({ error: "Internal server error" });
+  }
+}
+
+export async function getClinicalNoteByMeetingHandler(req: Request, res: Response) {
+  try {
+    const summary = await clinicalNoteSvc.getSummaryByMeeting(String(req.params.meetingId));
+    res.json({ summary });
+  } catch {
+    res.status(500).json({ error: "Internal server error" });
   }
 }
