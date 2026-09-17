@@ -36,6 +36,21 @@ export class ShiftAssignmentRepository {
     return row[0]!;
   }
 
+  // Self-service read — a nurse checking their OWN published assignments for a week (the
+  // Nursing Officer Schedule tab's cross-support banner: is any of it at a facility other than
+  // my own?). No facility filter, since ownership is already the userId match.
+  async findForUserWeek(userId: string, isoYear: number, isoWeek: number) {
+    return db
+      .select()
+      .from(shiftAssignment)
+      .where(and(
+        eq(shiftAssignment.userId, userId),
+        eq(shiftAssignment.isoYear, isoYear),
+        eq(shiftAssignment.isoWeek, isoWeek),
+        eq(shiftAssignment.isDeleted, false),
+      ));
+  }
+
   // Publishing is a batch action over a whole week's still-draft rows — a nurse's schedule
   // shouldn't be revised piecemeal after the week's been published, so this only ever
   // transitions draft (publishedAt IS NULL) rows, never re-publishes/overwrites one already set.

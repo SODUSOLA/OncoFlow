@@ -4,7 +4,7 @@ import { getIsoWeek } from "./isoWeek";
 import { deriveCountdownStatus, isCountdownBreached, classifyInquirySla, isStaffingConflict, WEEKDAY_NAMES } from "./alertRules";
 
 export type AlertSeverity = "critical" | "warning";
-export type AlertSource = "countdown" | "staffing" | "inventory" | "inquiry";
+export type AlertSource = "countdown" | "staffing" | "inventory" | "inquiry" | "security";
 
 export interface RegionAlert {
   id: string;
@@ -117,6 +117,27 @@ async function fetchAlerts(region: string | null): Promise<RegionAlert[]> {
       detail: `${variancesOpen} ${variancesOpen === 1 ? "variance" : "variances"} awaiting review.`,
       actionLabel: "View Ledger",
       actionTo: "/dashboard/regional-admin/inventory",
+    });
+  }
+
+  // ONCOFLOW_NURSING_OFFICER_BUILD_GUIDE.md Finding 3 — a rejected (INFECTED-flagged) upload
+  // feeds this same aggregator as a new source, not a new notification system. Bounded to
+  // recent incidents only (the endpoint already caps at 50 by default) — this is a rare event,
+  // not something that needs its own pagination here.
+  const incidents = await api
+    .get<{ incidents: { id: string; incidentReference: string; fileScanResult: string; createdAt: string }[] }>("/security-incidents")
+    .then((d) => d.incidents)
+    .catch(() => []);
+  for (const incident of incidents) {
+    alerts.push({
+      id: `security-${incident.id}`,
+      source: "security",
+      severity: "critical",
+      badge: "SECURITY THREAT",
+      title: `Upload rejected — ${incident.incidentReference}`,
+      detail: `A file was flagged ${incident.fileScanResult} by the safety scan and blocked, ${new Date(incident.createdAt).toLocaleString()}.`,
+      actionLabel: "View Incident",
+      actionTo: "/dashboard/regional-admin/security-incidents",
     });
   }
 

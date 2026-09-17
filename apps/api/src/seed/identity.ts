@@ -94,6 +94,12 @@ const PERMISSIONS: { resource: string; action: string; description: string }[] =
   { resource: "transferRequest", action: "create", description: "Initiate a patient facility transfer request" },
   { resource: "transferRequest", action: "read", description: "Read facility transfer requests" },
   { resource: "audit", action: "read", description: "Read a region-scoped activity feed (logins, logouts, access-denied events) for own facility-scoped staff" },
+  // Pre-existing gap, closed in passing: no "file" resource was ever defined here, so
+  // requirePermission("file", ...)/userHasPermission(..., "file", ...) checks in
+  // documents/controller.ts had silently never granted anything to any staff role — only a
+  // caller uploading/reading their OWN patient's file (ownership) ever worked.
+  { resource: "file", action: "create", description: "Upload a file attached to a patient record (staff uploading on a patient's behalf, e.g. Nursing Officer identity/documentation capture)" },
+  { resource: "file", action: "read", description: "Read a file's metadata / fetch its signed download URL" },
   { resource: "clinicalNote", action: "create", description: "Add a free-text clinical note to a patient's medical record" },
   { resource: "clinicalNote", action: "read", description: "Read a patient's clinical notes" },
   { resource: "regimen", action: "read", description: "Read a patient's active treatment regimen and cycles" },
@@ -105,6 +111,9 @@ const PERMISSIONS: { resource: string; action: string; description: string }[] =
   { resource: "caseLock", action: "read", description: "Read whether a patient's case is currently locked" },
   { resource: "activityLog", action: "read", description: "Read a patient's clinical activity log (union of clinical notes and lab documents)" },
   { resource: "availability", action: "read", description: "Read another consultant's availability blocks (Regional Admin scheduling a New Consultation)" },
+  { resource: "nursingCase", action: "create", description: "Start a nursing case for a patient's regimen cycle visitation" },
+  { resource: "nursingCase", action: "update", description: "Review a nursing case's documentation and record a QA decision (QA Officer only)" },
+  { resource: "securityIncident", action: "read", description: "Read upload-security-incident reports (rejected/infected file uploads)" },
 ];
 
 export async function seedIdentity() {
@@ -199,6 +208,9 @@ export async function seedIdentity() {
     "inventory:read", "inventory:update",
     "transferRequest:create", "transferRequest:read",
     "audit:read",
+    // ONCOFLOW_NURSING_OFFICER_BUILD_GUIDE.md Finding 3 — a rejected upload feeds Regional
+    // Admin's existing alert aggregator as a new source, not a new notification system.
+    "securityIncident:read",
   ]);
 
   // Second real per-role grant — the Virtual Medical Officer handling MO_SIDE_EFFECT reports:
@@ -209,11 +221,19 @@ export async function seedIdentity() {
     "message:create", "message:read",
   ]);
 
-  // Third real per-role grant — Onsite Nursing Officer's first-ever grant in this seed.
-  // patient:call only, for now: click-to-call is the one capability confirmed for this role
-  // this round (docs/build-plan/08-stakeholder-role-matrix.md's Onsite Nursing Officer section
-  // doesn't otherwise scope a real permission grant yet — that broader pass is still pending).
-  await grantPermissionsToRole("ONSITE_NURSING_OFFICER", ["patient:call"]);
+  // Third real per-role grant — Onsite Nursing Officer, extended per
+  // ONCOFLOW_NURSING_OFFICER_BUILD_GUIDE.md: the case wizard (start a case, read the patient +
+  // that day's regimen cycles, upload identity/documentation files, report a security incident
+  // for a file the scan flags), plus the Inventory tab's read/write on their own facility's
+  // ledger (client only ever queries its own facilityId — see listRegimenCyclesHandler's
+  // explicit facility check for the equivalent server-side guard on the schedule endpoint).
+  await grantPermissionsToRole("ONSITE_NURSING_OFFICER", [
+    "patient:call", "patient:read",
+    "regimen:read",
+    "nursingCase:create",
+    "file:create", "file:read",
+    "inventory:read", "inventory:update",
+  ]);
 
   // Fourth real per-role grant — Consulting Oncologist's first-ever grant in this seed, scoped
   // to what apps/dashboard's Consultant build actually exercises: the Appointment Grid, Patient
@@ -230,6 +250,14 @@ export async function seedIdentity() {
     "clinicalNote:create", "clinicalNote:read",
     "regimen:read", "vital:read", "vital:create", "clinicalMetrics:read", "labDocument:read", "caseLock:read",
     "activityLog:read",
+  ]);
+
+  // Fifth real per-role grant — Quality Assurance Officer's first-ever grant in this seed,
+  // scoped to reviewing a nursing case as a whole (nursingCase:update, requireRole-gated to
+  // this role at the route layer too) and reading the patient context while doing so.
+  await grantPermissionsToRole("QUALITY_ASSURANCE_OFFICER", [
+    "nursingCase:update",
+    "patient:read",
   ]);
 
   // Every other role still has zero grants — that real RBAC pass is still pending.

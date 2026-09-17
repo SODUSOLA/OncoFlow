@@ -161,3 +161,10 @@ export const caseLockTriggerEnum = pgEnum("case_lock_trigger", ["CRCL_CRITICAL",
 export const caseLockStatusEnum = pgEnum("case_lock_status", ["LOCKED", "SUPERSEDED"]);
 export const caseLockResolvedByRoleEnum = pgEnum("case_lock_resolved_by_role", ["CLINICAL_DIRECTOR", "CHIEF_CONSULTANT"]);
 export const caseLockResolutionEnum = pgEnum("case_lock_resolution", ["APPROVED_TO_PROCEED", "REMAINS_BLOCKED"]);
+
+// ONCOFLOW_NURSING_OFFICER_BUILD_GUIDE.md — a "case" is one physical visitation's worth of
+// nursing documentation, not a standalone document. STARTED is set by the Nursing Officer's own
+// action (no cross-role co-sign to begin); PENDING_QA_REVIEW once the documentation sheet is
+// submitted; CLOSED only once QA records a REQUIREMENTS_MET review.
+export const nursingCaseStatusEnum = pgEnum("nursing_case_status", ["STARTED", "PENDING_QA_REVIEW", "CLOSED"]);
+export const nursingCaseReviewDecisionEnum = pgEnum("nursing_case_review_decision", ["REQUIREMENTS_INCOMPLETE", "REQUIREMENTS_MET"]);

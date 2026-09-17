@@ -27,6 +27,23 @@ export async function getWeekOverviewHandler(req: Request, res: Response) {
   }
 }
 
+// requireAuthenticated, not requirePermission — every staff account reading their OWN
+// assignments is a right, not a grant (same pattern as everywhere else in this codebase).
+export async function getMyAssignmentsHandler(req: Request, res: Response) {
+  try {
+    const params = parseIsoWeekParams(req.query as Record<string, unknown>);
+    if (!params) {
+      res.status(400).json({ error: "isoYear and isoWeek query parameters are required" });
+      return;
+    }
+    const callerId = (req as AuthenticatedRequest).userId;
+    const assignments = await staffingSvc.getMyAssignments(callerId, params.isoYear, params.isoWeek);
+    res.json({ assignments });
+  } catch {
+    res.status(500).json({ error: "Internal server error" });
+  }
+}
+
 export async function assignNurseHandler(req: Request, res: Response) {
   try {
     const { facilityId, weekday, isoYear, isoWeek, userId } = req.body;

@@ -120,6 +120,13 @@
       "when": 1788851032908,
       "tag": "0016_zippy_silver_samurai",
       "breakpoints": true
+    },
+    {
+      "idx": 17,
+      "version": "7",
+      "when": 1789643712690,
+      "tag": "0017_deep_sugar_man",
+      "breakpoints": true
     }
   ]
 }

@@ -9,7 +9,6 @@ import Login from "./pages/Login";
 const vmo = lazy(() => import("./pages/virtual-medical-officer/Dashboard"));
 const scd = lazy(() => import("./pages/state-clinical-director/Dashboard"));
 const qao = lazy(() => import("./pages/quality-assurance-officer/Dashboard"));
-const ono = lazy(() => import("./pages/onsite-nursing-officer/Dashboard"));
 const sdns = lazy(() => import("./pages/state-director-of-nursing-services/Dashboard"));
 const superAdmin = lazy(() => import("./pages/super-admin/Dashboard"));
 
@@ -28,6 +27,7 @@ const RaInventory = lazy(() => import("./pages/regional-admin/pages/InventoryPag
 const RaGeneralInquiry = lazy(() => import("./pages/regional-admin/pages/GeneralInquiryPage"));
 const RaNotifications = lazy(() => import("./pages/regional-admin/pages/NotificationCenterPage"));
 const RaSettings = lazy(() => import("./pages/regional-admin/pages/SettingsPage"));
+const RaSecurityIncidents = lazy(() => import("./pages/regional-admin/pages/SecurityIncidentsPage"));
 const RaComingSoon = lazy(() =>
   import("./pages/regional-admin/pages/ComingSoon").then((m) => ({ default: m.ComingSoon })),
 );
@@ -46,11 +46,23 @@ const CoPostCallSummary = lazy(() => import("./pages/consulting-oncologist/pages
 const CoSettings = lazy(() => import("./pages/consulting-oncologist/pages/SettingsPage"));
 const CoNotifications = lazy(() => import("./pages/consulting-oncologist/pages/NotificationCenterPage"));
 
+// Onsite Nursing Officer gets its own mobile-first shell (4-tab bottom nav) too — see
+// pages/onsite-nursing-officer/shell/NursingLayout.tsx — same reasoning as Regional
+// Admin/Consulting Oncologist: kept out of the generic `roles` loop below.
+const NursingLayout = lazy(() =>
+  import("./pages/onsite-nursing-officer/shell/NursingLayout").then((m) => ({ default: m.NursingLayout })),
+);
+const NoSchedule = lazy(() => import("./pages/onsite-nursing-officer/pages/SchedulePage"));
+const NoUploads = lazy(() => import("./pages/onsite-nursing-officer/pages/UploadsPage"));
+const NoPatients = lazy(() => import("./pages/onsite-nursing-officer/pages/PatientsPage"));
+const NoPatientDetail = lazy(() => import("./pages/onsite-nursing-officer/pages/PatientDetailPage"));
+const NoInventory = lazy(() => import("./pages/onsite-nursing-officer/pages/InventoryPage"));
+const NoNewCaseWizard = lazy(() => import("./pages/onsite-nursing-officer/wizard/NewCaseWizard"));
+
 const roles = [
   { path: "virtual-medical-officer", component: vmo, label: "Virtual Medical Officer" },
   { path: "state-clinical-director", component: scd, label: "State Clinical Director" },
   { path: "quality-assurance-officer", component: qao, label: "Quality Assurance Officer" },
-  { path: "onsite-nursing-officer", component: ono, label: "Onsite Nursing Officer" },
   { path: "state-director-of-nursing-services", component: sdns, label: "State Director of Nursing Services" },
   { path: "super-admin", component: superAdmin, label: "Super Admin" },
 ] as const;
@@ -146,6 +158,7 @@ function AppRoutes() {
         <Route path="inquiry" element={<Suspense fallback={<FullScreenLoading />}><RaGeneralInquiry /></Suspense>} />
         <Route path="notifications" element={<Suspense fallback={<FullScreenLoading />}><RaNotifications /></Suspense>} />
         <Route path="settings" element={<Suspense fallback={<FullScreenLoading />}><RaSettings /></Suspense>} />
+        <Route path="security-incidents" element={<Suspense fallback={<FullScreenLoading />}><RaSecurityIncidents /></Suspense>} />
         <Route
           path="guidelines"
           element={
@@ -224,6 +237,23 @@ function AppRoutes() {
             </Suspense>
           }
         />
+      </Route>
+      <Route
+        path="dashboard/onsite-nursing-officer"
+        element={
+          <RequireAuth>
+            <Suspense fallback={<FullScreenLoading />}>
+              <NursingLayout />
+            </Suspense>
+          </RequireAuth>
+        }
+      >
+        <Route index element={<Suspense fallback={<FullScreenLoading />}><NoSchedule /></Suspense>} />
+        <Route path="uploads" element={<Suspense fallback={<FullScreenLoading />}><NoUploads /></Suspense>} />
+        <Route path="patients" element={<Suspense fallback={<FullScreenLoading />}><NoPatients /></Suspense>} />
+        <Route path="patients/:patientId" element={<Suspense fallback={<FullScreenLoading />}><NoPatientDetail /></Suspense>} />
+        <Route path="inventory" element={<Suspense fallback={<FullScreenLoading />}><NoInventory /></Suspense>} />
+        <Route path="new-case" element={<Suspense fallback={<FullScreenLoading />}><NoNewCaseWizard /></Suspense>} />
       </Route>
       {roles.map(({ path, component: Component, label }) => (
         <Route

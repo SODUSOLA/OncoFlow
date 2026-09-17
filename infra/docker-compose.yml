@@ -56,6 +56,12 @@ services:
 
   clamav:
     image: clamav/clamav:stable
+    # Published to the host so a locally-run (non-containerized) `npm run dev` API process can
+    # reach clamd directly at localhost:3310 — the `app` service reaches it via the internal
+    # Docker network (CLAMAV_HOST=clamav) and never needed this, but local host-based dev has
+    # no such network to ride on.
+    ports:
+      - "3310:3310"
     healthcheck:
       # clamd's virus-DB load is slow on first boot — start_period gives it room before the
       # healthcheck starts counting failures against it.

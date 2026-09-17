@@ -33,6 +33,11 @@ export class RegimenService {
       cycles,
     };
   }
+
+  // Nursing Officer's Schedule tab / Patient Selection step.
+  async listCyclesForFacilityAndDate(facilityId: string, date: string) {
+    return regimenRepo.findCyclesByFacilityAndDate(facilityId, date);
+  }
 }
 
 const VITAL_TYPES = ["WEIGHT_KG", "BLOOD_PRESSURE_SYSTOLIC", "BLOOD_PRESSURE_DIASTOLIC", "HEART_RATE_BPM", "TEMPERATURE_C", "SPO2_PERCENT"] as const;

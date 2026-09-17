@@ -3,7 +3,7 @@ import { z } from "zod";
 import {
   getRegimenHandler, getLatestVitalsHandler, getVitalTrendHandler, recordVitalHandler,
   getCurrentClinicalMetricsHandler, recordClinicalMetricsHandler,
-  listLabDocumentsHandler, getActivityLogHandler, getActiveCaseLockHandler,
+  listLabDocumentsHandler, getActivityLogHandler, getActiveCaseLockHandler, listRegimenCyclesHandler,
 } from "./controller.js";
 import { requireAuthenticated, requirePermission } from "../../lib/rbac.js";
 import { validateBody, validateQuery } from "../../lib/validation.js";
@@ -44,6 +44,12 @@ const router = Router();
 // regimen/vitals/labs/case-lock is a right, ownership-or-permission checked inside the
 // controller (same pattern as clinical/labResult).
 router.get("/regimen", requireAuthenticated(), validateQuery(patientIdQuerySchema), getRegimenHandler);
+router.get(
+  "/regimen-cycles",
+  requirePermission("regimen", "read"),
+  validateQuery(z.object({ facilityId: z.string().uuid(), date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/) })),
+  listRegimenCyclesHandler,
+);
 router.get("/vitals/latest", requireAuthenticated(), validateQuery(patientIdQuerySchema), getLatestVitalsHandler);
 router.get("/vitals/trend", requireAuthenticated(), validateQuery(vitalTrendQuerySchema), getVitalTrendHandler);
 router.post("/vitals", requirePermission("vital", "create"), validateBody(recordVitalSchema), recordVitalHandler);

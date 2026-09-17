@@ -72,4 +72,19 @@ export class StaffingService {
           : eq(role.name, "ONSITE_NURSING_OFFICER"),
       );
   }
+
+  // Nursing Officer Schedule tab's cross-support banner — the caller's own published
+  // assignments for a week, with each row's facility name attached so a facility different from
+  // the caller's own reads as a real cross-support flag, not just an opaque id.
+  async getMyAssignments(userId: string, isoYear: number, isoWeek: number) {
+    const rows = await assignmentRepo.findForUserWeek(userId, isoYear, isoWeek);
+    const facilities = await facilityRepo.findAll();
+    const facilityById = new Map(facilities.map((f) => [f.id, f]));
+    return rows
+      .filter((r) => r.publishedAt !== null)
+      .map((r) => ({
+        id: r.id, facilityId: r.facilityId, facilityName: facilityById.get(r.facilityId)?.name ?? "Unknown facility",
+        weekday: r.weekday,
+      }));
+  }
 }

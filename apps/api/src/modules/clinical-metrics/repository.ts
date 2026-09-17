@@ -6,8 +6,31 @@ import {
   labDocument, labDocumentReview, caseLock,
 } from "./schema.js";
 import { user } from "../auth/schema.js";
+import { patient } from "../patient/schema.js";
 
 export class RegimenRepository {
+  // Nursing Officer's Schedule tab / Patient Selection step — every cycle scheduled at a
+  // facility on a given day, joined straight through to the patient display fields the cards
+  // need, so the caller doesn't have to N+1 a second patient fetch per row.
+  async findCyclesByFacilityAndDate(facilityId: string, date: string) {
+    return db
+      .select({
+        id: regimenCycle.id, cycleNumber: regimenCycle.cycleNumber, scheduledDate: regimenCycle.scheduledDate,
+        status: regimenCycle.status, drugName: regimen.drugName, protocolCode: regimen.protocolCode,
+        patientId: patient.id, firstName: patient.firstName, lastName: patient.lastName,
+        uniquePatientId: patient.uniquePatientId, profilePictureFileId: patient.profilePictureFileId,
+      })
+      .from(regimenCycle)
+      .innerJoin(regimen, eq(regimen.id, regimenCycle.regimenId))
+      .innerJoin(patient, eq(patient.id, regimen.patientId))
+      .where(and(
+        eq(regimenCycle.scheduledDate, date),
+        eq(patient.facilityId, facilityId),
+        eq(regimenCycle.isDeleted, false),
+        eq(regimen.isDeleted, false),
+      ))
+      .orderBy(regimenCycle.scheduledDate);
+  }
   // "Active Regimen" per Patient File — the current one, not history. A patient could in
   // principle have more than one non-deleted regimen row over time (discontinued/completed
   // ones); this deliberately picks the single ACTIVE one, most-recently-started if somehow more

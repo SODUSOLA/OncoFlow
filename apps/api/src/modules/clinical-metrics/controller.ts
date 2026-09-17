@@ -42,6 +42,25 @@ export async function getRegimenHandler(req: Request, res: Response) {
   }
 }
 
+// Nursing Officer's Schedule tab / Patient Selection step — requirePermission("regimen","read")
+// at the route layer, then narrowed here to the caller's own facility (facility-scoped staff
+// have no business browsing another facility's cycle schedule via this endpoint).
+export async function listRegimenCyclesHandler(req: Request, res: Response) {
+  try {
+    const facilityId = String(req.query.facilityId);
+    const date = String(req.query.date);
+    const callerFacilityId = (req as AuthenticatedRequest).facilityId;
+    if (callerFacilityId && callerFacilityId !== facilityId) {
+      res.status(403).json({ error: "Forbidden — you can only view your own facility's schedule" });
+      return;
+    }
+    const cycles = await regimenSvc.listCyclesForFacilityAndDate(facilityId, date);
+    res.json({ cycles });
+  } catch {
+    res.status(500).json({ error: "Internal server error" });
+  }
+}
+
 export async function getLatestVitalsHandler(req: Request, res: Response) {
   try {
     const patientId = String(req.query.patientId);
