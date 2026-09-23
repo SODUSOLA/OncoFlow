@@ -3,11 +3,9 @@ import { AuditRepository, type AuditAction, type AuditResult } from "./repositor
 
 const auditRepo = new AuditRepository();
 
+// Business logic for recording and reading audit events.
 export class AuditService {
-  // `allowedFacilityIds` is the caller's own resolved scope (lib/facility-scope.js's
-  // accessibleFacilityIds) — passed in rather than resolved here so this module never imports
-  // lib/facility-scope.js, which itself imports this module's index.js to write ACCESS_DENIED
-  // rows. Resolving it in the controller instead keeps that a one-way dependency, not a cycle.
+  // Takes the caller's resolved scope as a parameter so this module never imports lib/facility-scope, avoiding a circular import.
   async getActivityFeed(allowedFacilityIds: string[] | null, limit: number) {
     const actorIds = allowedFacilityIds === null ? null : await auditRepo.findUserIdsByFacilityIds(allowedFacilityIds);
     const rows = await auditRepo.findRecent(actorIds, limit);
@@ -22,6 +20,7 @@ export class AuditService {
     }));
   }
 
+  // Records one audit event.
   async recordEvent(data: {
     actorId?: string;
     action: AuditAction;

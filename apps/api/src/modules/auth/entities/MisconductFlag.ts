@@ -13,6 +13,7 @@ export interface MisconductFlagData {
   resolvedAt: Date | null;
 }
 
+// Domain entity for a misconduct flag raised against a user.
 export class MisconductFlag {
   constructor(private data: MisconductFlagData) {}
 

@@ -13,6 +13,7 @@ const TABS = [
   { href: "/profile", label: "Profile", icon: User },
 ] as const;
 
+// Bottom tab bar for the patient app.
 export function BottomNavBar() {
   const pathname = usePathname();
 

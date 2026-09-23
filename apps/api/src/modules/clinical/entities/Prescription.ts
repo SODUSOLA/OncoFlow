@@ -12,6 +12,7 @@ export interface PrescriptionData {
   createdAt: Date;
 }
 
+// Domain entity for a prescription.
 export class Prescription {
   constructor(private data: PrescriptionData) {}
 
@@ -23,6 +24,7 @@ export class Prescription {
   get status() { return this.data.status; }
   get createdAt() { return this.data.createdAt; }
 
+  // Serializes the prescription for API responses.
   toJSON() {
     return {
       id: this.data.id,

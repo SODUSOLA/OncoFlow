@@ -10,7 +10,9 @@ const itemRepo = new InvoiceItemRepository();
 const tariffRepo = new TariffRepository();
 const paymentService = new PaymentService();
 
+// Business logic for creating, sending, paying and voiding invoices.
 export class InvoiceService {
+  // Creates an invoice with line items computed from the facility's tariffs.
   async createInvoice(data: {
     patientId: string;
     facilityId: string;
@@ -49,9 +51,7 @@ export class InvoiceService {
     return { invoice: entity.toJSON(), invoiceId: invoiceRow.id };
   }
 
-  // For fees that aren't a static per-facility tariff lookup — e.g. the side-effect report fee,
-  // which varies by time of day. Caller computes the amount; this just records it as a single
-  // NETWORK_FEE line item (no facility/drug component, matching a pure chat-based consult).
+  // For fees that aren't a tariff lookup (e.g. the time-of-day side-effect fee): the caller computes the amount and it's stored as one NETWORK_FEE item.
   async createInvoiceWithFixedFee(data: {
     patientId: string;
     facilityId: string;
@@ -79,6 +79,7 @@ export class InvoiceService {
     return { invoice: entity.toJSON(), invoiceId: invoiceRow.id };
   }
 
+  // Moves a draft invoice to SENT.
   async sendInvoice(invoiceId: string) {
     const row = await invoiceRepo.findById(invoiceId);
     if (!row) throw new Error("Invoice not found");
@@ -90,10 +91,12 @@ export class InvoiceService {
     return { invoice: updated.toJSON() };
   }
 
+  // Pays an invoice from the patient's wallet.
   async payInvoice(invoiceId: string) {
     return paymentService.payInvoiceWithWallet(invoiceId);
   }
 
+  // Voids an invoice.
   async voidInvoice(invoiceId: string) {
     const row = await invoiceRepo.findById(invoiceId);
     if (!row) throw new Error("Invoice not found");
@@ -105,6 +108,7 @@ export class InvoiceService {
     return { invoice: updated.toJSON() };
   }
 
+  // Adds a line item to an invoice.
   async addItem(invoiceId: string, component: "NETWORK_FEE" | "FACILITY_FEE" | "PROFESSIONAL_FEE" | "DRUG_COST", amountKobo: bigint) {
     const row = await invoiceRepo.findById(invoiceId);
     if (!row) throw new Error("Invoice not found");

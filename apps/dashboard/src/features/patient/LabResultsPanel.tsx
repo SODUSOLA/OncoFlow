@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { api } from "../../lib/api";
 import type { LabRequest, LabResult } from "../../lib/types";
 
+// Reads a file as a base64 string.
 function fileToBase64(file: File): Promise<string> {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
@@ -11,11 +12,13 @@ function fileToBase64(file: File): Promise<string> {
   });
 }
 
+// One lab request row with its upload control.
 function UploadRow({ request, onUploaded }: { request: LabRequest; onUploaded: () => void }) {
   const [testDate, setTestDate] = useState("");
   const [uploading, setUploading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  // Uploads the chosen file and submits it as the lab result.
   async function handleUpload(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
     if (!file || !testDate) {
@@ -27,8 +30,7 @@ function UploadRow({ request, onUploaded }: { request: LabRequest; onUploaded: (
     setError(null);
     try {
       const content = await fileToBase64(file);
-      // fileHash comes back from the upload response — computed server-side, never
-      // recomputed client-side (would need a matching algorithm for no real benefit).
+      // fileHash is computed server-side and returned, never recomputed on the client.
       const uploadRes = await api.post<{ file: { id: string; fileHash: string } }>("/files/upload", {
         patientId: request.patientId, mimeType: file.type, content,
       });
@@ -68,11 +70,13 @@ function UploadRow({ request, onUploaded }: { request: LabRequest; onUploaded: (
   );
 }
 
+// Lists a patient's lab requests and results.
 export function LabResultsPanel({ patientId }: { patientId: string }) {
   const [requests, setRequests] = useState<LabRequest[]>([]);
   const [results, setResults] = useState<LabResult[]>([]);
   const [loading, setLoading] = useState(true);
 
+  // Loads the patient's lab requests and results.
   async function load() {
     setLoading(true);
     const [reqRes, resRes] = await Promise.all([

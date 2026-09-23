@@ -20,8 +20,7 @@ const createAppointmentSchema = z.object({
   facilityId: z.string().uuid(),
   appointmentType: z.enum(appointmentTypeEnum.enumValues),
   scheduledAt: z.string().trim().min(1).max(64),
-  // FR-20: only takes effect if the caller also holds appointment:override (checked in the
-  // controller, not here) — requesting it without that permission is silently ignored, not an error.
+  // Only honored when the caller holds appointment:override (checked in the controller); otherwise silently ignored.
   override: z.boolean().optional(),
 });
 
@@ -63,22 +62,28 @@ const scheduleConsultationSchema = z.object({
 
 const router = Router();
 
+// Generic appointment create, distinct from the opinionated /consultations flow.
 router.post("/appointments", requirePermission("appointment", "create"), validateBody(createAppointmentSchema), createAppointmentHandler);
+// Regional Admin's consultation scheduling flow.
 router.post("/consultations", requirePermission("appointment", "create"), validateBody(scheduleConsultationSchema), scheduleConsultationHandler);
-// requireAuthenticated: a patient listing/reading their OWN appointments (e.g. to join a
-// scheduled video consult) is a right, not a grant — ownership-or-permission check lives in
-// the controller (callerOwnsPatient).
+// requireAuthenticated because patients reading their own appointments is a right; the ownership-or-permission check is in the controller.
 router.get("/appointments", requireAuthenticated(), validateQuery(listAppointmentsQuerySchema), listAppointmentsHandler);
-// Must come before /appointments/:id — same "me"-style ordering reason as patients/:id vs
-// patients/me elsewhere in this codebase (validateParams' uuid check would otherwise 400 this).
+// Must precede /appointments/:id or validateParams' uuid check would 400 this path.
 router.get("/appointments/pending-confirmation-queue", requirePermission("appointment", "read"), listPendingConfirmationQueueHandler);
+// Reads one appointment (ownership-or-permission in the controller).
 router.get("/appointments/:id", requireAuthenticated(), validateParams(appointmentIdParamSchema), getAppointmentHandler);
+// Moves an appointment through its status lifecycle.
 router.patch("/appointments/:id/status", requirePermission("appointment", "update"), validateParams(appointmentIdParamSchema), validateBody(updateAppointmentStatusSchema), updateAppointmentStatusHandler);
+// Adds a participant to an appointment.
 router.post("/appointments/:id/participants", requirePermission("appointment", "update"), validateParams(appointmentIdParamSchema), validateBody(addParticipantSchema), addParticipantHandler);
+// Soft-deletes an appointment.
 router.delete("/appointments/:id", requirePermission("appointment", "delete"), validateParams(appointmentIdParamSchema), deleteAppointmentHandler);
+// Unified calendar for the caller's own scope.
 router.get("/calendar", requirePermission("calendar", "read"), getUnifiedCalendarHandler);
 
+// Initiates a patient transfer between facilities.
 router.post("/transfers", requirePermission("transferRequest", "create"), validateBody(initiateTransferSchema), initiateTransferHandler);
+// Lists transfers in the caller's region.
 router.get("/transfers", requirePermission("transferRequest", "read"), validateQuery(listTransfersQuerySchema), listTransfersHandler);
 
 export { router as appointmentRoutes };

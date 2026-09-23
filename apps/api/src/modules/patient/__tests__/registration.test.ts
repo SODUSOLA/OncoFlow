@@ -17,6 +17,7 @@ let regionalAdminCookie: string;
 let plainCookie: string;
 let requestUserId: string;
 
+// Creates a user and returns a valid session cookie for requests.
 async function createSessionCookie(): Promise<{ userId: string; cookie: string }> {
   const userId = crypto.randomUUID();
   await db.insert(user).values({
@@ -31,9 +32,7 @@ async function createSessionCookie(): Promise<{ userId: string; cookie: string }
 }
 
 beforeAll(async () => {
-  // Real per-role grants, not the TEST_USER_ID/SUPER_ADMIN bypass — this suite is specifically
-  // testing that REGIONAL_ADMIN's own grant (identity.ts) works, and that a caller without it
-  // is rejected. Idempotent, safe to call alongside the module's own top-level self-invocation.
+  // Uses real per-role grants to prove REGIONAL_ADMIN's own grant works and callers without it are rejected.
   await seedIdentity();
 
   const facRows = await db.insert(facility).values({

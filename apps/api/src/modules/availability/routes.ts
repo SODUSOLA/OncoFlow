@@ -14,12 +14,11 @@ const idParamSchema = z.object({ id: z.string().uuid() });
 
 const router = Router();
 
-// requireAuthenticated, not requirePermission — a consultant managing their OWN availability is
-// a right, not a granted permission (same pattern as clinical-metrics' patient-facing GETs).
-// Ownership-or-permission for the list route is resolved inside the controller, since Regional
-// Admin legitimately needs to read a DIFFERENT consultant's availability while scheduling.
+// Managing your own availability is a right (requireAuthenticated); the list route's ownership-or-permission check is in the controller so Regional Admin can read others.
 router.post("/availability", requireAuthenticated(), validateBody(addAvailabilitySchema), addAvailabilityHandler);
+// Lists a consultant's availability blocks.
 router.get("/availability", requireAuthenticated(), validateQuery(listAvailabilityQuerySchema), listAvailabilityHandler);
+// Removes an availability block owned by the caller.
 router.delete("/availability/:id", requireAuthenticated(), validateParams(idParamSchema), removeAvailabilityHandler);
 
 export { router as availabilityRoutes };

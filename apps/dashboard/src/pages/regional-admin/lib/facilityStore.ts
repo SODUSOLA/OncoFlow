@@ -1,13 +1,7 @@
 import { api } from "../../../lib/api";
 import type { Facility } from "../../../lib/types";
 
-// The shared facility cache, kept in its own module with no dependency on lib/auth.
-//
-// Deliberately separate from useRegionScope: that hook reads the signed-in user (useAuth) to
-// derive "my region", while lib/auth needs to clear this cache on sign-out. Putting the store
-// inside useRegionScope made those two import each other, and the resulting cycle surfaced as
-// "useAuth must be used within AuthProvider" — a half-initialised module, not a real provider
-// problem. Nothing here imports auth, so the cycle cannot re-form.
+// Facility cache kept in its own module with no auth dependency, since importing auth from here formed a cycle that broke useAuth.
 export interface FacilityStoreState {
   facilities: Facility[];
   loading: boolean;
@@ -18,11 +12,13 @@ let inFlight: Promise<void> | null = null;
 let hasLoaded = false;
 const subscribers = new Set<() => void>();
 
+// Publishes new facility state to every subscriber.
 function publish(next: FacilityStoreState): void {
   state = next;
   for (const notify of subscribers) notify();
 }
 
+// Loads facilities, collapsing concurrent callers onto one request.
 function load(): Promise<void> {
   // Collapses concurrent callers onto one request rather than starting a second.
   if (inFlight) return inFlight;
@@ -39,16 +35,14 @@ function load(): Promise<void> {
   return inFlight;
 }
 
-// Called on sign-out: the store outlives any component, and a long-lived tab should not keep
-// serving a facility list fetched under a previous session.
+// Clears the cache on sign-out so a long-lived tab doesn't serve a previous session's facilities.
 export function invalidateRegionScope(): void {
   hasLoaded = false;
   inFlight = null;
   publish({ facilities: [], loading: true });
 }
 
-// The first subscriber triggers the fetch, which keeps callers free of a setState during
-// render or in a mount effect.
+// The first subscriber triggers the fetch, keeping callers free of setState during render.
 export function subscribeToFacilities(onStoreChange: () => void): () => void {
   subscribers.add(onStoreChange);
   if (!hasLoaded && !inFlight) void load();

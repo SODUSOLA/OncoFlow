@@ -4,6 +4,7 @@ import { Loader2 } from "lucide-react";
 import { useAuth } from "../lib/auth";
 import { dashboardPathForRoles, hasStaffAccess } from "../lib/roleRouting";
 
+// Staff login page.
 export default function Login() {
   const { user, roles, loading, login, logout } = useAuth();
   const location = useLocation();
@@ -21,15 +22,14 @@ export default function Login() {
     return <Navigate to={from ?? (path ? `/dashboard/${path}` : "/no-dashboard")} replace />;
   }
 
+  // Submits the credentials and routes the user to their dashboard.
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     setSubmitting(true);
     setError(null);
     try {
       const result = await login(email, password);
-      // A patient account authenticates perfectly well — it is simply not for this app. Undo
-      // the session it just created so signing in here never leaves a live staff-portal
-      // session behind, and say plainly why it was refused.
+      // A patient account authenticates fine but isn't for this app, so the session is undone and the reason is shown.
       if (!hasStaffAccess(result.roles.map((r) => r.roleName))) {
         await logout();
         setError("This is the staff portal. Patient accounts sign in through the patient app.");
@@ -52,9 +52,7 @@ export default function Login() {
         </div>
 
         {signedInWithoutStaffAccess ? (
-          // A patient session reaches this app on its own because the session cookie is scoped
-          // to the hostname and cookies ignore the port. Rather than a bare form the account
-          // can never get past, say what happened and offer the way out.
+          // A patient session can reach this app because cookies ignore the port, so this explains why and offers a way out.
           <div className="space-y-4 rounded border border-gray-200 bg-white p-6 text-center">
             <h1 className="text-base font-semibold text-gray-900">Staff access only</h1>
             <p className="text-sm text-gray-500">

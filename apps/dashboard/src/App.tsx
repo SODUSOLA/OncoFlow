@@ -6,18 +6,18 @@ import { AuthProvider, useAuth } from "./lib/auth";
 import { dashboardPathForRoles, hasStaffAccess } from "./lib/roleRouting";
 import Login from "./pages/Login";
 
+// Lazy-loaded placeholder dashboards for roles that don't have their own shell yet.
 const vmo = lazy(() => import("./pages/virtual-medical-officer/Dashboard"));
 const scd = lazy(() => import("./pages/state-clinical-director/Dashboard"));
 const qao = lazy(() => import("./pages/quality-assurance-officer/Dashboard"));
 const sdns = lazy(() => import("./pages/state-director-of-nursing-services/Dashboard"));
 const superAdmin = lazy(() => import("./pages/super-admin/Dashboard"));
 
-// Regional Admin has its own sidebar+topbar shell and real sub-routes (see
-// pages/regional-admin/RegionalAdminLayout.tsx) instead of the generic single-page
-// DashboardLayout wrapper every other role below still uses — kept out of the `roles` loop.
+// Regional Admin has its own sidebar and topbar shell with real sub-routes instead of the generic DashboardLayout.
 const RegionalAdminLayout = lazy(() =>
   import("./pages/regional-admin/RegionalAdminLayout").then((m) => ({ default: m.RegionalAdminLayout })),
 );
+// Lazy-loaded Regional Admin pages.
 const RaRegionOverview = lazy(() => import("./pages/regional-admin/pages/RegionOverviewPage"));
 const RaPatientSearch = lazy(() => import("./pages/regional-admin/pages/PatientSearchPage"));
 const RaCountdown = lazy(() => import("./pages/regional-admin/pages/CountdownPage"));
@@ -32,12 +32,11 @@ const RaComingSoon = lazy(() =>
   import("./pages/regional-admin/pages/ComingSoon").then((m) => ({ default: m.ComingSoon })),
 );
 
-// Consulting Oncologist gets its own sidebar+topbar shell too (see
-// pages/consulting-oncologist/ConsultantLayout.tsx) — same reasoning as Regional Admin, and
-// explicitly not the same shell as Regional Admin's per the build guide's Phase 1.
+// Consulting Oncologist gets its own shell too, separate from Regional Admin's.
 const ConsultantLayout = lazy(() =>
   import("./pages/consulting-oncologist/ConsultantLayout").then((m) => ({ default: m.ConsultantLayout })),
 );
+// Lazy-loaded Consulting Oncologist pages.
 const CoAppointmentGrid = lazy(() => import("./pages/consulting-oncologist/pages/AppointmentGridPage"));
 const CoPatientFile = lazy(() => import("./pages/consulting-oncologist/pages/PatientFilePage"));
 const CoPreCallBriefing = lazy(() => import("./pages/consulting-oncologist/pages/PreCallBriefingPage"));
@@ -46,17 +45,18 @@ const CoPostCallSummary = lazy(() => import("./pages/consulting-oncologist/pages
 const CoSettings = lazy(() => import("./pages/consulting-oncologist/pages/SettingsPage"));
 const CoNotifications = lazy(() => import("./pages/consulting-oncologist/pages/NotificationCenterPage"));
 
-// Onsite Nursing Officer gets its own mobile-first shell (4-tab bottom nav) too — see
-// pages/onsite-nursing-officer/shell/NursingLayout.tsx — same reasoning as Regional
-// Admin/Consulting Oncologist: kept out of the generic `roles` loop below.
+// Onsite Nursing Officer gets its own mobile-first shell with a 4-tab bottom nav.
 const NursingLayout = lazy(() =>
   import("./pages/onsite-nursing-officer/shell/NursingLayout").then((m) => ({ default: m.NursingLayout })),
 );
+// Lazy-loaded Onsite Nursing Officer pages.
 const NoSchedule = lazy(() => import("./pages/onsite-nursing-officer/pages/SchedulePage"));
-const NoUploads = lazy(() => import("./pages/onsite-nursing-officer/pages/UploadsPage"));
+const NoCases = lazy(() => import("./pages/onsite-nursing-officer/pages/CasesPage"));
+const NoCaseDetail = lazy(() => import("./pages/onsite-nursing-officer/pages/case/CaseDetailPage"));
 const NoPatients = lazy(() => import("./pages/onsite-nursing-officer/pages/PatientsPage"));
 const NoPatientDetail = lazy(() => import("./pages/onsite-nursing-officer/pages/PatientDetailPage"));
 const NoInventory = lazy(() => import("./pages/onsite-nursing-officer/pages/InventoryPage"));
+const NoSettings = lazy(() => import("./pages/onsite-nursing-officer/pages/SettingsPage"));
 const NoNewCaseWizard = lazy(() => import("./pages/onsite-nursing-officer/wizard/NewCaseWizard"));
 
 const roles = [
@@ -67,6 +67,7 @@ const roles = [
   { path: "super-admin", component: superAdmin, label: "Super Admin" },
 ] as const;
 
+// Renders a lazy component inside Suspense with a labelled loading fallback.
 function SuspenseWrapper({ Component, label }: { Component: React.LazyExoticComponent<React.ComponentType>; label: string }) {
   return (
     <DashboardLayout role={label}>
@@ -77,20 +78,12 @@ function SuspenseWrapper({ Component, label }: { Component: React.LazyExoticComp
   );
 }
 
+// Full-screen loading state shown while auth or a lazy route resolves.
 function FullScreenLoading() {
   return <div className="min-h-screen flex items-center justify-center text-gray-400">Loading...</div>;
 }
 
-// Session check happens once at the top of the tree (AuthProvider's /auth/profile call) —
-// this just waits for that to settle and redirects to /login if it came back empty, remembering
-// where the user was headed so login can send them straight back.
-//
-// Being signed in is not sufficient: the session cookie is scoped to the host, and cookies
-// ignore the port, so a patient signed into the patient app on the same hostname arrives here
-// already authenticated. Checking only `user` meant that session was admitted into the staff
-// console and routed to a page — the staff login was never even shown. The API refused every
-// staff request behind it (403), so no data was exposed, but the shell should never have
-// rendered. Staff standing is now required to get past this point.
+// Waits for the session check and redirects to /login if it failed; a session alone isn't enough, since a patient-app cookie on the same host must not reach the staff console.
 function RequireAuth({ children }: { children: ReactNode }) {
   const { user, roles, loading } = useAuth();
   const location = useLocation();
@@ -101,6 +94,7 @@ function RequireAuth({ children }: { children: ReactNode }) {
   return <>{children}</>;
 }
 
+// Sends the user to their role's dashboard, or to /login if they lack staff access.
 function RootRedirect() {
   const { user, roles: userRoles, loading } = useAuth();
 
@@ -108,14 +102,14 @@ function RootRedirect() {
   if (!user) return <Navigate to="/login" replace />;
 
   const roleNames = userRoles.map((r) => r.roleName);
-  // Non-staff sessions are bounced to /login, which explains the situation rather than
-  // silently looping them back here.
+  // Non-staff sessions go to /login, which explains the situation instead of looping.
   if (!hasStaffAccess(roleNames)) return <Navigate to="/login" replace />;
 
   const path = dashboardPathForRoles(roleNames);
   return <Navigate to={path ? `/dashboard/${path}` : "/no-dashboard"} replace />;
 }
 
+// Screen shown when a staff user has no role with a dashboard.
 function NoDashboard() {
   const { roles: userRoles, logout } = useAuth();
   return (
@@ -133,6 +127,7 @@ function NoDashboard() {
   );
 }
 
+// Declares every route in the dashboard, grouped by role shell.
 function AppRoutes() {
   return (
     <Routes>
@@ -249,10 +244,12 @@ function AppRoutes() {
         }
       >
         <Route index element={<Suspense fallback={<FullScreenLoading />}><NoSchedule /></Suspense>} />
-        <Route path="uploads" element={<Suspense fallback={<FullScreenLoading />}><NoUploads /></Suspense>} />
+        <Route path="cases" element={<Suspense fallback={<FullScreenLoading />}><NoCases /></Suspense>} />
+        <Route path="cases/:caseId" element={<Suspense fallback={<FullScreenLoading />}><NoCaseDetail /></Suspense>} />
         <Route path="patients" element={<Suspense fallback={<FullScreenLoading />}><NoPatients /></Suspense>} />
         <Route path="patients/:patientId" element={<Suspense fallback={<FullScreenLoading />}><NoPatientDetail /></Suspense>} />
         <Route path="inventory" element={<Suspense fallback={<FullScreenLoading />}><NoInventory /></Suspense>} />
+        <Route path="settings" element={<Suspense fallback={<FullScreenLoading />}><NoSettings /></Suspense>} />
         <Route path="new-case" element={<Suspense fallback={<FullScreenLoading />}><NoNewCaseWizard /></Suspense>} />
       </Route>
       {roles.map(({ path, component: Component, label }) => (
@@ -267,6 +264,7 @@ function AppRoutes() {
   );
 }
 
+// Root component wiring the router, auth provider and routes.
 export function App() {
   return (
     <BrowserRouter>

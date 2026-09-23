@@ -1,8 +1,6 @@
 import { enqueueEmail } from "../../../lib/email-queue.js";
 
-// Request #5's "mail of confirmation" — sent once a Regional Admin confirms (or reassigns) the
-// facility on an already-live patient record, which is the last step of onboarding now that
-// the record itself is created automatically at email verification.
+// Emails the patient once Admin confirms or reassigns their facility, the last onboarding step.
 export async function sendRegistrationConfirmedEmail(
   email: string,
   patientName: string,

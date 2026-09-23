@@ -29,12 +29,15 @@ const reviewSchema = z.object({
 
 const router = Router();
 
+// Starts a nursing case (requires nursingCase:create).
 router.post("/nursing-cases", requirePermission("nursingCase", "create"), validateBody(startCaseSchema), startCaseHandler);
+// Lists the caller's own cases.
 router.get("/nursing-cases/mine", requireAuthenticated(), listMyCasesHandler);
-// Must come before /nursing-cases/:id — same "me"/"pending-review" static-route-before-param
-// ordering used elsewhere in this codebase (e.g. appointments/pending-confirmation-queue).
+// Must precede /nursing-cases/:id so the static path isn't swallowed by the param route.
 router.get("/nursing-cases/pending-review", requirePermission("nursingCase", "update"), requireRole("QUALITY_ASSURANCE_OFFICER"), listPendingReviewHandler);
+// Reads one case (own for the nurse, permission for QA).
 router.get("/nursing-cases/:id", requireAuthenticated(), validateParams(caseIdParamSchema), getCaseHandler);
+// Submits the documentation sheet for a case.
 router.post(
   "/nursing-cases/:id/documentation-sheet",
   requireAuthenticated(),
@@ -42,6 +45,7 @@ router.post(
   validateBody(submitSheetSchema),
   submitDocumentationSheetHandler,
 );
+// QA reviews a case.
 router.post(
   "/nursing-cases/:id/review",
   requirePermission("nursingCase", "update"),
@@ -51,7 +55,9 @@ router.post(
   reviewCaseHandler,
 );
 
+// Records a security incident for an infected upload.
 router.post("/security-incidents", requireAuthenticated(), validateBody(reportIncidentSchema), reportSecurityIncidentHandler);
+// Lists recent security incidents for Regional Admin.
 router.get("/security-incidents", requirePermission("securityIncident", "read"), listSecurityIncidentsHandler);
 
 export { router as nursingRoutes };

@@ -1,12 +1,12 @@
 import { api } from "../../../lib/api";
 import type { FileRecord } from "./types";
 
+// Reads a file as a base64 string without the data: URL prefix.
 function fileToBase64(file: File): Promise<string> {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
     reader.onload = () => {
-      // FileReader's data: URL is "data:<mime>;base64,<payload>" — the API only wants the
-      // payload, mimeType is sent separately.
+      // FileReader returns "data:<mime>;base64,<payload>" and the API wants only the payload, with mimeType sent separately.
       const result = reader.result as string;
       resolve(result.split(",")[1] ?? "");
     };
@@ -15,28 +15,21 @@ function fileToBase64(file: File): Promise<string> {
   });
 }
 
-// Real upload against POST /files/upload — the same file table + virus-scan pipeline every
-// other upload in this app goes through (apps/api/src/modules/documents). No client-only
-// "looks uploaded" state: the returned record starts PENDING and only becomes real once the
-// scan resolves (see pollScanStatus below).
+// Uploads through POST /files/upload, the shared virus-scan pipeline; the record starts PENDING and is only real once the scan resolves.
 export async function uploadFile(file: File, patientId: string): Promise<FileRecord> {
   const content = await fileToBase64(file);
   const res = await api.post<{ file: FileRecord }>("/files/upload", { patientId, mimeType: file.type || "application/octet-stream", content });
   return res.file;
 }
 
-// Scanning is asynchronous (a BullMQ-queued ClamAV job) — this polls the same GET /files/:id
-// every other file consumer in this app uses, until the scan actually resolves. No fixed delay
-// stands in for a real result: Step 5's safety interlock and the wizard's Success/Error screens
-// depend on this being the real answer, not a guess.
+// Polls GET /files/:id until the async ClamAV scan resolves, so the interlock and result screens rest on a real answer.
 export async function pollScanStatus(fileId: string, opts: { intervalMs?: number; timeoutMs?: number } = {}): Promise<FileRecord> {
   const intervalMs = opts.intervalMs ?? 1500;
   const timeoutMs = opts.timeoutMs ?? 30_000;
   const start = Date.now();
   while (Date.now() - start < timeoutMs) {
     const res = await api.get<{ file: FileRecord }>(`/files/${fileId}`).catch(async (err) => {
-      // getFileHandler returns 403 with a specific message once a file is flagged INFECTED —
-      // that's not a failure to poll, it's the answer.
+      // The 403 with an "infected" message is the scan result, not a polling failure.
       if (err instanceof Error && err.message.includes("infected")) {
         return { file: { id: fileId, virusScanStatus: "INFECTED" as const } as FileRecord };
       }

@@ -8,6 +8,7 @@ import { resolveMfaRequirement } from "./mfa-policy.js";
 const sessionRepo = new SessionRepository();
 const userRepo = new UserRepository();
 
+// Middleware that resolves the session cookie into req.userId, facilityId and MFA state for later gates.
 export async function attachRequestContext(req: Request, _res: Response, next: NextFunction): Promise<void> {
   const authed = req as Request & { userId?: string; facilityId?: string; mfaVerified?: boolean; mfaRequired?: boolean; };
   const contextReq = req as Request & { requestId?: string };
@@ -20,10 +21,7 @@ export async function attachRequestContext(req: Request, _res: Response, next: N
 
   const isTest = config.isTest;
 
-  // Real session cookie takes priority over the TEST_USER_ID/TEST_FACILITY_ID shortcut below —
-  // a test that deliberately sets up its own cookie session (e.g. request-context.test.ts)
-  // means to exercise that real path, not have it silently pre-empted by unrelated global
-  // test scaffolding (src/test/setup.ts sets TEST_USER_ID for every test file unconditionally).
+  // A real session cookie takes priority over the TEST_USER_ID shortcut so tests that set up their own cookie exercise the real path.
   const sessionIdFromCookie = typeof req.cookies?.[SESSION_COOKIE_NAME] === "string"
     ? req.cookies[SESSION_COOKIE_NAME]
     : undefined;
@@ -50,10 +48,7 @@ export async function attachRequestContext(req: Request, _res: Response, next: N
     }
   }
 
-  // Load MFA state for enforcement. `required` comes from lib/mfa-policy.ts rather than
-  // user.mfaEnabled directly, so a staff account that policy requires to use MFA but has not
-  // enrolled yet is still gated — reading mfaEnabled alone would let exactly those accounts
-  // (the ones the policy exists for) straight through.
+  // MFA "required" comes from the policy layer, not user.mfaEnabled alone, so unenrolled staff that policy requires are still gated.
   if (authed.userId) {
     const userRow = await userRepo.findById(authed.userId);
     const requirement = await resolveMfaRequirement(authed.userId, userRow?.mfaEnabled ?? false);

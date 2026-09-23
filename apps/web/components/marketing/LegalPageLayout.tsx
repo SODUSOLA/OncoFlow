@@ -1,6 +1,7 @@
 import { AlertTriangle } from "lucide-react";
 import { Section } from "@/components/ui/Section";
 
+// Layout shared by the legal pages.
 export function LegalPageLayout({
   title,
   lastUpdated,

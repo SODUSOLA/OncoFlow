@@ -21,6 +21,7 @@ afterAll(async () => {
   }
 });
 
+// Registers a user and returns its id, email and password.
 async function registerUser(): Promise<{ userId: string; email: string; password: string }> {
   const email = `reset-${Date.now()}-${Math.random().toString(36).slice(2)}@example.com`;
   const password = "OriginalPass123!";
@@ -31,6 +32,7 @@ async function registerUser(): Promise<{ userId: string; email: string; password
   return { userId, email, password };
 }
 
+// Requests a password reset and returns the token captured from the mocked email.
 async function requestResetAndCaptureToken(email: string): Promise<string> {
   const { sendPasswordResetEmail } = await import("../services/PasswordResetEmailService.js");
 
@@ -38,16 +40,10 @@ async function requestResetAndCaptureToken(email: string): Promise<string> {
   expect(res.status).toBe(200);
   expect(res.body.sent).toBe(true);
 
-  // Fire-and-forget path (requestPasswordReset awaits the send internally, but the caller
-  // pattern elsewhere in this module is still tolerant of a tick of delay) — same reasoning
-  // as email-verification.test.ts's registerAndCaptureToken, and same reason this isn't
-  // asserting a call *count*: the mock is shared module-wide across every test in this file.
+  // Waits for the mocked send to land; asserts on the matching call rather than a count because the mock is shared across the file.
   await waitFor(() =>
     vi.mocked(sendPasswordResetEmail).mock.calls.some(([to]) => to === email));
-  // Last matching call, not first: a test that calls this twice for the same email (to
-  // exercise invalidateAllForUser) would otherwise always get the FIRST matching call back,
-  // i.e. the stale token, since the mock's call list only ever grows across every request in
-  // this file. (Not using Array.findLast — this repo's configured TS lib predates ES2023.)
+  // Takes the last matching call, since repeated resets for one email would otherwise return the stale first token.
   const matches = vi.mocked(sendPasswordResetEmail).mock.calls.filter(([to]) => to === email);
   const call = matches[matches.length - 1];
   expect(call).toBeDefined();

@@ -1,9 +1,6 @@
 import type { Transition, Variants } from "framer-motion";
 
-/**
- * Motion tokens in milliseconds, mirroring the CSS duration-* utilities
- * defined in app/globals.css. Keep these two in sync.
- */
+// Motion durations in milliseconds, mirroring the CSS duration-* utilities in globals.css; keep them in sync.
 export const MOTION_MS = {
   fast: 150,
   standard: 250,
@@ -26,6 +23,7 @@ export const revealVariants: Variants = {
   },
 };
 
+// Variants that stagger child animations.
 export const staggerContainer = (staggerMs = 80): Variants => ({
   hidden: {},
   visible: {
@@ -33,6 +31,7 @@ export const staggerContainer = (staggerMs = 80): Variants => ({
   },
 });
 
+// Variants for a fade-in-up entrance.
 export const fadeInUp = (delayMs = 0): Variants => ({
   hidden: { opacity: 0, y: 12 },
   visible: {

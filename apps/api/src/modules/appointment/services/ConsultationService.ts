@@ -15,14 +15,9 @@ const userRepo = new UserRepository();
 
 const DEFAULT_DURATION_MINUTES = 30;
 
-// ONCOFLOW_SCHEDULING_AND_VIDEO_LIFECYCLE.md's "corrected flow" — the New Consultation action,
-// revived as Regional Admin work (routes.ts's POST /consultations). Deliberately its own
-// service, not a method on AppointmentService: this is the one place in the codebase that needs
-// to know about appointment, availability (via AppointmentService's requireAvailabilityMatch),
-// messaging, notification, and the reminder queue all at once, and keeping that orchestration
-// out of AppointmentService keeps that service's own import surface (and its existing tests)
-// unaffected.
+// Orchestrates the Regional Admin "New Consultation" flow across appointment, availability, room, notifications and reminders, kept out of AppointmentService.
 export class ConsultationService {
+  // Schedules a consultation with a named consultant: validates availability, creates the appointment, provisions the room, then notifies and queues reminders.
   async scheduleConsultation(data: {
     patientId: string; oncologistId: string; facilityId: string;
     appointmentType: string; scheduledAt: string; durationMinutes?: number;
@@ -35,8 +30,7 @@ export class ConsultationService {
     const durationMinutes = appointment.durationMinutes ?? data.durationMinutes ?? DEFAULT_DURATION_MINUTES;
     const scheduledAt = new Date(appointment.scheduledAt);
 
-    // §2 — appointment_participant becomes the complete membership list (not just an extension
-    // mechanism for a third invitee), matching what MeetingService.issueToken now checks.
+    // appointment_participant holds the complete membership list, matching what MeetingService.issueToken checks.
     const [oncologist, patient] = await Promise.all([
       userRepo.findById(data.oncologistId),
       patientRepo.findById(data.patientId),
@@ -46,10 +40,7 @@ export class ConsultationService {
       await participantRepo.create({ appointmentId: appointment.id, userId: patient.userId, role: "PATIENT" });
     }
 
-    // §3 — room provisioned now, not lazily on "Join Call". A provisioning failure (e.g. Daily
-    // unreachable) doesn't roll back the appointment — the scheduling itself succeeded, and
-    // Admin needs to see that plus a clear "room not ready yet" signal, not a false 500 that
-    // hides a real appointment that now exists.
+    // Room is provisioned at scheduling time; a provisioning failure doesn't roll back the appointment, and Admin sees a "room not ready" signal instead.
     let meeting = null;
     let roomProvisioningError: string | null = null;
     if (data.appointmentType === "VIRTUAL") {
@@ -60,8 +51,7 @@ export class ConsultationService {
       }
     }
 
-    // §4 — immediate notification (email + in-app) to both participants, best-effort (a
-    // notification failure shouldn't undo a real, already-created appointment).
+    // Immediate email and in-app notification to both participants, best-effort so it can't undo the appointment.
     await this.notifyScheduled(appointment, oncologist, patient).catch((err) => {
       console.error(`Scheduling notification failed for appointment ${appointment.id}:`, err);
     });

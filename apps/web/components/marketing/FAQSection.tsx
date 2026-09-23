@@ -3,6 +3,7 @@ import { Accordion } from "@/components/ui/Accordion";
 import { Reveal } from "@/components/ui/Reveal";
 import { faqEntries } from "@/lib/content/faq";
 
+// FAQ section.
 export function FAQSection() {
   return (
     <Section tone="muted" id="faq">

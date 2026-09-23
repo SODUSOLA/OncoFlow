@@ -3,14 +3,7 @@ import request from "supertest";
 import { createApp } from "../../app.js";
 import { config } from "../../config.js";
 
-// A body that body-parser refuses (too large, malformed, bad encoding) throws a plain Error
-// carrying a `type` and a status rather than an AppError, so every one of them used to fall
-// through to the generic branch of error-handler.ts and come back as:
-//
-//   {"error":"Internal server error","code":"INTERNAL_ERROR"}   HTTP 500
-//
-// That is what a patient saw when uploading a document, and it gave no hint that the request
-// had simply exceeded the 100kb default limit. These pin the real statuses.
+// Pins the real HTTP statuses for body-parser failures, which previously fell through to a generic 500 "Internal server error".
 
 const app = createApp();
 
@@ -49,9 +42,7 @@ describe("body parser failures are reported as themselves, not as 500s", () => {
 });
 
 describe("upload body budget", () => {
-  // The upload route needs a bigger budget than everything else precisely because base64
-  // inflates the payload; deriving it from maxUploadBytes keeps the two from drifting apart,
-  // which is what would silently reintroduce "file within the limit, rejected by the parser".
+  // Deriving the upload limit from maxUploadBytes keeps it from drifting below the base64-inflated size of a file that is within budget.
   it("allows for base64 inflation over the raw file limit", () => {
     expect(config.maxUploadBodyBytes).toBeGreaterThan(config.maxUploadBytes * 4 / 3);
   });

@@ -149,15 +149,13 @@ describe("Socket.IO — real connection, emit on real events", () => {
     await new Promise((r) => setTimeout(r, 100));
     expect(receivedTooEarly).toBe(false);
 
-    // patientUserId owns this conversation's patient — but this socket is authenticated as a
-    // DIFFERENT user (userId), so the join must be rejected (not a self-service caller, no grant).
+    // A socket authenticated as a different user than the conversation's patient must be rejected from joining.
     const joinedAsStranger = await new Promise((resolve) => {
       clientSocket.emit("conversation:join", convo.id, resolve);
     });
     expect(joinedAsStranger).toBe(false);
 
-    // The conversation's own patient, joining as themselves, must succeed and then actually
-    // receive the next message posted to that room.
+    // The conversation's own patient joining as themselves must succeed and receive the next posted message.
     const patientSessionId = crypto.randomUUID();
     await db.insert(session).values({
       id: patientSessionId, userId: testPatientUserId, device: "test", ip: "127.0.0.1",

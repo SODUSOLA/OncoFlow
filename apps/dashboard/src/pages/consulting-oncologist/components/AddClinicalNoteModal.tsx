@@ -8,13 +8,13 @@ interface AddClinicalNoteModalProps {
   onSubmit: (note: string) => Promise<void>;
 }
 
-// Backs the sidebar's real "Add Clinical Note" action (POST /clinical-notes) — a plain modal,
-// not a design-system component the Figma reference specs, since the mockups never open it.
+// Backs the sidebar's Add Clinical Note action (POST /clinical-notes) as a plain modal, since the mockups never open one.
 export function AddClinicalNoteModal({ patientName, onClose, onSubmit }: AddClinicalNoteModalProps) {
   const [note, setNote] = useState("");
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  // Submits the typed note and closes the modal.
   async function handleSubmit() {
     if (!note.trim()) return;
     setSaving(true);

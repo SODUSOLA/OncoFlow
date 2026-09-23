@@ -8,11 +8,11 @@ import { api } from "@/lib/api";
 
 const CODE_LENGTH = 6;
 
+// Panel for entering the 6-digit email verification code.
 export function VerifyEmailPanel() {
   const router = useRouter();
   const searchParams = useSearchParams();
-  // The emailed code is also linked as ?token= for patients who'd rather tap than type
-  // (VerificationEmailService.ts) — prefill from it when present.
+  // Prefills from the ?token= link in the email for patients who'd rather tap than type.
   const prefill = (searchParams.get("token") ?? "").replace(/\D/g, "").slice(0, CODE_LENGTH);
 
   const [digits, setDigits] = useState<string[]>(() =>
@@ -27,6 +27,7 @@ export function VerifyEmailPanel() {
 
   const code = digits.join("");
 
+  // Submits the verification code.
   async function submitCode(value: string) {
     setSubmitting(true);
     setError(null);
@@ -42,8 +43,7 @@ export function VerifyEmailPanel() {
     }
   }
 
-  // Auto-submit as soon as the last digit lands — a 6-digit code has one obvious completion
-  // point, so making the patient also reach for a button is pure friction.
+  // Auto-submits when the last digit lands, since a button press would be pure friction.
   useEffect(() => {
     if (code.length === CODE_LENGTH && !submitting && !verified && !error) {
       void submitCode(code);
@@ -51,6 +51,7 @@ export function VerifyEmailPanel() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [code]);
 
+  // Sets one digit of the code.
   function setDigitAt(index: number, value: string) {
     setError(null);
     setDigits((prev) => {
@@ -60,6 +61,7 @@ export function VerifyEmailPanel() {
     });
   }
 
+  // Handles typing into a digit box.
   function handleChange(index: number, raw: string) {
     const value = raw.replace(/\D/g, "");
     if (!value) {
@@ -82,6 +84,7 @@ export function VerifyEmailPanel() {
     if (index < CODE_LENGTH - 1) inputsRef.current[index + 1]?.focus();
   }
 
+  // Handles backspace moving to the previous digit box.
   function handleKeyDown(index: number, e: KeyboardEvent<HTMLInputElement>) {
     if (e.key === "Backspace" && !digits[index] && index > 0) {
       inputsRef.current[index - 1]?.focus();
@@ -90,6 +93,7 @@ export function VerifyEmailPanel() {
     if (e.key === "ArrowRight" && index < CODE_LENGTH - 1) inputsRef.current[index + 1]?.focus();
   }
 
+  // Handles pasting a full code.
   function handlePaste(e: ClipboardEvent<HTMLInputElement>) {
     const pasted = e.clipboardData.getData("text").replace(/\D/g, "").slice(0, CODE_LENGTH);
     if (!pasted) return;
@@ -99,6 +103,7 @@ export function VerifyEmailPanel() {
     inputsRef.current[Math.min(pasted.length, CODE_LENGTH - 1)]?.focus();
   }
 
+  // Requests a new verification code.
   async function handleResend() {
     setResending(true);
     setError(null);

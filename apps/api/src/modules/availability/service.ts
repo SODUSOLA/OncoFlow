@@ -7,19 +7,16 @@ import { notificationService } from "../notification/index.js";
 
 const repo = new AvailabilityRepository();
 
-// Same "what day/time does this actually fall on" framing appointment/repository.ts already
-// uses (lagosDateString) — availability blocks are meaningless if they're compared against a
-// different timezone than the scheduling flow that reads them.
+// Uses the Lagos calendar date, the same timezone the scheduling flow that reads these blocks uses.
 function lagosDateString(d: Date): string {
   return new Intl.DateTimeFormat("en-CA", { timeZone: "Africa/Lagos", year: "numeric", month: "2-digit", day: "2-digit" }).format(d);
 }
+// Formats a timestamp as its Africa/Lagos HH:MM time.
 function lagosTimeString(d: Date): string {
   return new Intl.DateTimeFormat("en-GB", { timeZone: "Africa/Lagos", hour: "2-digit", minute: "2-digit", hour12: false }).format(d);
 }
 
-// §1 — "Admin notification on availability change": in-app to every REGIONAL_ADMIN in the
-// consultant's own region (same region-resolution rule facility-scope.ts uses everywhere else
-// in this codebase — a Regional Admin's remit is their region, not one facility).
+// Notifies every REGIONAL_ADMIN in the consultant's region of an availability change.
 async function notifyAdminsOfAvailabilityChange(consultantId: string): Promise<void> {
   const rows = await db.execute<{ id: string }>(sql`
     SELECT u.id
@@ -42,7 +39,9 @@ async function notifyAdminsOfAvailabilityChange(consultantId: string): Promise<v
   ));
 }
 
+// Business logic for consultant availability.
 export class AvailabilityService {
+  // Adds a block after checking the start is before the end, and notifies regional admins.
   async addBlock(consultantId: string, availableDate: string, startTime: string, endTime: string) {
     if (startTime >= endTime) {
       throw new Error("startTime must be before endTime");
@@ -52,10 +51,12 @@ export class AvailabilityService {
     return row;
   }
 
+  // Lists a consultant's availability blocks.
   async listForConsultant(consultantId: string) {
     return repo.findByConsultant(consultantId);
   }
 
+  // Removes a block, allowed only for its owner.
   async removeBlock(id: string, callerId: string) {
     const row = await repo.findById(id);
     if (!row) throw new NotFoundError("Availability block not found");
@@ -64,15 +65,13 @@ export class AvailabilityService {
     void notifyAdminsOfAvailabilityChange(callerId);
   }
 
-  // §2 — the server-side scheduling constraint: does `scheduledAt` (+ its duration) fall
-  // entirely inside one of this consultant's availability blocks for that Lagos-local date?
+  // The server-side scheduling constraint: whether the time plus duration fits entirely inside one block on that Lagos date.
   async isWithinAvailability(consultantId: string, scheduledAt: Date, durationMinutes: number): Promise<boolean> {
     const date = lagosDateString(scheduledAt);
     const startTime = lagosTimeString(scheduledAt);
     const endTime = lagosTimeString(new Date(scheduledAt.getTime() + durationMinutes * 60_000));
     const blocks = await repo.findByConsultant(consultantId);
-    // Postgres returns `time` columns as "HH:MM:SS" — normalize to "HH:MM" before comparing
-    // against the "HH:MM" strings computed above, rather than relying on string-prefix ordering.
+    // Postgres returns time as HH:MM:SS, so it is normalized to HH:MM before comparing.
     return blocks.some((b) => b.availableDate === date && b.startTime.slice(0, 5) <= startTime && endTime <= b.endTime.slice(0, 5));
   }
 }

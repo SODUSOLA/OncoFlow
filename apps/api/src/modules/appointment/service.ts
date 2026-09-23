@@ -5,8 +5,7 @@ import { checkWeeklyStructure } from "./entities/weekly-structure.js";
 import { nextWorkingDayFor } from "./entities/next-working-day.js";
 import { AppointmentRepository, AppointmentParticipantRepository, TransferRequestRepository } from "./repository.js";
 import { appointmentTypeEnum } from "../../db/enums.js";
-// Cross-module reads — same pattern as billing/controller.ts's PatientRepository import: need
-// the patient's userId (notification recipient) which this module doesn't own.
+// Cross-module read to get the patient's userId, the notification recipient this module doesn't own.
 import { PatientRepository } from "../patient/index.js";
 import { notificationService } from "../notification/index.js";
 import { FacilityRepository } from "../facility/index.js";
@@ -23,6 +22,7 @@ const patientRepo = new PatientRepository();
 const transferRequestRepo = new TransferRequestRepository();
 const facilityRepo = new FacilityRepository();
 
+// Sends the patient an appointment notification of the given type.
 async function notifyPatient(patientId: string, type: "APPOINTMENT_CONFIRMED" | "APPOINTMENT_RESCHEDULED") {
   const patientRow = await patientRepo.findById(patientId);
   if (!patientRow?.userId) return;
@@ -31,7 +31,9 @@ async function notifyPatient(patientId: string, type: "APPOINTMENT_CONFIRMED" | 
   });
 }
 
+// Business logic for appointments.
 export class AppointmentService {
+  // Creates an appointment after checking weekly structure, override permission and (optionally) consultant availability.
   async createAppointment(data: {
     patientId: string;
     oncologistId?: string;
@@ -40,10 +42,7 @@ export class AppointmentService {
     scheduledAt: string;
     durationMinutes?: number;
     overrideWeeklyStructure?: boolean;
-    // ONCOFLOW_SCHEDULING_AND_VIDEO_LIFECYCLE.md §2 — off by default so every existing caller
-    // of this method (and its tests) keeps behaving exactly as before; only the new Regional
-    // Admin "New Consultation" flow (routes.ts's /consultations) opts in, since that's the one
-    // path the doc actually wants server-side-constrained to a named consultant's real hours.
+    // Off by default so existing callers behave unchanged; only the Regional Admin consultation flow opts in to server-side availability matching.
     requireAvailabilityMatch?: boolean;
   }) {
     if (!appointmentTypeEnum.enumValues.includes(data.appointmentType as AppointmentType)) {
@@ -75,12 +74,14 @@ export class AppointmentService {
     return new Appointment(row).toJSON();
   }
 
+  // Returns one appointment or throws NotFoundError.
   async getAppointment(id: string) {
     const row = await repo.findById(id);
     if (!row) return null;
     return new Appointment(row).toJSON();
   }
 
+  // Lists appointments by the given filters.
   async listAppointments(filters?: {
     patientId?: string; facilityId?: string; facilityIds?: string[]; status?: string;
   }) {
@@ -92,6 +93,7 @@ export class AppointmentService {
     return rows.map((r) => new Appointment(r).toJSON());
   }
 
+  // Applies a status transition through the domain entity and notifies the patient where relevant.
   async updateStatus(id: string, targetStatus: AppointmentStatus) {
     const row = await repo.findById(id);
     if (!row) throw new Error("Appointment not found");
@@ -122,6 +124,7 @@ export class AppointmentService {
     return new Appointment(saved!).toJSON();
   }
 
+  // Adds a participant to an existing appointment.
   async addParticipant(appointmentId: string, userId: string, role: string) {
     const appt = await repo.findById(appointmentId);
     if (!appt) throw new Error("Appointment not found");
@@ -129,11 +132,7 @@ export class AppointmentService {
     return row;
   }
 
-  // Categorizes a just-paid, appointment-linked invoice by Lagos server-clock time: paid
-  // before 2PM stays PENDING and surfaces on listPendingConfirmationQueue() for same-day staff
-  // confirmation; paid at/after 2PM auto-reschedules to the next FR-20-valid working day.
-  // Deliberately a no-op (not an error) for an appointment that's already left PENDING — this
-  // is called from PaymentService as a best-effort side effect, not a strict precondition.
+  // Handles a just-paid invoice: before 2PM Lagos it stays PENDING for same-day confirmation, after it auto-reschedules; a no-op if already past PENDING.
   async handlePaymentEvent(appointmentId: string, paidAt: Date): Promise<void> {
     const row = await repo.findById(appointmentId);
     if (!row || row.status !== "PENDING") return;
@@ -143,25 +142,24 @@ export class AppointmentService {
       await repo.update(appointmentId, { scheduledAt: nextDate });
       void notifyPatient(row.patientId, "APPOINTMENT_RESCHEDULED");
     }
-    // Before 2PM: no mutation needed — findPendingConfirmationQueue picks it up via the
-    // appointment-status/invoice-status join, scoped to today's Lagos date.
+    // Before 2PM nothing changes; the queue query picks the appointment up via the PENDING/PAID join.
   }
 
+  // Returns today's confirmation queue for the given facilities.
   async listPendingConfirmationQueue(facilityIds?: string[]) {
     const rows = await repo.findPendingConfirmationQueue(facilityIds);
     return rows.map((r) => new Appointment(r).toJSON());
   }
 }
 
-// Initiate-only, deliberately: 18-admin-feature-status-workflow-pairing.md #12 flags "who
-// approves a transfer" as unresolved, possibly not even Admin's own portal. This service (and
-// its route) covers what IS settled — Admin initiates — and stops there rather than guessing
-// at an approve action; nothing here ever sets `approvedBy` or transitions status off PENDING.
+// Initiate-only: approval of transfers is unresolved in the specs, so nothing here sets approvedBy or leaves PENDING.
 export class TransferRequestService {
+  // Creates a PENDING transfer request.
   async initiate(data: { patientId: string; fromFacilityId: string; toFacilityId: string; requestedBy: string }) {
     return transferRequestRepo.create(data);
   }
 
+  // Lists transfers involving any facility in the region.
   async listForRegion(region: string | undefined) {
     const allFacilities = await facilityRepo.findAll();
     const facilities = region ? allFacilities.filter((f) => f.region === region) : allFacilities;

@@ -9,6 +9,7 @@ export const metadata: Metadata = {
   description: "Verify your email address to activate your OncoFlow account.",
 };
 
+// Email verification page.
 export default function VerifyEmailPage() {
   return (
     <AuthCard

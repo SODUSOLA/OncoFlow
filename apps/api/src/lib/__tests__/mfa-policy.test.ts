@@ -10,18 +10,7 @@ import { SESSION_COOKIE_NAME } from "../session-cookie.js";
 import { seedIdentity } from "../../seed/identity.js";
 import { config } from "../../config.js";
 
-// Covers the MFA *policy* layer (lib/mfa-policy.ts) and the enrolment flow, as distinct from
-// authz-enforcement.test.ts which covers the route gates. Three defects are pinned here, all
-// found while wiring the policy and all of which made MFA unusable rather than merely weak:
-//
-//  1. POST /auth/mfa/enroll had a handler and a service method but no route, so no account
-//     could ever turn MFA on — the second factor was unreachable in production.
-//  2. base32Encode was not RFC 4648 (two chars per byte), so decode(encode(x)) !== x and a
-//     real authenticator app derived a different key than verifyTotp() used. A correctly
-//     typed code could never match.
-//  3. login set session.mfaVerified from user.mfaEnabled, so a staff account that policy
-//     requires to use MFA but has not enrolled got a pre-verified session — the policy would
-//     have been silently unenforceable against exactly the accounts it exists for.
+// Covers the MFA policy layer and enrolment flow, pinning three defects: no enrol route, non-RFC-4648 base32, and login pre-verifying unenrolled staff.
 
 const app = createApp();
 
@@ -32,9 +21,7 @@ type RoleName = (typeof role.name.enumValues)[number];
 
 const BASE32_ALPHABET = "ABCDEFGHIJKLMNOPQRSTUVWXYZ234567";
 
-// Independent RFC 4648 decoder + RFC 6238 TOTP, written against the specs rather than reusing
-// the server's own helpers — the point is to prove the server interoperates with an outside
-// implementation (what an authenticator app does), which reusing its code could not show.
+// Independent RFC 4648 decoder and RFC 6238 TOTP, to prove the server interoperates with what an authenticator app does.
 function base32DecodeStandard(input: string): Buffer {
   let bits = 0;
   let value = 0;
@@ -52,6 +39,7 @@ function base32DecodeStandard(input: string): Buffer {
   return Buffer.from(out);
 }
 
+// Generates the current 6-digit TOTP code for a base32 secret.
 function totp(secretBase32: string): string {
   const key = base32DecodeStandard(secretBase32);
   const counter = Buffer.alloc(8);
@@ -68,9 +56,7 @@ function totp(secretBase32: string): string {
 
 const PASSWORD = "correct-horse-battery";
 
-// `loginable` opts into a real bcrypt hash. Only the two login tests need one; the rest drive
-// a session cookie directly and never check a password, and bcrypt at cost 10 is expensive
-// enough (~100ms each) that hashing unconditionally slowed the whole parallel suite down.
+// `loginable` opts into a real bcrypt hash, since hashing for every user slowed the parallel suite.
 async function createUser(opts: {
   roleName?: RoleName; mfaEnabled?: boolean; loginable?: boolean;
 }): Promise<{ id: string; email: string; cookie: string }> {
@@ -109,15 +95,13 @@ beforeAll(async () => {
   await seedIdentity();
 });
 
-// The policy flag is read at call time, not frozen at import, so toggling the config object
-// is enough — and every test must restore it or it leaks into unrelated suites.
+// The policy flag is read at call time, so toggling the config object suffices, but each test must restore it.
 afterEach(() => {
   config.mfaEnforceStaff = false;
 });
 
 afterAll(async () => {
-  // Delete audit rows first: rbac.ts writes an ACCESS_DENIED row referencing actor_id, and the
-  // resulting FK is why an earlier version of this cleanup silently failed and leaked users.
+  // Deletes audit rows first because ACCESS_DENIED rows reference the actor by FK; otherwise cleanup silently failed and leaked users.
   if (createdUsers.length > 0) {
     await db.delete(auditLog).where(inArray(auditLog.actorId, createdUsers));
     await db.delete(session).where(inArray(session.userId, createdUsers));
@@ -238,8 +222,7 @@ describe("staff MFA policy", () => {
     const staff = await createUser({ roleName: "REGIONAL_ADMIN" });
     config.mfaEnforceStaff = true;
 
-    // The deadlock case the policy creates: required to use MFA, holds no secret. If the
-    // route that issues one were gated, the account could never become compliant.
+    // The policy-created deadlock case: required to use MFA but holds no secret, so the enrol route must not be gated.
     const enroll = await request(app).post("/auth/mfa/enroll").set("Cookie", staff.cookie);
     expect(enroll.status).toBe(200);
 

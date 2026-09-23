@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeAll } from "vitest";
+import { describe, it, expect, beforeAll, afterAll } from "vitest";
 import request from "supertest";
 import { eq } from "drizzle-orm";
 import crypto from "node:crypto";
@@ -17,6 +17,7 @@ let testDrugId: string;
 let regionalAdminCookie: string;
 let plainCookie: string;
 
+// Creates a user and returns a valid session cookie for requests.
 async function createSessionCookie(): Promise<{ userId: string; cookie: string }> {
   const userId = crypto.randomUUID();
   await db.insert(user).values({
@@ -59,6 +60,11 @@ beforeAll(async () => {
 
   const plain = await createSessionCookie();
   plainCookie = plain.cookie;
+});
+
+afterAll(async () => {
+  // Hides the test drug from the real catalog; the suite used to leave one visible per run.
+  await db.update(drug).set({ isDeleted: true, deletedAt: new Date() }).where(eq(drug.id, testDrugId));
 });
 
 describe("GET /inventory/overview", () => {

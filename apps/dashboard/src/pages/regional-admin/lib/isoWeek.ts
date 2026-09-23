@@ -1,6 +1,4 @@
-// Shared by SchedulingPage and NotificationCenterPage — both need "what ISO week/year is it
-// right now" to query /staffing/week for the current week, and duplicating this in two files
-// risks the definitions drifting apart.
+// Returns the current ISO year and week, shared so pages querying /staffing/week can't drift apart.
 export function getIsoWeek(date: Date): { isoYear: number; isoWeek: number } {
   const d = new Date(Date.UTC(date.getFullYear(), date.getMonth(), date.getDate()));
   const dayNum = d.getUTCDay() || 7;

@@ -4,10 +4,7 @@ import { parseCookie } from "cookie";
 import { config } from "../config.js";
 import { SESSION_COOKIE_NAME } from "./session-cookie.js";
 import { userHasPermission } from "./rbac.js";
-// All three imported directly from repository.js, not the module's own index.js — each
-// index.js re-exports its module's service.ts, and messaging/service.ts (at least) imports
-// this file back (for the message:new emit) — going through index.js here would make that a
-// circular import evaluated at module-load time instead of a one-way dependency.
+// Imported from repository.js rather than each index.js to avoid a circular import through messaging/service.ts, which imports this file.
 import { SessionRepository } from "../modules/auth/repository.js";
 import { ConversationRepository } from "../modules/messaging/repository.js";
 import { PatientRepository } from "../modules/patient/repository.js";
@@ -16,10 +13,7 @@ const sessionRepo = new SessionRepository();
 const conversationRepo = new ConversationRepository();
 const patientRepo = new PatientRepository();
 
-// Same session-cookie validity check as attachRequestContext (lib/request-context.ts) for the
-// HTTP path — Socket.IO doesn't run Express's cookie-parser middleware, so the handshake's raw
-// cookie header has to be parsed and checked by hand here. Exported standalone so it can be
-// unit-tested the same way request-context.test.ts tests the HTTP cookie path.
+// Validates the session cookie for the Socket.IO handshake, which bypasses cookie-parser; exported so it can be unit-tested.
 export async function resolveSocketUser(cookieHeader: string | undefined): Promise<string | null> {
   if (!cookieHeader) return null;
   const cookies = parseCookie(cookieHeader);
@@ -31,6 +25,7 @@ export async function resolveSocketUser(cookieHeader: string | undefined): Promi
   return session.userId;
 }
 
+// Ownership-or-permission check mirroring the HTTP rule for reading a conversation.
 async function callerCanReadConversation(callerId: string, conversationId: string): Promise<boolean> {
   const row = await conversationRepo.findById(conversationId);
   if (!row) return false;
@@ -41,6 +36,7 @@ async function callerCanReadConversation(callerId: string, conversationId: strin
 
 let io: Server | null = null;
 
+// Attaches the Socket.IO server to the HTTP server and authenticates each handshake by session cookie.
 export function attachSocketServer(server: HttpServer): Server {
   io = new Server(server, {
     cors: { origin: config.corsOrigins, credentials: true },
@@ -57,13 +53,10 @@ export function attachSocketServer(server: HttpServer): Server {
   });
 
   io.on("connection", (socket: Socket) => {
-    // Per-user room, auto-joined — this is how a notification finds a specific person without
-    // the client having to do anything beyond connecting.
+    // Auto-joins a per-user room so notifications can reach a person without any client action.
     socket.join(`user:${socket.data.userId}`);
 
-    // Explicit per-thread opt-in, not auto-join-all — re-checks the exact same ownership-or-
-    // permission rule MessagingService.listMessages enforces over HTTP, so a socket connection
-    // can't read a conversation the REST API itself would 403 on.
+    // Explicit per-thread join that re-applies the HTTP ownership-or-permission rule so sockets can't read what REST would 403.
     socket.on("conversation:join", async (conversationId: unknown, ack?: (ok: boolean) => void) => {
       if (typeof conversationId !== "string") {
         ack?.(false);
@@ -86,15 +79,13 @@ export function attachSocketServer(server: HttpServer): Server {
   return io;
 }
 
-// Lazy accessor for the other services (MessagingService.postMessage, NotificationService.create)
-// that need to emit — same shape as lib/redis.ts's getRedis() singleton. Throws instead of
-// silently no-op-ing if called before attachSocketServer (a real wiring bug, not a "not
-// configured yet" case like the third-party vendors elsewhere in this codebase).
+// Lazy accessor for services that emit; throws if called before attachSocketServer since that's a wiring bug.
 export function getIo(): Server {
   if (!io) throw new Error("Socket.IO server not attached yet — call attachSocketServer(server) first");
   return io;
 }
 
+// True once the Socket.IO server has been attached.
 export function isIoAttached(): boolean {
   return io !== null;
 }

@@ -7,8 +7,7 @@ import {
 } from "../db/schema.js";
 import { User } from "../modules/auth/index.js";
 
-// Shared by every seeded patient login below (both the 5 linked accounts and the 2 pending
-// registrations) — same convenience convention as demo-users.ts's staff DEMO_PASSWORD.
+// Shared password for every seeded patient login, like the staff demo password.
 const PATIENT_PASSWORD = "PatientPass123!";
 
 const PATIENTS = [
@@ -84,9 +83,7 @@ const PATIENTS = [
   },
 ];
 
-// Registered (real login, PATIENT role) but never approved — no `patient` row yet, so they
-// show up in Regional Admin's "Registrations" tab (GET /patients/pending-registrations) out
-// of the box, without needing to manually walk through the wizard first to see that screen work.
+// Registered patients with no patient row yet, so Regional Admin's Registrations tab has data out of the box.
 const PENDING_REGISTRATIONS = [
   {
     fullName: "Yewande Okafor",
@@ -104,6 +101,7 @@ const PENDING_REGISTRATIONS = [
   },
 ];
 
+// Returns the PATIENT role id.
 async function ensurePatientRoleId(): Promise<string> {
   const rows = await db.execute<{ id: string }>(sql`SELECT id FROM "role" WHERE name = 'PATIENT' LIMIT 1`);
   if (rows.length === 0) {
@@ -112,6 +110,7 @@ async function ensurePatientRoleId(): Promise<string> {
   return rows[0]!.id;
 }
 
+// Creates a patient login user and returns its id.
 async function createPatientLogin(email: string, patientRoleId: string): Promise<string> {
   const userId = crypto.randomUUID();
   const passwordHash = await User.hashPassword(PATIENT_PASSWORD);
@@ -122,6 +121,7 @@ async function createPatientLogin(email: string, patientRoleId: string): Promise
   return userId;
 }
 
+// Seeds demo patients, wallets and pending registrations once.
 export async function seedPatients() {
   const existing = await db.select().from(patient).limit(1);
   if (existing.length > 0) {
@@ -208,8 +208,7 @@ export async function seedPatients() {
   console.log(`Password for all seeded patient logins: ${PATIENT_PASSWORD}`);
 }
 
-// Run directly: npx tsx src/seed/patient.ts — guarded so importing this from seed/index.ts
-// doesn't also trigger a second, racing invocation (see identity.ts's own comment on this).
+// Guarded so importing this from seed/index.ts doesn't trigger a second racing run.
 if (import.meta.url === `file://${process.argv[1]}`) {
   seedPatients().catch(console.error);
 }

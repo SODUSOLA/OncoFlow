@@ -1,6 +1,4 @@
-// Mirrors the actual apps/api response shapes (Patient.toOwnJSON/toJSON, Invoice.toJSON, etc.)
-// verified directly against the backend entities — not copied from apps/dashboard's types file,
-// which has at least one field (Invoice.dueDate) that doesn't exist on the real API response.
+// Mirrors the real API response shapes, verified against the backend rather than the dashboard's types, which has an Invoice.dueDate that doesn't exist.
 
 export interface Patient {
   id: string;
@@ -14,8 +12,7 @@ export interface Patient {
   profilePictureFileId: string | null;
   status: string;
   facilityId: string;
-  // Null until a Regional Admin confirms the facility chosen at registration. Not a gate on
-  // access — the record is usable immediately — just onboarding status the UI can surface.
+  // Null until a Regional Admin confirms the facility; onboarding status only, not an access gate.
   facilityConfirmedAt: string | null;
   // Only present on GET /patients/me (toOwnJSON) — never on staff-facing responses.
   phone?: string;
@@ -75,9 +72,7 @@ export interface Conversation {
   firstResponseAt: string | null;
   slaBreached: boolean;
   assignedTo: string | null;
-  // Most recent message in the thread, for the list preview. Null for a conversation that has
-  // no messages yet. `content` is a file id for IMAGE/VOICE, so callers must branch on `type`
-  // rather than printing it.
+  // Latest message for the list preview; null if none, and callers must branch on type since content is a file id for IMAGE and VOICE.
   lastMessage: {
     id: string;
     senderId: string;

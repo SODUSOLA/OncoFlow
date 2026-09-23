@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 
+// Returns the milliseconds remaining until the target, ticking every second.
 export function useCountdown(target: string | null) {
   const [remaining, setRemaining] = useState(() => (target ? new Date(target).getTime() - Date.now() : 0));
 

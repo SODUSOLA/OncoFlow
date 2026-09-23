@@ -72,9 +72,9 @@ beforeAll(async () => {
   await db.insert(wallet).values({ id: crypto.randomUUID(), patientId: ownPatientId, balanceKobo: 10000000n });
 });
 
+// Creates an invoice for the test patient and returns its id.
 async function createOwnInvoice() {
-  // Invoice creation stays staff-permission-gated (SUPER_ADMIN via the global test bypass) —
-  // only read/pay are being tested for ownership here.
+  // Invoice creation stays staff-gated (via the test bypass); only read and pay are being tested for ownership.
   const created = await request(app).post(base).send({
     patientId: ownPatientId, facilityId: testFacilityId, classificationId: testClassificationId,
   });

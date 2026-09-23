@@ -1,7 +1,4 @@
-// Shared between Patient File (Phase 3), Pre-call Briefing (Phase 4), Post-call Summary (Phase 6)
-// and the Notification Center's alert aggregator (Phase 8) — one definition of these shapes and
-// classification color maps so every screen agrees on what "critical" looks like, per the same
-// cross-cutting rule ONCOFLOW_LAB_AND_METRICS_WORKFLOW.md sets for the Regional Admin build.
+// Shared clinical types and classification color maps, so every consultant screen agrees on what "critical" looks like.
 
 export interface RegimenData {
   id: string; drugName: string; protocolCode: string; totalCycles: number;
@@ -59,9 +56,7 @@ export const TRIGGER_LABEL: Record<string, string> = {
   CRCL_CRITICAL: "Critical CrCl", EGFR_CRITICAL: "Critical eGFR (KDIGO G4/G5)", QA_HOLD: "QA Hold",
 };
 
-// True for a snapshot the Notification Center should surface as a safety-check alert — same
-// "critical" definition the backend uses to open a case_lock (lib/clinicalMetrics.ts on the
-// API side), re-expressed here since the frontend never recomputes severity, only reads it.
+// True for a snapshot worth alerting on, matching the backend's case-lock definition; the frontend only reads severity, never recomputes it.
 export function isCriticalMetrics(m: ClinicalMetricsSnapshot | null): boolean {
   if (!m) return false;
   return m.crclTier === "SEVERE" || m.egfrStage === "G4" || m.egfrStage === "G5";

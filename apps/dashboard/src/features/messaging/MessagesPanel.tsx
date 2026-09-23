@@ -11,11 +11,7 @@ const CONVERSATION_TYPE_LABELS: Record<Conversation["conversationType"], string>
   MO_SIDE_EFFECT: "MO Side Effect",
 };
 
-// WhatsApp-style: a conversation that's been replied to just shows a read-style tick, not a
-// text badge — "Answered" as a label was the generic status the real per-message ticks replace.
-// The "Xm left" badge used to be computed once per render (Date.now() snapshotted at render
-// time) and would silently go stale until something else happened to re-render this row —
-// useCountdown gives it a real 1s tick instead.
+// Shows a read-style tick once answered, otherwise a live "Xm left" countdown driven by useCountdown so it doesn't go stale.
 function SlaBadge({ conversation }: { conversation: Conversation }) {
   const countdown = useCountdown(
     conversation.status === "OPEN" && !conversation.firstResponseAt ? conversation.slaDeadline : null,
@@ -47,6 +43,7 @@ const STATUS_TITLE: Record<Message["status"], string> = {
   READ: "Read",
 };
 
+// Delivery tick for a message: single for sent, double for delivered or read.
 function DeliveryStatus({ status }: { status: Message["status"] }) {
   const Icon = status === "SENT" ? Check : CheckCheck;
   return (
@@ -60,9 +57,7 @@ function DeliveryStatus({ status }: { status: Message["status"] }) {
   );
 }
 
-// patientId: when provided (a patient viewing their own messages), skips the manual-entry
-// step and auto-loads — the caller already knows who they are. When omitted (staff searching
-// any patient's conversations, e.g. Super Admin), falls back to manual entry.
+// With a patientId (a patient viewing their own messages) it auto-loads; without one, staff enter a patient manually.
 export function MessagesPanel({ patientId: fixedPatientId }: { patientId?: string } = {}) {
   const { user } = useAuth();
 
@@ -85,6 +80,7 @@ export function MessagesPanel({ patientId: fixedPatientId }: { patientId?: strin
   const [submittingFeedback, setSubmittingFeedback] = useState(false);
   const [feedbackError, setFeedbackError] = useState<string | null>(null);
 
+  // Loads a patient's conversations.
   async function loadConversations(pid: string) {
     setLoadedPatientId(pid);
     setSelectedId(null);
@@ -103,6 +99,7 @@ export function MessagesPanel({ patientId: fixedPatientId }: { patientId?: strin
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [fixedPatientId]);
 
+  // Starts a new conversation for the loaded patient.
   async function startConversation() {
     if (!loadedPatientId || !user) return;
     setListError(null);
@@ -110,8 +107,7 @@ export function MessagesPanel({ patientId: fixedPatientId }: { patientId?: strin
       const res = await api.post<{ conversation: Conversation }>("/conversations", {
         patientId: loadedPatientId,
         conversationType: newConversationType,
-        // assignedTo only makes sense for staff starting a conversation on a patient's
-        // behalf — a patient starting their own conversation isn't "assigned" to it.
+        // assignedTo applies only to staff starting a conversation on a patient's behalf.
         ...(fixedPatientId ? {} : { assignedTo: user.id }),
       });
       setConversations((prev) => [res.conversation, ...prev]);
@@ -121,6 +117,7 @@ export function MessagesPanel({ patientId: fixedPatientId }: { patientId?: strin
     }
   }
 
+  // Selects a conversation and loads its messages.
   async function selectConversation(id: string) {
     setSelectedId(id);
     setThreadError(null);
@@ -137,6 +134,7 @@ export function MessagesPanel({ patientId: fixedPatientId }: { patientId?: strin
     }
   }
 
+  // Submits the caller's rating and review for the selected conversation.
   async function submitFeedback() {
     if (!selectedId || myRating < 1) return;
     setSubmittingFeedback(true);
@@ -154,6 +152,7 @@ export function MessagesPanel({ patientId: fixedPatientId }: { patientId?: strin
     }
   }
 
+  // Sends the typed message in the selected conversation.
   async function sendMessage() {
     if (!selectedId || !newMessage.trim() || !user) return;
     setSending(true);
@@ -177,6 +176,7 @@ export function MessagesPanel({ patientId: fixedPatientId }: { patientId?: strin
     }
   }
 
+  // Closes a conversation.
   async function closeConversation(id: string) {
     try {
       await api.post<{ conversation: Conversation }>(`/conversations/${id}/close`);
@@ -196,15 +196,13 @@ export function MessagesPanel({ patientId: fixedPatientId }: { patientId?: strin
       .finally(() => setFeedbackLoaded(true));
   }, [selected]);
 
-  // Live delivery for the open thread — same join/leave/dedupe pattern as apps/web's messages
-  // page. Staff previously only saw a message appear after sending their own (optimistic local
-  // append) or re-selecting the conversation; this makes an incoming message from the other
-  // party show up without either.
+  // Live delivery for the open thread, so an incoming message from the other party appears without re-selecting.
   useEffect(() => {
     if (!selectedId) return;
     const socket = getSocket();
     socket.emit("conversation:join", selectedId);
 
+    // Appends an incoming socket message if it belongs to the open conversation.
     function onNewMessage(msg: Message & { conversationId: string }) {
       if (msg.conversationId !== selectedId) return;
       setMessages((prev) => (prev.some((m) => m.id === msg.id) ? prev : [...prev, msg]));

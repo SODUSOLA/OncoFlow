@@ -5,6 +5,7 @@ import { Card } from "@/components/ui/Card";
 import { Reveal } from "@/components/ui/Reveal";
 import { testimonials } from "@/lib/content/testimonials";
 
+// Testimonials section.
 export function Testimonials() {
   return (
     <Section tone="surface">

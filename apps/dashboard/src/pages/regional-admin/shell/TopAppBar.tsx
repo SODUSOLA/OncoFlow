@@ -15,13 +15,7 @@ interface TopAppBarProps {
   profileInitials: string;
 }
 
-// Phase 1 shared top bar — one instance, content varies only via props. Height, colors and
-// radii are the locked `admin-*` tokens; nothing here is a hardcoded hex/px value.
-//
-// The "System Online" pill is real, not decorative: it reflects whether this session's own
-// facility-scope load actually succeeded, the same signal the old bare radio-icon indicator
-// used — this app has no real infrastructure-health signal to report, so the pill says
-// "connected" (true) rather than a fabricated "Optimal".
+// Shared top bar using locked tokens; the "System Online" pill reflects whether the facility-scope load succeeded, not a fabricated health signal.
 export function TopAppBar({
   title, region, facilityCount, search, onSearchChange, onSearchSubmit, connected, hasAlerts, profileInitials,
 }: TopAppBarProps) {

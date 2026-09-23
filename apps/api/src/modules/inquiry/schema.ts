@@ -3,19 +3,16 @@ import { publicInquiryStatusEnum, publicInquiryMessageSenderTypeEnum } from "../
 import { patient } from "../patient/schema.js";
 import { user } from "../auth/schema.js";
 
-// name/email/phone are self-reported by an unauthenticated visitor — not verified identity,
-// just enough to follow up and to help staff eyeball a match against an existing patient.
+// name, email and phone are self-reported by an unauthenticated visitor, just enough to follow up and match a patient.
 export const publicInquiry = pgTable("public_inquiry", {
   id: uuid("id").primaryKey().defaultRandom(),
-  // Only the SHA-256 hash is ever stored — the raw token is returned to the visitor once
-  // (on creation) and never persisted, same principle as a password hash.
+  // Only the SHA-256 hash is stored; the raw token goes to the visitor once, like a password hash.
   accessTokenHash: varchar("access_token_hash", { length: 64 }).notNull().unique(),
   name: varchar("name", { length: 255 }).notNull(),
   email: varchar("email", { length: 255 }),
   phone: varchar("phone", { length: 32 }),
   status: publicInquiryStatusEnum("status").notNull().default("OPEN"),
-  // Set by staff once they've identified the visitor as an existing patient — nullable because
-  // most inquiries either aren't from a patient at all, or aren't identified as one yet.
+  // Set by staff once the visitor is identified as an existing patient; nullable because most aren't.
   linkedPatientId: uuid("linked_patient_id").references(() => patient.id),
   assignedTo: uuid("assigned_to").references(() => user.id),
   createdAt: timestamp("created_at").notNull().defaultNow(),

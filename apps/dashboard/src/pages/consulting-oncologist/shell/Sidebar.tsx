@@ -24,11 +24,7 @@ interface SidebarProps {
   onExit: () => void;
 }
 
-// Phase 1 of ONCOFLOW_CONSULTANT_BUILD_GUIDE.md — deliberately a separate implementation from
-// Regional Admin's Sidebar (shell/Sidebar.tsx), not a shared component: different background
-// (#F4F3F7, not white), different active-nav treatment (bg + right border, not a filled pill),
-// and a context-sensitive patient card the Regional Admin shell has no equivalent of. Both
-// share only the underlying `admin-*` design tokens (same locked Palette A).
+// Separate from Regional Admin's sidebar: a different background and active-nav style plus a patient context card, sharing only the admin-* tokens.
 export function Sidebar({ navItems, patientContext, onAddClinicalNote, onExit }: SidebarProps) {
   return (
     <aside className="flex h-full w-64 shrink-0 flex-col border-r border-admin-border bg-admin-card-alt">

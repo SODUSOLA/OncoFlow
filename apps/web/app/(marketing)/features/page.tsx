@@ -12,6 +12,7 @@ export const metadata: Metadata = {
     "The complete OncoFlow feature set — scheduling, video consultation, care navigation, secure messaging, and more.",
 };
 
+// Features page.
 export default function FeaturesPage() {
   return (
     <>

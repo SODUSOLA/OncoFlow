@@ -19,12 +19,7 @@ export interface ConsultAlert {
 
 interface AlertsState { alerts: ConsultAlert[]; loading: boolean }
 
-// Phase 8's "shared alert aggregator concept, extended to cover consult-specific alert types" —
-// same shared-subscription/bounded-fetch shape as pages/regional-admin/lib/alertsStore.ts (one
-// fetch serves every mounted consumer), scoped to THIS consultant's own patients rather than a
-// region, and reading real signals only: an active case_lock, a critical clinical-metrics
-// snapshot (same CRCL_CASE_LOCK_THRESHOLD/EGFR_CASE_LOCK_STAGES the backend uses to open a lock),
-// and a post-call summary past its finalize SLA. No detection logic is reinvented here.
+// Shared alert store for this consultant's own patients using real signals only: active case locks, critical metrics and overdue summaries.
 let state: AlertsState = { alerts: [], loading: true };
 let inFlight: Promise<void> | null = null;
 let loadedForUser: string | null | undefined = undefined;
@@ -32,17 +27,18 @@ const subscribers = new Set<() => void>();
 const REFRESH_MS = 60_000;
 let refreshTimer: ReturnType<typeof setInterval> | null = null;
 
-// Bounded the same way Regional Admin bounds its inquiry-SLA check — a consultant's full
-// appointment history can be large; only a recent window is a real, checkable worklist.
+// Bounded to a recent window since a consultant's full appointment history can be large.
 const WINDOW_MS_BEFORE = 3 * 24 * 3_600_000;
 const WINDOW_MS_AFTER = 5 * 24 * 3_600_000;
 const APPOINTMENT_CHECK_LIMIT = 25;
 
+// Publishes new alert state to every subscriber.
 function publish(next: AlertsState): void {
   state = next;
   for (const notify of subscribers) notify();
 }
 
+// Fetches this consultant's alerts from case locks, metrics and unfinalized summaries.
 async function fetchAlerts(userId: string, facilityId: string | null): Promise<ConsultAlert[]> {
   if (!facilityId) return [];
   const alerts: ConsultAlert[] = [];
@@ -52,6 +48,7 @@ async function fetchAlerts(userId: string, facilityId: string | null): Promise<C
     api.get<{ patients: Patient[] }>("/patients?facilityId=all").then((d) => d.patients).catch(() => []),
   ]);
   const patientById = new Map(patients.map((p) => [p.id, p]));
+  // Returns a patient's display name, falling back to a short id.
   const patientLabel = (id: string) => {
     const p = patientById.get(id);
     return p ? `${p.firstName} ${p.lastName}` : id.slice(0, 8);
@@ -121,6 +118,7 @@ async function fetchAlerts(userId: string, facilityId: string | null): Promise<C
   return alerts;
 }
 
+// Loads alerts once per user, sharing an in-flight request.
 function load(userId: string, facilityId: string | null): Promise<void> {
   if (inFlight && loadedForUser === userId) return inFlight;
   loadedForUser = userId;
@@ -131,6 +129,7 @@ function load(userId: string, facilityId: string | null): Promise<void> {
   return inFlight;
 }
 
+// Subscribes to alert changes and starts loading and refreshing on first subscriber.
 export function subscribeToConsultAlerts(userId: string, facilityId: string | null, onStoreChange: () => void): () => void {
   subscribers.add(onStoreChange);
   if (loadedForUser === undefined || loadedForUser !== userId) void load(userId, facilityId);
@@ -146,6 +145,7 @@ export function subscribeToConsultAlerts(userId: string, facilityId: string | nu
   };
 }
 
+// Returns the current alert state.
 export function getConsultAlertsSnapshot(): AlertsState {
   return state;
 }

@@ -14,10 +14,7 @@ export interface Challenge {
   description: string;
 }
 
-/**
- * Grounded in the PRD's actual problem statement (§2.1) — four recurring
- * failure modes across the partner-hospital network, not invented pain points.
- */
+// The four recurring failure modes from the PRD's problem statement (§2.1), not invented pain points.
 export const challenges: Challenge[] = [
   {
     icon: Workflow,

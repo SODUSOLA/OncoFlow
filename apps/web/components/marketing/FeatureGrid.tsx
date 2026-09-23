@@ -3,6 +3,7 @@ import { Card } from "@/components/ui/Card";
 import { Reveal } from "@/components/ui/Reveal";
 import { features } from "@/lib/content/features";
 
+// Feature grid section.
 export function FeatureGrid() {
   return (
     <Section tone="muted" id="features">

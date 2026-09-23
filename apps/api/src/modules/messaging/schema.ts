@@ -43,9 +43,7 @@ export const message = pgTable("message", {
   createdAt: timestamp("created_at").notNull().defaultNow(),
 });
 
-// One row per rater per conversation — a patient's rating of the care they received and a
-// staff member's rating of the encounter are independent perspectives, not one shared score.
-// Only submittable once the conversation is CLOSED (rating an ongoing interaction is premature).
+// One row per rater per conversation, submitted only once CLOSED, since patient and staff ratings are independent.
 export const conversationFeedback = pgTable("conversation_feedback", {
   id: uuid("id").primaryKey().defaultRandom(),
   conversationId: uuid("conversation_id").notNull().references(() => conversation.id),
@@ -64,25 +62,14 @@ export const meeting = pgTable("meeting", {
   provider: varchar("provider", { length: 100 }).notNull(),
   roomId: varchar("room_id", { length: 255 }).notNull(),
   status: meetingStatusEnum("status").notNull().default("SCHEDULED"),
-  // Set exactly once, in MeetingService.syncStatus when the Daily.co webhook reports ENDED —
-  // not derived from `updatedAt`, which keeps moving forward on every later mutation (transcript
-  // correction, sign-off). This is the one honest "call actually ended at" timestamp, and it's
-  // what the Post-call Summary's post-consult SLA countdown (Phase 6) is measured against.
+  // Set once by MeetingService.syncStatus when Daily reports ENDED, as the honest end time the post-consult SLA is measured against.
   endedAt: timestamp("ended_at"),
-  // Mirrors whatever was set on Daily's own `properties.exp` at room-creation time, for
-  // display/debugging only — Daily is the actual source of truth for when the room stops being
-  // joinable, per ONCOFLOW_SCHEDULING_AND_VIDEO_LIFECYCLE.md §3. Null for legacy lazily
-  // provisioned rooms that predate scheduling-time provisioning.
+  // Mirrors Daily's own room expiry for display only; null for legacy lazily provisioned rooms.
   dailyRoomExp: timestamp("daily_room_exp"),
-  // F3.11 two-stage sign-off, mirrors ClinicalDecision's qa_*/director_* pattern (ADR-0012).
-  // Lives on Meeting (not per Transcript row) because "has this meeting's transcript been
-  // reviewed" is a meeting-level state, and a meeting typically has many transcript segments.
-  // Stage 1: the Scribe completing corrections on every segment.
+  // F3.11 stage 1 of the two-stage sign-off (mirrors ADR-0012), on Meeting since review state is per meeting.
   transcriptCorrectedAt: timestamp("transcript_corrected_at"),
   transcriptCorrectedBy: uuid("transcript_corrected_by").references(() => user.id),
-  // Stage 2: the respective consultant (the appointment's assigned oncologist) signing off —
-  // this, not stage 1, is what makes the transcript eligible to be referenced from a
-  // ClinicalNote (Sprint 4).
+  // Stage 2: the assigned consultant's sign-off, which makes the transcript citable from a ClinicalNote.
   transcriptSignedOffAt: timestamp("transcript_signed_off_at"),
   transcriptSignedOffBy: uuid("transcript_signed_off_by").references(() => user.id),
   createdAt: timestamp("created_at").notNull().defaultNow(),
@@ -91,11 +78,7 @@ export const meeting = pgTable("meeting", {
   appointmentIdUnique: uniqueIndex("meeting_appointment_id_unique").on(t.appointmentId),
 }));
 
-// §5 — tracks Daily's own cloud recording (see DailyService.createDailyRoom's
-// DAILY_ENABLE_RECORDING comment for why this isn't a bring-your-own-S3-bucket setup). One row
-// per Daily recording, written by the recording webhook (dailyRecordingWebhookHandler) rather
-// than at room-creation time — Daily doesn't know a recording exists until the call actually
-// produces one.
+// Tracks Daily's own cloud recording, written by the recording webhook since Daily only knows a recording exists once the call produces one.
 export const meetingRecording = pgTable("meeting_recording", {
   id: uuid("id").primaryKey().defaultRandom(),
   meetingId: uuid("meeting_id").notNull().references(() => meeting.id),
@@ -120,10 +103,7 @@ export const transcript = pgTable("transcript", {
   createdAt: timestamp("created_at").notNull().defaultNow(),
 });
 
-// F3.11 (docs/build-plan/13-scribe-role-definition.md §3) — deliberately its own aggregate,
-// not fields bolted onto Transcript or Meeting: assignment/workflow state (who's working on
-// it, by when) is a different concern from the transcript content itself, same reasoning as
-// keeping Transcript separate from Meeting.
+// Its own aggregate rather than fields on Transcript or Meeting, since assignment workflow is separate from transcript content.
 export const transcriptionAssignment = pgTable("transcription_assignment", {
   id: uuid("id").primaryKey().defaultRandom(),
   meetingId: uuid("meeting_id").notNull().references(() => meeting.id),

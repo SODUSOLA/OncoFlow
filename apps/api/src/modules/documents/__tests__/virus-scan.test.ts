@@ -21,6 +21,7 @@ const app = createApp();
 const fileRepo = new FileRepository();
 const stepRepo = new FileVerificationStepRepository();
 
+// Inserts a facility and patient for the scan tests and returns the patient id.
 async function createTestPatient(): Promise<string> {
   const facRows = await db.insert(facility).values({
     id: crypto.randomUUID(), name: "Virus Scan Test Facility", region: "Lagos", address: "V St", status: "ACTIVE",
@@ -34,6 +35,7 @@ async function createTestPatient(): Promise<string> {
   return patRows[0]!.id;
 }
 
+// Inserts a file row with unique content for the patient.
 async function createTestFile(patientId: string) {
   const content = Buffer.from(`vs-${crypto.randomUUID()}`);
   const hash = computeFileHash(content);
@@ -102,9 +104,7 @@ describe("GET /files/:id — INFECTED gate", () => {
     expect(res.body.error).toContain("infected");
   });
 
-  // Never reaches getSignedUrl, so this needs no s3-request-presigner mock — the 403 fires
-  // from the same virusScanStatus check before any signing would happen, same as the assertion
-  // above for the metadata route.
+  // The 403 fires from the same status check before any signing, so no presigner mock is needed.
   it("blocks the content route for the same infected file (403)", async () => {
     const res = await request(app).get(`/files/${infectedFileId}/content`);
     expect(res.status).toBe(403);

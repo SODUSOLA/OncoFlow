@@ -5,7 +5,9 @@ import {
   meetingRecording,
 } from "./schema.js";
 
+// Data access for conversations.
 export class ConversationRepository {
+  // Finds a conversation by id.
   async findById(id: string) {
     const row = await db
       .select()
@@ -15,6 +17,7 @@ export class ConversationRepository {
     return row[0] ?? null;
   }
 
+  // Lists a patient's conversations.
   async findByPatient(patientId: string) {
     return db
       .select()
@@ -23,6 +26,7 @@ export class ConversationRepository {
       .orderBy(conversation.createdAt);
   }
 
+  // Lists conversations assigned to a staff member.
   async findByAssignee(assignedTo: string) {
     return db
       .select()
@@ -31,8 +35,7 @@ export class ConversationRepository {
       .orderBy(conversation.slaDeadline);
   }
 
-  // Open, unbreached, unanswered, deadline already passed — exactly what the SLA-breach
-  // sweep (MessagingJobService) needs to find and flip.
+  // Open, unanswered conversations already past their SLA deadline, which the breach sweep flips.
   async findOverdueUnbreached() {
     return db
       .select()
@@ -46,11 +49,13 @@ export class ConversationRepository {
       ));
   }
 
+  // Inserts a conversation.
   async create(data: typeof conversation.$inferInsert) {
     const row = await db.insert(conversation).values(data).returning();
     return row[0]!;
   }
 
+  // Updates a conversation.
   async update(id: string, data: Partial<typeof conversation.$inferInsert>) {
     const row = await db
       .update(conversation)
@@ -61,11 +66,14 @@ export class ConversationRepository {
   }
 }
 
+// Data access for conversation participants.
 export class ParticipantRepository {
+  // Lists a conversation's participants.
   async findByConversation(conversationId: string) {
     return db.select().from(participant).where(eq(participant.conversationId, conversationId));
   }
 
+  // True when the user participates in the conversation.
   async isParticipant(conversationId: string, userId: string) {
     const row = await db
       .select()
@@ -75,13 +83,16 @@ export class ParticipantRepository {
     return row.length > 0;
   }
 
+  // Adds a participant.
   async create(data: typeof participant.$inferInsert) {
     const row = await db.insert(participant).values(data).returning();
     return row[0]!;
   }
 }
 
+// Data access for messages.
 export class MessageRepository {
+  // Lists a conversation's messages.
   async findByConversation(conversationId: string) {
     return db
       .select()
@@ -90,12 +101,7 @@ export class MessageRepository {
       .orderBy(message.createdAt);
   }
 
-  // Latest message for each of several conversations, in one query rather than one per
-  // conversation — this feeds the conversation list, so a per-row lookup would be an N+1 that
-  // grows with the number of threads a patient has.
-  //
-  // DISTINCT ON is Postgres-specific and needs its ORDER BY to lead with the same expression,
-  // hence ordering by conversation_id first and only then by recency.
+  // Latest message per conversation in one DISTINCT ON query to avoid an N+1; the ORDER BY must lead with conversation_id.
   async findLatestByConversations(conversationIds: string[]) {
     if (conversationIds.length === 0) return [];
     return db
@@ -105,8 +111,7 @@ export class MessageRepository {
       .orderBy(message.conversationId, desc(message.createdAt));
   }
 
-  // First non-SYSTEM message in the conversation, if any — used to determine whether this
-  // new message is the one that should stamp first_response_at.
+  // First non-SYSTEM message, used to decide whether a new message should stamp first_response_at.
   async findFirstRealMessage(conversationId: string) {
     const row = await db
       .select()
@@ -117,13 +122,9 @@ export class MessageRepository {
     return row[0] ?? null;
   }
 
-  // [append-only for content] — the two methods below only ever touch `status`, never
-  // `content`; a correction is still a new message, never an edit of an existing one.
+  // Content is append-only: the delivery and read methods below only change status, never content.
 
-  // WhatsApp-style delivery: fires when the OTHER party's client fetches the conversation
-  // list, i.e. their app now knows this message exists. viewerIsPatient picks which side's
-  // messages count as "the other party" — a patient viewer delivers staff messages, a staff
-  // viewer delivers the patient's messages.
+  // WhatsApp-style delivery: marks the other party's messages delivered when this viewer fetches the list.
   async markDeliveredForViewer(conversationId: string, patientUserId: string | null, viewerIsPatient: boolean) {
     if (!patientUserId) return;
     const senderMatch = viewerIsPatient ? ne(message.senderId, patientUserId) : eq(message.senderId, patientUserId);
@@ -143,13 +144,16 @@ export class MessageRepository {
       .where(and(eq(message.conversationId, conversationId), ne(message.status, "READ"), senderMatch));
   }
 
+  // Inserts a message.
   async create(data: typeof message.$inferInsert) {
     const row = await db.insert(message).values(data).returning();
     return row[0]!;
   }
 }
 
+// Data access for meetings.
 export class MeetingRepository {
+  // Finds a meeting by id.
   async findById(id: string) {
     const row = await db.select().from(meeting).where(eq(meeting.id, id)).limit(1);
     return row[0] ?? null;
@@ -161,18 +165,19 @@ export class MeetingRepository {
     return row[0] ?? null;
   }
 
-  // Daily.co's webhooks identify a meeting by room name/id, not our own meeting.id — this
-  // is how the webhook handlers (MeetingService.syncStatus) look the row up.
+  // Daily webhooks identify meetings by room id, not our meeting.id.
   async findByRoomId(roomId: string) {
     const row = await db.select().from(meeting).where(eq(meeting.roomId, roomId)).limit(1);
     return row[0] ?? null;
   }
 
+  // Inserts a meeting.
   async create(data: typeof meeting.$inferInsert) {
     const row = await db.insert(meeting).values(data).returning();
     return row[0]!;
   }
 
+  // Updates a meeting.
   async update(id: string, data: Partial<typeof meeting.$inferInsert>) {
     const row = await db
       .update(meeting)
@@ -183,51 +188,61 @@ export class MeetingRepository {
   }
 }
 
+// Data access for meeting recordings.
 export class MeetingRecordingRepository {
+  // Finds a recording by Daily's recording id.
   async findByDailyId(dailyRecordingId: string) {
     const row = await db.select().from(meetingRecording).where(eq(meetingRecording.dailyRecordingId, dailyRecordingId)).limit(1);
     return row[0] ?? null;
   }
 
+  // Lists a meeting's recordings.
   async findByMeeting(meetingId: string) {
     return db.select().from(meetingRecording).where(eq(meetingRecording.meetingId, meetingId)).orderBy(desc(meetingRecording.createdAt));
   }
 
+  // Inserts a recording.
   async create(data: typeof meetingRecording.$inferInsert) {
     const row = await db.insert(meetingRecording).values(data).returning();
     return row[0]!;
   }
 
+  // Updates a recording.
   async update(id: string, data: Partial<typeof meetingRecording.$inferInsert>) {
     const row = await db.update(meetingRecording).set(data).where(eq(meetingRecording.id, id)).returning();
     return row[0] ?? null;
   }
 }
 
+// Data access for transcript segments.
 export class TranscriptRepository {
+  // Finds a transcript segment by id.
   async findById(id: string) {
     const row = await db.select().from(transcript).where(eq(transcript.id, id)).limit(1);
     return row[0] ?? null;
   }
 
+  // Lists a meeting's transcript segments.
   async findByMeeting(meetingId: string) {
     return db.select().from(transcript).where(eq(transcript.meetingId, meetingId)).orderBy(transcript.createdAt);
   }
 
+  // Inserts a transcript segment.
   async create(data: typeof transcript.$inferInsert) {
     const row = await db.insert(transcript).values(data).returning();
     return row[0]!;
   }
 
-  // Not append-only — post-hoc correction is the actual F3.7 feature (Oncologist editing
-  // the transcript inline during/after the call), not an in-place-edit anti-pattern.
+  // Not append-only: post-hoc inline correction is the actual F3.7 feature.
   async update(id: string, data: Partial<typeof transcript.$inferInsert>) {
     const row = await db.update(transcript).set(data).where(eq(transcript.id, id)).returning();
     return row[0] ?? null;
   }
 }
 
+// Data access for transcription assignments.
 export class TranscriptionAssignmentRepository {
+  // Finds an assignment by id.
   async findById(id: string) {
     const row = await db.select().from(transcriptionAssignment).where(eq(transcriptionAssignment.id, id)).limit(1);
     return row[0] ?? null;
@@ -252,6 +267,7 @@ export class TranscriptionAssignmentRepository {
       .orderBy(transcriptionAssignment.queuedAt);
   }
 
+  // Lists a scribe's assignments.
   async findByScribe(scribeId: string) {
     return db
       .select()
@@ -260,8 +276,7 @@ export class TranscriptionAssignmentRepository {
       .orderBy(transcriptionAssignment.queuedAt);
   }
 
-  // Backlog cap (F3.11 §5): only CLAIMED/IN_PROGRESS count against a scribe's cap — QUEUED
-  // items have no scribeId yet, COMPLETED/RELEASED are no longer theirs to work on.
+  // Only CLAIMED and IN_PROGRESS count against a scribe's backlog cap.
   async countActiveForScribe(scribeId: string): Promise<number> {
     const row = await db.execute<{ count: string }>(sql`
       SELECT COUNT(*)::text AS count
@@ -271,9 +286,7 @@ export class TranscriptionAssignmentRepository {
     return Number(row[0]?.count ?? 0);
   }
 
-  // "no completedAt" is the only resolution condition the SLA cares about (F3.11 §5, mirrors
-  // Conversation.findOverdueUnbreached) — an item nobody ever claims still breaches its
-  // 24h-from-queuedAt deadline, same as a claimed-but-unfinished one.
+  // Uncompleted assignments past their SLA deadline; an unclaimed item still breaches 24h after queuing.
   async findOverdueUnbreached() {
     return db
       .select()
@@ -285,11 +298,13 @@ export class TranscriptionAssignmentRepository {
       ));
   }
 
+  // Inserts an assignment.
   async create(data: typeof transcriptionAssignment.$inferInsert) {
     const row = await db.insert(transcriptionAssignment).values(data).returning();
     return row[0]!;
   }
 
+  // Updates an assignment.
   async update(id: string, data: Partial<typeof transcriptionAssignment.$inferInsert>) {
     const row = await db
       .update(transcriptionAssignment)
@@ -300,11 +315,14 @@ export class TranscriptionAssignmentRepository {
   }
 }
 
+// Data access for conversation feedback.
 export class ConversationFeedbackRepository {
+  // Lists a conversation's feedback.
   async findByConversation(conversationId: string) {
     return db.select().from(conversationFeedback).where(eq(conversationFeedback.conversationId, conversationId));
   }
 
+  // Finds the feedback a given rater left on a conversation.
   async findByConversationAndRater(conversationId: string, raterId: string) {
     const row = await db
       .select()
@@ -314,6 +332,7 @@ export class ConversationFeedbackRepository {
     return row[0] ?? null;
   }
 
+  // Inserts feedback.
   async create(data: typeof conversationFeedback.$inferInsert) {
     const row = await db.insert(conversationFeedback).values(data).returning();
     return row[0]!;

@@ -14,14 +14,13 @@ const activityLogSvc = new ActivityLogService();
 const caseLockSvc = new CaseLockService();
 const patientRepo = new PatientRepository();
 
-// Same ownership-or-permission shape used throughout apps/api (e.g. clinical/controller.ts) —
-// a patient reading their own regimen/vitals/labs is a right, staff need the resource's
-// `:read` grant.
+// Ownership-or-permission: patients may read their own regimen, vitals and labs; staff need the resource's :read grant.
 async function callerOwnsPatient(callerId: string, patientId: string): Promise<boolean> {
   const patientRow = await patientRepo.findById(patientId);
   return !!patientRow?.userId && patientRow.userId === callerId;
 }
 
+// Authorizes a read for the patient's own record or a staff grant, sending the 403 itself.
 async function authorizeRead(req: Request, res: Response, resource: string, patientId: string): Promise<boolean> {
   const callerId = (req as AuthenticatedRequest).userId;
   const isSelf = await callerOwnsPatient(callerId, patientId);
@@ -31,6 +30,7 @@ async function authorizeRead(req: Request, res: Response, resource: string, pati
   return false;
 }
 
+// Returns a patient's active regimen with derived cycle progress.
 export async function getRegimenHandler(req: Request, res: Response) {
   try {
     const patientId = String(req.query.patientId);
@@ -42,9 +42,7 @@ export async function getRegimenHandler(req: Request, res: Response) {
   }
 }
 
-// Nursing Officer's Schedule tab / Patient Selection step — requirePermission("regimen","read")
-// at the route layer, then narrowed here to the caller's own facility (facility-scoped staff
-// have no business browsing another facility's cycle schedule via this endpoint).
+// Nursing Officer's schedule: gated by regimen:read, then narrowed to the caller's own facility.
 export async function listRegimenCyclesHandler(req: Request, res: Response) {
   try {
     const facilityId = String(req.query.facilityId);
@@ -54,13 +52,18 @@ export async function listRegimenCyclesHandler(req: Request, res: Response) {
       res.status(403).json({ error: "Forbidden — you can only view your own facility's schedule" });
       return;
     }
-    const cycles = await regimenSvc.listCyclesForFacilityAndDate(facilityId, date);
+    // "due" means today's cycles plus any still-SCHEDULED ones that slipped past their date — what the case
+    // wizard can actually act on. Without it, a cycle missed by even a day silently vanished from the schedule.
+    const cycles = req.query.due === "true"
+      ? await regimenSvc.listDueCyclesForFacility(facilityId, date)
+      : await regimenSvc.listCyclesForFacilityAndDate(facilityId, date);
     res.json({ cycles });
   } catch {
     res.status(500).json({ error: "Internal server error" });
   }
 }
 
+// Returns the latest reading per vital type for a patient.
 export async function getLatestVitalsHandler(req: Request, res: Response) {
   try {
     const patientId = String(req.query.patientId);
@@ -72,6 +75,7 @@ export async function getLatestVitalsHandler(req: Request, res: Response) {
   }
 }
 
+// Returns a patient's trend for one vital type.
 export async function getVitalTrendHandler(req: Request, res: Response) {
   try {
     const patientId = String(req.query.patientId);
@@ -85,6 +89,7 @@ export async function getVitalTrendHandler(req: Request, res: Response) {
   }
 }
 
+// Records a vital reading.
 export async function recordVitalHandler(req: Request, res: Response) {
   try {
     const callerId = (req as AuthenticatedRequest).userId;
@@ -96,6 +101,7 @@ export async function recordVitalHandler(req: Request, res: Response) {
   }
 }
 
+// Returns the patient's current clinical metrics snapshot.
 export async function getCurrentClinicalMetricsHandler(req: Request, res: Response) {
   try {
     const patientId = String(req.query.patientId);
@@ -107,6 +113,7 @@ export async function getCurrentClinicalMetricsHandler(req: Request, res: Respon
   }
 }
 
+// Records a nursing clinical metrics snapshot with its lab values.
 export async function recordClinicalMetricsHandler(req: Request, res: Response) {
   try {
     const callerId = (req as AuthenticatedRequest).userId;
@@ -121,6 +128,7 @@ export async function recordClinicalMetricsHandler(req: Request, res: Response) 
   }
 }
 
+// Lists a patient's lab documents with their admin review status.
 export async function listLabDocumentsHandler(req: Request, res: Response) {
   try {
     const patientId = String(req.query.patientId);
@@ -132,6 +140,7 @@ export async function listLabDocumentsHandler(req: Request, res: Response) {
   }
 }
 
+// Returns a patient's clinical activity log.
 export async function getActivityLogHandler(req: Request, res: Response) {
   try {
     const patientId = String(req.query.patientId);
@@ -144,6 +153,7 @@ export async function getActivityLogHandler(req: Request, res: Response) {
   }
 }
 
+// Returns the patient's active case lock, if any.
 export async function getActiveCaseLockHandler(req: Request, res: Response) {
   try {
     const patientId = String(req.query.patientId);

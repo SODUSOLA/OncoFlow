@@ -25,6 +25,7 @@ let patientCookie: string;
 let vmoCookie: string;
 let otherCookie: string;
 
+// Creates a user and returns a valid session cookie for requests.
 async function createSessionCookie(): Promise<{ userId: string; cookie: string }> {
   const userId = crypto.randomUUID();
   await db.insert(user).values({ id: userId, email: `sel-${crypto.randomUUID()}@test.com`, passwordHash: "test" });
@@ -74,14 +75,13 @@ beforeAll(async () => {
   otherCookie = other.cookie;
 });
 
+// Starts a side-effect report as the given user and returns the response.
 async function startReport(cookie: string, message = "Testing lifecycle") {
   const res = await request(app).post(base).set("Cookie", cookie).send({ patientId, message });
   return res;
 }
 
-// Shared mutable state between sequential `it` blocks in the first describe below — that
-// suite is deliberately a linear story (open -> close -> reject -> re-report), not independent
-// cases, so passing IDs forward this way is clearer than re-deriving them in every block.
+// Shared across sequential tests because this suite is one linear story (open, close, reject, re-report).
 const sharedState: { openConversationId?: string; secondConversationId?: string } = {};
 
 describe("Side-effect report lifecycle — close, reopen, and re-report", () => {
@@ -105,8 +105,7 @@ describe("Side-effect report lifecycle — close, reopen, and re-report", () => 
   });
 
   it("rejects a new message to a closed conversation", async () => {
-    // No senderId — the server attributes the message to the authenticated session, and the
-    // route now rejects a body that supplies one.
+    // No senderId: the server attributes the message to the session and the route rejects a body that supplies one.
     const res = await request(app).post(`/conversations/${sharedState.openConversationId}/messages`).set("Cookie", patientCookie).send({
       type: "TEXT",
       content: "Are you still there?",
@@ -134,8 +133,7 @@ describe("Side-effect report lifecycle — close, reopen, and re-report", () => 
     const res = await request(app).post(`/conversations/${third.body.conversation.id}/close`).set("Cookie", otherCookie);
     expect(res.status).toBe(403);
 
-    // Leaves an OPEN conversation behind otherwise — clean up so later describe blocks in this
-    // file can start their own fresh report for this same patient.
+    // Closes the conversation so later describe blocks can start a fresh report for the same patient.
     await request(app).post(`/conversations/${third.body.conversation.id}/close`).set("Cookie", patientCookie);
   });
 });

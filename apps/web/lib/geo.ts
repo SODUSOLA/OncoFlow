@@ -1,13 +1,12 @@
-// Great-circle distance between two coordinates, in kilometres. Used by the registration
-// wizard to sort facilities nearest-first once the browser grants location permission —
-// display/ordering only, never a clinical or billing input, so straight-line distance is an
-// honest enough approximation (it is NOT travel distance, and the UI says "away", not "drive").
+// Great-circle distance in km for nearest-first facility sorting; display only, so straight-line distance is fine and the UI says "away", not "drive".
 const EARTH_RADIUS_KM = 6371;
 
+// Converts degrees to radians.
 function toRadians(degrees: number): number {
   return (degrees * Math.PI) / 180;
 }
 
+// Returns the haversine distance in kilometres between two coordinates.
 export function haversineKm(
   from: { latitude: number; longitude: number },
   to: { latitude: number; longitude: number },
@@ -23,6 +22,7 @@ export function haversineKm(
   return 2 * EARTH_RADIUS_KM * Math.asin(Math.sqrt(a));
 }
 
+// Formats a distance for display.
 export function formatDistanceKm(km: number): string {
   if (km < 1) return `${Math.round(km * 1000)} m away`;
   if (km < 10) return `${km.toFixed(1)} km away`;

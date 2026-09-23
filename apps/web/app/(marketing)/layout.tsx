@@ -3,6 +3,7 @@ import { Footer } from "@/components/layout/Footer";
 import { PageTransition } from "@/components/layout/PageTransition";
 import { ChatWidget } from "@/components/marketing/ChatWidget";
 
+// Layout wrapping marketing pages with the site header and footer.
 export default function MarketingLayout({
   children,
 }: Readonly<{

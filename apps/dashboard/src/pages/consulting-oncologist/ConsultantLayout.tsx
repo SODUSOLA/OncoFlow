@@ -8,38 +8,33 @@ import { TopBar } from "./shell/TopBar";
 import { AppShell } from "./shell/AppShell";
 import { AddClinicalNoteModal } from "./components/AddClinicalNoteModal";
 
-// Phase 1 nav — "Live Video" is this shell's index/landing page (the Appointment Grid, Phase 2):
-// in the mockup it's the active item while the Appointment Grid renders, i.e. it isn't a
-// separate "join a call" destination, it's this persona's home view of today's video queue.
+// "Live Video" is the shell's landing page, the Appointment Grid of today's video queue, not a separate join destination.
 const NAV_ITEMS: readonly ConsultantNavItem[] = [
   { to: "/dashboard/consulting-oncologist", label: "Live Video", icon: Video, end: true },
   { to: "/dashboard/consulting-oncologist/patient-history", label: "Patient History", icon: History },
   { to: "/dashboard/consulting-oncologist/lab-results", label: "Lab Results", icon: FlaskConical },
   { to: "/dashboard/consulting-oncologist/imaging", label: "Imaging", icon: ImageIcon },
-  // Not in Phase 1's original nav spec (added by Phase 8/7) — same reasoning Regional Admin used
-  // for its own Notifications/Settings nav entries: Phase 1 explicitly said no top-bar bell
-  // pattern for this shell, so these need a real entry point somewhere, and the sidebar is it.
+  // Notifications and Settings live in the sidebar since this shell has no top-bar bell, like Regional Admin.
   { to: "/dashboard/consulting-oncologist/notifications", label: "Notifications", icon: Bell },
   { to: "/dashboard/consulting-oncologist/settings", label: "Settings", icon: SettingsIcon },
 ];
 
-// Lets a child route (e.g. the Appointment Grid, or eventually the Patient File / Video Room)
-// tell the shell which patient it's currently working with, so the Sidebar's top card and the
-// TopBar's "Patient Folder" link/"End Consult" button can react — this is the "swap on route
-// context" behaviour Phase 1's acceptance criteria calls for, driven by the page itself rather
-// than re-parsed from the URL in the layout.
+// Lets a child route tell the shell which patient it's working on so the sidebar card and top bar can react.
 interface ConsultantShellContextValue {
   setPatientContext: (ctx: PatientContext | null) => void;
   setShowEndConsult: (show: boolean) => void;
 }
+// Context sharing the current patient and note actions with the shell.
 const ConsultantShellContext = createContext<ConsultantShellContextValue | null>(null);
 
+// Returns the consultant shell context, throwing outside the layout.
 export function useConsultantShell(): ConsultantShellContextValue {
   const ctx = useContext(ConsultantShellContext);
   if (!ctx) throw new Error("useConsultantShell must be used within ConsultantLayout");
   return ctx;
 }
 
+// Consultant shell with sidebar, top bar and outlet.
 export function ConsultantLayout() {
   const { user, logout } = useAuth();
   const navigate = useNavigate();
@@ -49,6 +44,7 @@ export function ConsultantLayout() {
 
   const initials = (user?.email.slice(0, 2) ?? "DR").toUpperCase();
 
+  // Submits a clinical note for the current patient.
   async function submitClinicalNote(note: string) {
     if (!patientContext) return;
     await api.post("/clinical-notes", { patientId: patientContext.id, note });

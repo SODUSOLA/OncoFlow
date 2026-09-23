@@ -9,9 +9,10 @@ import type { Patient } from "../../../lib/types";
 import { Card } from "../../../components/ui/Card";
 import { Button } from "../../../components/ui/Button";
 import { cn } from "../../../lib/utils";
-import type { RegimenCycleRow, NursingCase, FileRecord } from "../lib/types";
+import type { RegimenCycleRow, NursingCase, NursingCaseDetail, FileRecord } from "../lib/types";
 import { uploadFile, pollScanStatus } from "../lib/uploadFile";
 
+// Returns today's date as YYYY-MM-DD.
 function todayDateString(): string {
   return new Date().toISOString().slice(0, 10);
 }
@@ -20,17 +21,20 @@ type Step = 1 | 2 | 3 | 4 | 5 | "success" | "error";
 
 interface ErrorState { message: string; incidentReference: string | null }
 
-// ONCOFLOW_NURSING_OFFICER_BUILD_GUIDE.md — the wizard build spec (Steps 1-5 + success/error).
-// "This persona deliberately uses friction as a safety mechanism... don't simplify these into
-// fewer clicks." Every step here does a real thing: Step 2 really creates the nursing_case,
-// Step 3/5's uploads really go through the file table's virus-scan pipeline, Step 5's interlock
-// really gates the request (not just a disabled attribute), and the Error screen is only ever
-// reached from a real INFECTED scan result.
+// The five-step case wizard; the friction is a safety mechanism, so every step does real work and the error screen is reachable only from a real INFECTED scan.
 export default function NewCaseWizard() {
   const navigate = useNavigate();
   const location = useLocation();
   const { user } = useAuth();
-  const preselectedPatientId = (location.state as { patientId?: string } | null)?.patientId;
+  // Handed a concrete, already-due cycle by the patient page (or Schedule via it) — trusted as-is, so step 1's
+  // own list is never re-searched for it. Without this, a cycle scheduled for tomorrow-turned-today, or one the
+  // list simply hadn't loaded yet, could silently fail to match and leave "Start Case" looking like it did nothing.
+  const navState = location.state as { cycle?: RegimenCycleRow; resumeCase?: NursingCaseDetail } | null;
+  const preselectedCycle = navState?.cycle ?? null;
+  // A case that was already started (Step 2 done) but never finished Steps 3-5 — from the case detail page's
+  // "Continue Documentation". Re-running confirmCaseStart for it would 409 (a case is already open for this
+  // regimen cycle), so this resumes straight into identity verification instead of creating a second case.
+  const resumeCase = navState?.resumeCase ?? null;
 
   const [step, setStep] = useState<Step>(1);
   const [cycles, setCycles] = useState<RegimenCycleRow[]>([]);
@@ -56,20 +60,27 @@ export default function NewCaseWizard() {
   const [finalizedAt, setFinalizedAt] = useState<string | null>(null);
 
   useEffect(() => {
+    if (resumeCase) {
+      setNursingCase(resumeCase);
+      api.get<{ patient: Patient }>(`/patients/${resumeCase.patientId}`).then((d) => setPatient(d.patient)).catch(() => {});
+      setStep(3);
+    } else if (preselectedCycle) {
+      // Jumps straight to step 2 when the caller already knows the cycle, but still loads step 1's own list
+      // in the background — "Previous step" from step 2 has to land somewhere real, not an empty list that
+      // was never fetched because the direct jump skipped it.
+      selectCycle(preselectedCycle);
+    }
     if (!user?.facilityId) { setLoadingCycles(false); return; }
-    api.get<{ cycles: RegimenCycleRow[] }>(`/regimen-cycles?facilityId=${user.facilityId}&date=${todayDateString()}`)
-      .then((d) => {
-        setCycles(d.cycles);
-        if (preselectedPatientId) {
-          const match = d.cycles.find((c) => c.patientId === preselectedPatientId);
-          if (match) selectCycle(match);
-        }
-      })
+    // due=true: today's cycles plus any still-SCHEDULED ones that slipped past their date — the same list
+    // Schedule's "Due Now" section shows, so a cycle picked there is guaranteed to appear here too.
+    api.get<{ cycles: RegimenCycleRow[] }>(`/regimen-cycles?facilityId=${user.facilityId}&date=${todayDateString()}&due=true`)
+      .then((d) => setCycles(d.cycles))
       .catch(() => {})
       .finally(() => setLoadingCycles(false));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user?.facilityId]);
 
+  // Selects a regimen cycle and moves on.
   function selectCycle(cycle: RegimenCycleRow) {
     setSelectedCycle(cycle);
     setStartError(null);
@@ -77,6 +88,7 @@ export default function NewCaseWizard() {
     setStep(2);
   }
 
+  // Creates the nursing case for the selected cycle.
   async function confirmCaseStart() {
     if (!selectedCycle) return;
     setStarting(true);
@@ -94,6 +106,7 @@ export default function NewCaseWizard() {
     }
   }
 
+  // Uploads the identity photo and waits for its scan.
   async function handleIdPhoto(file: File) {
     if (!selectedCycle) return;
     setIdPhotoError(null);
@@ -113,6 +126,7 @@ export default function NewCaseWizard() {
     }
   }
 
+  // Uploads the documentation file and waits for its scan.
   async function handleDocUpload(file: File) {
     if (!selectedCycle) return;
     setDocError(null);
@@ -132,6 +146,7 @@ export default function NewCaseWizard() {
     }
   }
 
+  // Reports a security incident for an infected file.
   async function reportIncident(fileId: string) {
     try {
       const res = await api.post<{ incident: { incidentReference: string } }>("/security-incidents", {
@@ -144,6 +159,7 @@ export default function NewCaseWizard() {
     setStep("error");
   }
 
+  // Submits the documentation sheet once both files are clean and the interlock is checked.
   async function finalSubmit() {
     if (!nursingCase || !idPhoto || !docFile || !interlockChecked) return;
     setSubmitting(true);
@@ -165,10 +181,16 @@ export default function NewCaseWizard() {
     <div className="space-y-4">
       {step !== "success" && step !== "error" && (
         <button
-          onClick={() => (step === 1 ? navigate(-1) : setStep((step - 1) as Step))}
+          onClick={() => {
+            // Resuming starts at step 3 with no real step 1/2 behind it (the case already exists) — back from
+            // there leaves the wizard entirely rather than landing on a "Confirm Case Started" that would
+            // re-create a case that's already open.
+            if (step === 1 || (resumeCase && step === 3)) navigate(-1);
+            else setStep((step - 1) as Step);
+          }}
           className="flex items-center gap-1 text-admin-caption text-admin-text-secondary"
         >
-          <ChevronLeft className="size-3.5" aria-hidden="true" /> {step === 1 ? "Back" : "Previous step"}
+          <ChevronLeft className="size-3.5" aria-hidden="true" /> {step === 1 || (resumeCase && step === 3) ? "Back" : "Previous step"}
         </button>
       )}
 
@@ -178,7 +200,7 @@ export default function NewCaseWizard() {
           {loadingCycles ? (
             <p className="text-admin-body-sm text-admin-text-secondary">Loading…</p>
           ) : cycles.length === 0 ? (
-            <Card className="p-6 text-center text-admin-body-sm text-admin-text-secondary">No visitations scheduled today.</Card>
+            <Card className="p-6 text-center text-admin-body-sm text-admin-text-secondary">Nothing due — no visitations today, and nothing left over.</Card>
           ) : (
             cycles.map((c) => {
               const overdue = c.scheduledDate < todayDateString();
@@ -276,7 +298,7 @@ export default function NewCaseWizard() {
           </Card>
           <p className="text-admin-caption text-admin-text-secondary">Does the captured photo match this patient's name and date of birth?</p>
           <div className="flex gap-2">
-            <Button onClick={() => navigate("/dashboard/onsite-nursing-officer/uploads")} variant="outline" className="flex-1 rounded-admin-xs border-admin-danger text-admin-danger">
+            <Button onClick={() => navigate("/dashboard/onsite-nursing-officer/cases")} variant="outline" className="flex-1 rounded-admin-xs border-admin-danger text-admin-danger">
               <XCircle className="size-4" aria-hidden="true" /> Report Mismatch
             </Button>
             <Button onClick={() => setStep(5)} className="flex-1 rounded-admin-xs bg-admin-sidebar-cta hover:bg-admin-sidebar-cta/90">
@@ -346,8 +368,8 @@ export default function NewCaseWizard() {
             <p className="font-mono text-admin-body-sm text-admin-text">{nursingCase.id}</p>
             <p className="mt-3 flex items-center gap-1.5 text-admin-caption text-admin-success"><Lock className="size-3.5" aria-hidden="true" /> Files stored encrypted at rest</p>
           </Card>
-          <Button onClick={() => navigate("/dashboard/onsite-nursing-officer/uploads")} className="w-full rounded-admin-xs bg-admin-sidebar-cta hover:bg-admin-sidebar-cta/90">
-            Back to My Cases
+          <Button onClick={() => navigate(`/dashboard/onsite-nursing-officer/cases/${nursingCase.id}`)} className="w-full rounded-admin-xs bg-admin-sidebar-cta hover:bg-admin-sidebar-cta/90">
+            View Case
           </Button>
         </div>
       )}
@@ -372,7 +394,7 @@ export default function NewCaseWizard() {
             )}
             <p className="mt-3 text-admin-caption text-admin-text-secondary">Your Regional Admin has been alerted.</p>
           </Card>
-          <Button onClick={() => navigate("/dashboard/onsite-nursing-officer/uploads")} className="w-full rounded-admin-xs bg-admin-sidebar-cta hover:bg-admin-sidebar-cta/90">
+          <Button onClick={() => navigate("/dashboard/onsite-nursing-officer/cases")} className="w-full rounded-admin-xs bg-admin-sidebar-cta hover:bg-admin-sidebar-cta/90">
             Back to My Cases
           </Button>
         </div>

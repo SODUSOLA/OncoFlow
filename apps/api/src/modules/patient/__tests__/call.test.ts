@@ -18,6 +18,7 @@ let regionalAdminCookie: string;
 let onsiteNursingOfficerCookie: string;
 let plainCookie: string;
 
+// Creates a user and returns a valid session cookie for requests.
 async function createSessionCookie(): Promise<{ userId: string; cookie: string }> {
   const userId = crypto.randomUUID();
   await db.insert(user).values({
@@ -31,14 +32,14 @@ async function createSessionCookie(): Promise<{ userId: string; cookie: string }
   return { userId, cookie: `${SESSION_COOKIE_NAME}=${sessionId}` };
 }
 
+// Assigns the named role to a user.
 async function assignRole(userId: string, roleName: (typeof roleNameEnum.enumValues)[number]) {
   const roleRow = await db.select().from(role).where(eq(role.name, roleName)).limit(1);
   await db.insert(userRole).values({ userId, roleId: roleRow[0]!.id });
 }
 
 beforeAll(async () => {
-  // Real per-role grants (patient:call), not the TEST_USER_ID/SUPER_ADMIN bypass — this suite
-  // is specifically testing that only REGIONAL_ADMIN/ONSITE_NURSING_OFFICER get through.
+  // Uses real per-role grants, not the SUPER_ADMIN bypass, to prove only REGIONAL_ADMIN and ONSITE_NURSING_OFFICER get through.
   await seedIdentity();
 
   const facRows = await db.insert(facility).values({

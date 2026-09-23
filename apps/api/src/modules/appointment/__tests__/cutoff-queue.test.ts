@@ -24,8 +24,7 @@ const apptRepo = new AppointmentRepository();
 const invoiceSvc = new InvoiceService();
 const paymentSvc = new PaymentService();
 
-// Fixed reference week (verified: Mon 2026-01-05 ... Sun 2026-01-11), Lagos-anchored (+01:00)
-// so the test is independent of the runner's local timezone.
+// Fixed reference week, Lagos-anchored (+01:00), so tests don't depend on the runner's timezone.
 const MON = "2026-01-05T09:00:00+01:00";
 const TUE = "2026-01-06T09:00:00+01:00";
 const FRI = "2026-01-09T09:00:00+01:00";
@@ -57,6 +56,7 @@ let testPatientId: string;
 let classId: string;
 let regionalAdminCookie: string;
 
+// Creates a user and returns a valid session cookie for requests.
 async function createSessionCookie(): Promise<{ userId: string; cookie: string }> {
   const userId = crypto.randomUUID();
   await db.insert(user).values({ id: userId, email: `cutoff-${crypto.randomUUID()}@test.com`, passwordHash: "test" });
@@ -100,6 +100,7 @@ beforeAll(async () => {
   await db.insert(userRole).values({ userId: admin.userId, roleId: adminRoleRow[0]!.id });
 });
 
+// Inserts a PENDING appointment at the given time for the queue tests.
 async function createPendingAppointment(
   scheduledAt: Date,
   appointmentType: (typeof appointmentTypeEnum.enumValues)[number] = "VIRTUAL",
@@ -123,8 +124,7 @@ describe("AppointmentService.handlePaymentEvent", () => {
   });
 
   it("at/after 2PM Lagos: reschedules to the next FR-20-valid working day, stays PENDING", async () => {
-    // MON is a valid day for VIRTUAL already — schedule it same-day, pay at 3pm Lagos (after
-    // cutoff), expect it to roll to the next Mon/Wed/Fri (Wednesday).
+    // Monday is already a valid VIRTUAL day: same-day payment after the 3pm cutoff should roll to Wednesday.
     const scheduledAt = new Date(MON);
     const apptId = await createPendingAppointment(scheduledAt, "VIRTUAL");
 
@@ -154,11 +154,7 @@ describe("PaymentService.payInvoiceWithWallet — appointment hook integration",
   });
 
   it("calls AppointmentService.handlePaymentEvent with the invoice's appointmentId on payment", async () => {
-    // The 2PM before/after branching itself is already covered deterministically above
-    // (handlePaymentEvent takes paidAt as a plain parameter there) — this test is specifically
-    // about the wiring: does paying an appointment-linked invoice actually call the hook at
-    // all. Faking system time around a real DB-backed integration call was flaky (postgres.js's
-    // own internal timers stall under vi.useFakeTimers), so a spy is the more reliable signal.
+    // Tests the wiring only (paying triggers the hook) with a spy, since fake timers stall postgres.js's internal timers.
     const scheduledAt = new Date(TUE);
     const apptId = await createPendingAppointment(scheduledAt, "PHYSICAL");
 
@@ -186,8 +182,7 @@ describe("PaymentService.payInvoiceWithWallet — appointment hook integration",
 
 describe("GET /appointments/pending-confirmation-queue", () => {
   it("returns today's PENDING-but-PAID appointments for REGIONAL_ADMIN", async () => {
-    // "Today" per the app's own Lagos-clock — use the real current time so this lines up with
-    // whatever lagosDateString(new Date()) resolves to inside the repository.
+    // Uses the real current time so it matches the repository's own Lagos-date calculation for "today".
     const now = new Date();
     const apptId = await createPendingAppointment(now, "VIRTUAL");
     const created = await invoiceSvc.createInvoice({

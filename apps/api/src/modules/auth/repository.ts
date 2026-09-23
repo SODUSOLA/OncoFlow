@@ -5,12 +5,15 @@ import {
   accountLock, misconductFlag, emailVerificationToken, passwordResetToken,
 } from "./schema.js";
 
+// Data access for users.
 export class UserRepository {
+  // Finds a user by id.
   async findById(id: string) {
     const row = await db.select().from(user).where(eq(user.id, id)).limit(1);
     return row[0] ?? null;
   }
 
+  // Finds a non-deleted user by email.
   async findByEmail(email: string) {
     const row = await db
       .select()
@@ -20,16 +23,19 @@ export class UserRepository {
     return row[0] ?? null;
   }
 
+  // Inserts a user.
   async create(data: typeof user.$inferInsert) {
     const row = await db.insert(user).values(data).returning();
     return row[0]!;
   }
 
+  // Updates a user's fields.
   async update(id: string, data: Partial<typeof user.$inferInsert>) {
     const row = await db.update(user).set(data).where(eq(user.id, id)).returning();
     return row[0] ?? null;
   }
 
+  // Soft-deletes a user.
   async softDelete(id: string) {
     await db
       .update(user)
@@ -37,9 +43,7 @@ export class UserRepository {
       .where(eq(user.id, id));
   }
 
-  // Backs Regional Admin's New Consultation consultant picker — every role name that starts
-  // with CONSULTING_ (see db/enums.ts's roleNameEnum comment: one shared frontend view, several
-  // distinct roles for specialty/display purposes), optionally narrowed to one facility.
+  // Lists users holding any CONSULTING_* role for the consultant picker, optionally narrowed to one facility.
   async findConsultants(facilityId?: string) {
     return db.execute<{ id: string; email: string; facility_id: string | null; role_name: string }>(sql`
       SELECT DISTINCT u.id, u.email, u.facility_id, r.name::text AS role_name
@@ -54,12 +58,15 @@ export class UserRepository {
   }
 }
 
+// Data access for roles.
 export class RoleRepository {
+  // Finds a role by id.
   async findById(id: string) {
     const row = await db.select().from(role).where(eq(role.id, id)).limit(1);
     return row[0] ?? null;
   }
 
+  // Finds a role by name.
   async findByName(name: string) {
     const row = await db
       .select()
@@ -69,12 +76,15 @@ export class RoleRepository {
     return row[0] ?? null;
   }
 
+  // Lists all roles.
   async findAll() {
     return db.select().from(role);
   }
 }
 
+// Data access for permissions.
 export class PermissionRepository {
+  // Finds a permission by resource and action.
   async findByResourceAction(resource: string, action: string) {
     const row = await db
       .select()
@@ -84,13 +94,16 @@ export class PermissionRepository {
     return row[0] ?? null;
   }
 
+  // Inserts a permission.
   async create(data: typeof permission.$inferInsert) {
     const row = await db.insert(permission).values(data).returning();
     return row[0]!;
   }
 }
 
+// Data access for user-to-role assignments.
 export class UserRoleRepository {
+  // Lists a user's roles.
   async findByUser(userId: string) {
     return db
       .select({
@@ -104,11 +117,13 @@ export class UserRoleRepository {
       .where(sql`${userRole.userId} = ${userId}`);
   }
 
+  // Assigns a role to a user.
   async assign(userId: string, roleId: string) {
     const row = await db.insert(userRole).values({ userId, roleId }).returning();
     return row[0]!;
   }
 
+  // Removes a role from a user.
   async remove(userId: string, roleId: string) {
     await db
       .delete(userRole)
@@ -116,12 +131,15 @@ export class UserRoleRepository {
   }
 }
 
+// Data access for role-to-permission grants.
 export class RolePermissionRepository {
+  // Grants a permission to a role.
   async assign(roleId: string, permissionId: string) {
     const row = await db.insert(rolePermission).values({ roleId, permissionId }).returning();
     return row[0]!;
   }
 
+  // Removes a permission from a role.
   async remove(roleId: string, permissionId: string) {
     await db
       .delete(rolePermission)
@@ -129,12 +147,15 @@ export class RolePermissionRepository {
   }
 }
 
+// Data access for login sessions.
 export class SessionRepository {
+  // Finds a session by id.
   async findById(id: string) {
     const row = await db.select().from(session).where(eq(session.id, id)).limit(1);
     return row[0] ?? null;
   }
 
+  // Lists a user's active (unrevoked, unexpired) sessions.
   async findActiveByUser(userId: string) {
     return db
       .select()
@@ -143,15 +164,18 @@ export class SessionRepository {
       .orderBy(session.createdAt);
   }
 
+  // Inserts a session.
   async create(data: typeof session.$inferInsert) {
     const row = await db.insert(session).values(data).returning();
     return row[0]!;
   }
 
+  // Revokes one session.
   async revoke(id: string) {
     await db.update(session).set({ revokedAt: new Date() }).where(eq(session.id, id));
   }
 
+  // Revokes every session a user has.
   async revokeAllForUser(userId: string) {
     await db
       .update(session)
@@ -160,12 +184,15 @@ export class SessionRepository {
   }
 }
 
+// Data access for email verification tokens.
 export class EmailVerificationTokenRepository {
+  // Inserts a verification token.
   async create(data: typeof emailVerificationToken.$inferInsert) {
     const row = await db.insert(emailVerificationToken).values(data).returning();
     return row[0]!;
   }
 
+  // Finds an unconsumed, unexpired token by its hash.
   async findValidByHash(tokenHash: string) {
     const row = await db
       .select()
@@ -177,13 +204,12 @@ export class EmailVerificationTokenRepository {
     return row[0] ?? null;
   }
 
+  // Marks a token as used.
   async markConsumed(id: string) {
     await db.update(emailVerificationToken).set({ consumedAt: new Date() }).where(eq(emailVerificationToken.id, id));
   }
 
-  // Called before issuing a fresh token (register's initial send, or a resend) so a user can
-  // never have more than one live link outstanding — an old, still-emailed link should stop
-  // working the moment a newer one is issued, not silently coexist with it.
+  // Retires outstanding tokens before issuing a new one so only one live link exists per user.
   async invalidateAllForUser(userId: string) {
     await db
       .update(emailVerificationToken)
@@ -192,12 +218,15 @@ export class EmailVerificationTokenRepository {
   }
 }
 
+// Data access for password reset tokens.
 export class PasswordResetTokenRepository {
+  // Inserts a reset token.
   async create(data: typeof passwordResetToken.$inferInsert) {
     const row = await db.insert(passwordResetToken).values(data).returning();
     return row[0]!;
   }
 
+  // Finds an unconsumed, unexpired reset token by its hash.
   async findValidByHash(tokenHash: string) {
     const row = await db
       .select()
@@ -209,13 +238,12 @@ export class PasswordResetTokenRepository {
     return row[0] ?? null;
   }
 
+  // Marks a reset token as used.
   async markConsumed(id: string) {
     await db.update(passwordResetToken).set({ consumedAt: new Date() }).where(eq(passwordResetToken.id, id));
   }
 
-  // Same reasoning as EmailVerificationTokenRepository.invalidateAllForUser — a fresh reset
-  // request should retire every link still outstanding, not let an old, already-emailed one
-  // keep working alongside the new one.
+  // A fresh reset request retires every outstanding link, like the verification-token version.
   async invalidateAllForUser(userId: string) {
     await db
       .update(passwordResetToken)
@@ -224,7 +252,9 @@ export class PasswordResetTokenRepository {
   }
 }
 
+// Data access for account locks.
 export class AccountLockRepository {
+  // Finds a user's active lock.
   async findActiveByUser(userId: string) {
     const rows = await db
       .select()
@@ -240,11 +270,13 @@ export class AccountLockRepository {
     return rows[0] ?? null;
   }
 
+  // Inserts an account lock.
   async create(data: typeof accountLock.$inferInsert) {
     const row = await db.insert(accountLock).values(data).returning();
     return row[0]!;
   }
 
+  // Soft-deletes an account lock.
   async softDelete(id: string) {
     await db
       .update(accountLock)
@@ -253,7 +285,9 @@ export class AccountLockRepository {
   }
 }
 
+// Data access for misconduct flags.
 export class MisconductFlagRepository {
+  // Lists a user's misconduct flags.
   async findByUser(userId: string) {
     return db
       .select()
@@ -261,11 +295,13 @@ export class MisconductFlagRepository {
       .where(eq(misconductFlag.flaggedUserId, userId));
   }
 
+  // Inserts a misconduct flag.
   async create(data: typeof misconductFlag.$inferInsert) {
     const row = await db.insert(misconductFlag).values(data).returning();
     return row[0]!;
   }
 
+  // Updates a misconduct flag.
   async update(id: string, data: Partial<typeof misconductFlag.$inferInsert>) {
     const row = await db.update(misconductFlag).set(data).where(eq(misconductFlag.id, id)).returning();
     return row[0] ?? null;

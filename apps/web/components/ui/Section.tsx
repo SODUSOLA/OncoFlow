@@ -17,6 +17,7 @@ const toneClasses: Record<NonNullable<SectionProps["tone"]>, string> = {
   primary: "bg-primary text-white",
 };
 
+// Page section with standard spacing.
 export function Section({
   className,
   containerClassName,
@@ -35,6 +36,7 @@ export function Section({
   );
 }
 
+// Section heading with an eyebrow and description.
 export function SectionHeading({
   eyebrow,
   title,

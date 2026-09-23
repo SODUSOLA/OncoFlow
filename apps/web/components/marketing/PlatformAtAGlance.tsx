@@ -2,6 +2,7 @@ import { Section, SectionHeading } from "@/components/ui/Section";
 import { Reveal } from "@/components/ui/Reveal";
 import { platformGlance } from "@/lib/content/platformGlance";
 
+// Platform-at-a-glance section.
 export function PlatformAtAGlance() {
   return (
     <Section tone="primary">

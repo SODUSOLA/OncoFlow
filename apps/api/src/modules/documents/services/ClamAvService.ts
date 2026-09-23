@@ -10,9 +10,7 @@ interface NodeClamCtor {
 
 let cached: ClamScanInstance | null = null;
 
-// Per-call-time credential/config reading, same pattern as Monnify/Daily.co/R2 elsewhere in
-// this module tree — throws a clear "not configured" error rather than silently no-op-ing,
-// matching the established precedent for an unconfigured third-party dependency.
+// Reads config at call time and throws a clear "not configured" error rather than silently no-op-ing.
 async function getClamScan(): Promise<ClamScanInstance> {
   if (cached) return cached;
 
@@ -38,12 +36,14 @@ async function getClamScan(): Promise<ClamScanInstance> {
   return cached;
 }
 
+// Scans a buffer with ClamAV and returns CLEAN or INFECTED.
 export async function scanBuffer(buffer: Buffer): Promise<"CLEAN" | "INFECTED"> {
   const clamscan = await getClamScan();
   const { isInfected } = await clamscan.scanStream(Readable.from(buffer));
   return isInfected ? "INFECTED" : "CLEAN";
 }
 
+// Clears the cached scanner so tests can reconfigure it.
 export function resetClamScanForTest(): void {
   cached = null;
 }

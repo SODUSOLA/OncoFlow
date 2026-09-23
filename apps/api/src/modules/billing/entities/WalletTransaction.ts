@@ -11,9 +11,11 @@ export interface WalletTransactionData {
   createdAt: Date;
 }
 
+// Domain entity for one wallet ledger entry.
 export class WalletTransaction {
   constructor(private data: WalletTransactionData) {}
 
+  // Serializes the transaction for API responses.
   toJSON() {
     return {
       id: this.data.id,

@@ -31,8 +31,7 @@ const initialValues: RegisterValues = {
   facility: "",
 };
 
-// Biological sex, not gender identity — this is the clinical field that drives dosing and
-// reference ranges downstream, which is why it's collected at registration at all.
+// Biological sex, not gender identity, since it drives dosing and reference ranges downstream.
 const BIOLOGICAL_SEX_OPTIONS = ["Female", "Male"] as const;
 
 const steps = ["Identity", "Contact", "Facility", "Review"] as const;
@@ -41,6 +40,7 @@ type GeoState =
   | { status: "idle" | "prompting" | "denied" | "unsupported" }
   | { status: "granted"; latitude: number; longitude: number };
 
+// Step progress indicator.
 function StepIndicator({ step }: { step: number }) {
   return (
     <div className="mb-8">
@@ -67,6 +67,7 @@ function StepIndicator({ step }: { step: number }) {
   );
 }
 
+// One label and value row in the review step.
 function ReviewRow({ label, value }: { label: string; value: string }) {
   return (
     <div>
@@ -76,6 +77,7 @@ function ReviewRow({ label, value }: { label: string; value: string }) {
   );
 }
 
+// Titled section in the review step.
 function ReviewSection({
   title,
   onEdit,
@@ -102,6 +104,7 @@ function ReviewSection({
   );
 }
 
+// Multi-step patient registration wizard.
 export function RegisterWizard() {
   const router = useRouter();
   const [step, setStep] = useState(0);
@@ -121,9 +124,7 @@ export function RegisterWizard() {
       .catch(() => setFacilities([]));
   }, []);
 
-  // Only asked for once the patient actually reaches the facility step — prompting on page
-  // load for a permission that's irrelevant to steps 1-2 is exactly the pattern browsers
-  // (and users) treat as spammy.
+  // Asks for location only when the patient reaches the facility step, rather than prompting on page load.
   useEffect(() => {
     if (step !== 2 || geo.status !== "idle") return;
     if (typeof navigator === "undefined" || !navigator.geolocation) {
@@ -164,6 +165,7 @@ export function RegisterWizard() {
 
   const selectedFacility = facilities.find((f) => f.id === values.facility) ?? null;
 
+  // Validates the current step's fields.
   function validateStep(): boolean {
     const nextErrors: typeof errors = {};
     if (step === 0) {
@@ -183,6 +185,7 @@ export function RegisterWizard() {
     return Object.keys(nextErrors).length === 0;
   }
 
+  // Validates and advances to the next step, submitting on the last.
   async function handleNext(e: FormEvent) {
     e.preventDefault();
     if (!validateStep()) return;
@@ -191,9 +194,7 @@ export function RegisterWizard() {
       return;
     }
 
-    // POST /auth/register creates the login account and stashes the intake snapshot. The real
-    // patient record + Unique Patient ID are created server-side the moment the emailed OTP is
-    // verified (AuthService.verifyEmail) — never generated client-side.
+    // POST /auth/register creates the login and intake snapshot; the patient record and ID are created server-side after OTP verification.
     setSubmitting(true);
     setErrors({});
     try {
@@ -206,9 +207,7 @@ export function RegisterWizard() {
         phone: values.phone,
         preferredFacilityId: values.facility || undefined,
       });
-      // Registration itself doesn't create a session — chain an immediate login so the
-      // verification screen (and everything after it) has one. If this second call fails,
-      // fall back to the manual "Continue to Log In" screen rather than a broken redirect.
+      // Registration creates no session, so an immediate login is chained, falling back to a manual login screen on failure.
       try {
         await api.post("/auth/login", { email: values.email, password: values.password });
         router.push("/verify-email");

@@ -20,11 +20,13 @@ interface FormState {
 
 const initialState: FormState = { name: "", email: "", inquiryType: "hospital", message: "" };
 
+// Contact form.
 export function ContactForm() {
   const [values, setValues] = useState<FormState>(initialState);
   const [errors, setErrors] = useState<Partial<Record<keyof FormState, string>>>({});
   const [submitted, setSubmitted] = useState(false);
 
+  // Submits the contact form.
   function handleSubmit(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
     const nextErrors: Partial<Record<keyof FormState, string>> = {};

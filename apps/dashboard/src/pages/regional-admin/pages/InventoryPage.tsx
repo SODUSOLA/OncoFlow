@@ -5,24 +5,20 @@ import { Card } from "../../../components/ui/Card";
 import { Button } from "../../../components/ui/Button";
 import { cn } from "../../../lib/utils";
 import { useRegionScope } from "../lib/useRegionScope";
+import { DrugSupplyPanel } from "./inventory/DrugSupplyPanel";
 
-interface Drug { id: string; name: string; strength: string; category: string }
+interface Drug { id: string; name: string; strength: string; category: string; reorderThreshold: number | null }
 interface VarianceRow {
   id: string; facilityId: string; facilityName: string; weekEnding: string;
   expectedQty: number; actualQty: number; variance: number; status: string;
 }
 interface StockRow {
-  drugId: string; drugName: string; drugStrength: string;
+  drugId: string; drugName: string; drugStrength: string; reorderThreshold: number | null;
   facilityId: string | null; facilityName: string; quantity: number;
 }
 interface OverviewResponse { stock: StockRow[]; variances: VarianceRow[]; variancesOpen: number }
 
-// Below this many units on hand, a stock row gets a low-stock flag. There's no reorder
-// threshold column anywhere in the data model (apps/api's inventory schema has no such field
-// per drug/facility) — this is a client-side display heuristic, not a real configured threshold,
-// so it's kept deliberately generic rather than presented as if it came from real per-drug config.
-const LOW_STOCK_THRESHOLD = 10;
-
+// Inventory page with stock, movements and variances.
 export default function InventoryPage() {
   const { region, facilitiesInRegion, loading: scopeLoading } = useRegionScope();
   const [drugs, setDrugs] = useState<Drug[]>([]);
@@ -38,6 +34,7 @@ export default function InventoryPage() {
   const [recording, setRecording] = useState(false);
   const [recordResult, setRecordResult] = useState<string | null>(null);
 
+  // Loads the inventory overview for the region.
   function load() {
     const q = region ? `?region=${encodeURIComponent(region)}` : "";
     api.get<OverviewResponse>(`/inventory/overview${q}`).then((d) => {
@@ -51,13 +48,13 @@ export default function InventoryPage() {
   }, []);
 
   useEffect(() => {
-    // See SchedulingPage's identical guard — an unscoped fetch while region is still resolving
-    // can otherwise race with (and overwrite) the correctly-scoped one.
+    // Waits for the region to resolve so an unscoped fetch can't overwrite the scoped one.
     if (scopeLoading) return;
     load();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [region, scopeLoading]);
 
+  // Records a stock movement.
   async function recordMovement() {
     if (!drugId || !quantity) return;
     setRecording(true);
@@ -79,6 +76,7 @@ export default function InventoryPage() {
     }
   }
 
+  // Resolves a reconciliation variance.
   async function resolveVariance(id: string) {
     setResolvingId(id);
     try {
@@ -231,7 +229,8 @@ export default function InventoryPage() {
           </thead>
           <tbody className="divide-y divide-gray-50">
             {visibleStock.map((s) => {
-              const low = s.quantity <= LOW_STOCK_THRESHOLD;
+              // Low means at or below the drug's own reorder threshold; drugs without one aren't flagged.
+              const low = s.reorderThreshold !== null && s.quantity <= s.reorderThreshold;
               return (
                 <tr key={`${s.drugId}-${s.facilityId ?? "pool"}`}>
                   <td className="px-5 py-3 font-medium text-gray-800">{s.drugName}</td>
@@ -252,6 +251,8 @@ export default function InventoryPage() {
         </table>
       )}
     </Card>
+
+    <DrugSupplyPanel drugs={drugs} onChanged={load} />
     </div>
   );
 }

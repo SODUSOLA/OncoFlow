@@ -4,6 +4,7 @@ export interface DepartmentData {
   name: string;
 }
 
+// Domain entity for a facility department.
 export class Department {
   constructor(private data: DepartmentData) {}
 
@@ -17,6 +18,7 @@ export class Department {
     return this.data.name;
   }
 
+  // Serializes the department for API responses.
   toJSON() {
     return { ...this.data };
   }

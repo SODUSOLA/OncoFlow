@@ -1,8 +1,5 @@
 import { AppointmentRepository } from "../repository.js";
-// Cross-module coupling (FR-24): the unified calendar is the one place that's supposed to
-// merge Appointment with CountdownCase (and, later, PhysicalCase) key dates across every
-// role's calendar view — so this service is the intentional exception to "one module reads
-// only its own domain," not a boundary violation.
+// Intentional cross-module read (FR-24): the unified calendar merges appointments with countdown-case key dates.
 import { CountdownCaseRepository } from "../../clinical/index.js";
 import { PatientRepository } from "../../patient/index.js";
 
@@ -26,10 +23,9 @@ const appointmentRepo = new AppointmentRepository();
 const countdownRepo = new CountdownCaseRepository();
 const patientRepo = new PatientRepository();
 
+// Builds the merged calendar of appointments and case dates.
 export class CalendarService {
-  // Scope is resolved by the caller (controller), never taken from client-supplied query
-  // params directly — see appointment/controller.ts's getUnifiedCalendarHandler. Passing
-  // neither facilityId nor patientId returns everything (SUPER_ADMIN only).
+  // Scope is resolved by the controller, never from client params; passing neither id returns everything (SUPER_ADMIN only).
   async getUnifiedCalendar(scope: { facilityId?: string; patientId?: string }): Promise<CalendarItem[]> {
     const items: CalendarItem[] = [];
 
@@ -50,9 +46,7 @@ export class CalendarService {
       });
     }
 
-    // PhysicalCase isn't merged in yet — it has no repository/service built yet (its
-    // open/close workflow is Sprint 4, ADR-0011). This aggregation is structured so adding
-    // it later is one more block like the ones below, not a rewrite.
+    // PhysicalCase isn't merged yet (no repository until Sprint 4); adding it later is one more block like these.
     let countdownCases;
     if (scope.patientId) {
       countdownCases = await countdownRepo.findByPatient(scope.patientId);

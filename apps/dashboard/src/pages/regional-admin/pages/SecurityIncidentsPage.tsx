@@ -7,9 +7,7 @@ interface Incident {
   id: string; nursingCaseId: string | null; attemptedBy: string; fileScanResult: string; incidentReference: string; createdAt: string;
 }
 
-// ONCOFLOW_NURSING_OFFICER_BUILD_GUIDE.md Finding 3 — the real destination behind the alert
-// aggregator's "View Incident" action (routing to a real source, not a generic landing page).
-// Read-only: no resolution/dismissal action exists in the data model yet, so none is faked here.
+// The real destination of the alert's "View Incident" action; read-only since the data model has no resolution action.
 export default function SecurityIncidentsPage() {
   const [incidents, setIncidents] = useState<Incident[]>([]);
   const [loading, setLoading] = useState(true);

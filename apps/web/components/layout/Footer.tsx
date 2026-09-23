@@ -3,6 +3,7 @@ import { Container } from "@/components/ui/Container";
 import { LinkedinIcon, XIcon } from "@/components/ui/SocialIcons";
 import { footerNav, legalNav, siteConfig } from "@/lib/site-config";
 
+// Site footer.
 export function Footer() {
   const year = new Date().getFullYear();
 

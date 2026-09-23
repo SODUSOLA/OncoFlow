@@ -3,6 +3,7 @@ import { Badge } from "@/components/ui/Badge";
 import { Reveal } from "@/components/ui/Reveal";
 import { metrics } from "@/lib/content/metrics";
 
+// Impact metrics section.
 export function Impact() {
   return (
     <Section tone="muted">

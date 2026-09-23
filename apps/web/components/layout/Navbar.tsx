@@ -12,10 +12,12 @@ import { Container } from "@/components/ui/Container";
 import { primaryNav } from "@/lib/site-config";
 import { cn } from "@/lib/utils";
 
+// Site navigation bar with a mobile menu.
 export function Navbar() {
   const [mobileOpen, setMobileOpen] = useState(false);
   const pathname = usePathname();
 
+  // Closes the mobile menu.
   const closeMobileMenu = () => setMobileOpen(false);
 
   useEffect(() => {

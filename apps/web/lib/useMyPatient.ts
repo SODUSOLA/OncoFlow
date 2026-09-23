@@ -36,8 +36,7 @@ interface MyPatientResponse {
 interface MyPatientState {
   patient: Patient | null;
   facility: PatientFacility | null;
-  // GET /patients/me has always returned these; they were simply dropped on the floor here, so
-  // no screen could show a patient their own address or emergency contacts.
+  // GET /patients/me already returned these, so screens can now show the patient's own address and emergency contacts.
   addresses: PatientAddress[];
   emergencyContacts: PatientEmergencyContact[];
   wallet: Wallet | null;
@@ -46,17 +45,7 @@ interface MyPatientState {
   notLinked: boolean;
 }
 
-// "Who am I as a patient" is process-wide state, not per-component state, so it lives in a
-// module-level store that every caller shares rather than in each component's own useState.
-//
-// It used to be plain per-component state with a mount effect, which meant every screen using
-// this hook issued its own GET /patients/me — so a single navigation fired the request several
-// times over (once per mounted consumer), which is the duplicate-`me` traffic seen in devtools.
-// Sharing one store collapses that to a single request: concurrent mounts await the same
-// in-flight promise, and later mounts read the value that is already there.
-//
-// A 404 means registration has not been staff-confirmed yet. That is a valid, expected state,
-// not an error, so callers check `notLinked` rather than treating `error` as fatal.
+// Process-wide store so concurrent mounts share one GET /patients/me; a 404 means not yet confirmed, a valid state (notLinked) rather than an error.
 const initialState: MyPatientState = {
   patient: null,
   facility: null,
@@ -73,11 +62,13 @@ let inFlight: Promise<void> | null = null;
 let hasLoaded = false;
 const subscribers = new Set<() => void>();
 
+// Publishes new patient state to every subscriber.
 function publish(next: MyPatientState): void {
   state = next;
   for (const notify of subscribers) notify();
 }
 
+// Loads the patient once, collapsing concurrent callers onto one request.
 function load(): Promise<void> {
   // Collapses concurrent callers onto one request rather than starting a second.
   if (inFlight) return inFlight;
@@ -117,16 +108,14 @@ function load(): Promise<void> {
   return inFlight;
 }
 
-// Must be called on sign-out: the store outlives any single component, so without this the
-// next account to sign in on the same tab would briefly read the previous patient's record.
+// Must be called on sign-out so the next account on this tab doesn't read the previous patient's record.
 export function invalidateMyPatient(): void {
   hasLoaded = false;
   inFlight = null;
   publish(initialState);
 }
 
-// The first subscriber triggers the fetch. Doing it here rather than in a mount effect keeps
-// the hook free of a synchronous setState during render/effect.
+// The first subscriber triggers the fetch, keeping the hook free of synchronous setState.
 function subscribe(onStoreChange: () => void): () => void {
   subscribers.add(onStoreChange);
   if (!hasLoaded && !inFlight) void load();
@@ -135,23 +124,16 @@ function subscribe(onStoreChange: () => void): () => void {
   };
 }
 
-// Identity is stable between publishes, which is what useSyncExternalStore requires — `state`
-// is only ever reassigned in publish(), never rebuilt per call.
+// Stable between publishes, as useSyncExternalStore requires, since state is only reassigned in publish().
 function getSnapshot(): MyPatientState {
   return state;
 }
 
+// Returns the current patient, wallet and loading state, and a reload function.
 export function useMyPatient() {
   const snapshot = useSyncExternalStore(subscribe, getSnapshot, getSnapshot);
 
-  // Forces a refetch even when one has already completed — used after an action that changes
-  // the record (profile edit, wallet top-up) rather than on mount.
-  //
-  // Deliberately does NOT flip `loading`. Callers gate their first paint on it (`if (loading)
-  // return <spinner>`), so raising it for a background refresh tore the screen down and rebuilt
-  // it: saving a profile edit unmounted the very form that had just saved, discarding its
-  // "Profile updated" confirmation. `loading` means "nothing to show yet", not "a request is
-  // in flight" — the existing data stays on screen while the refresh completes.
+  // Refetches without flipping `loading`, so a background refresh doesn't tear down the screen and discard a "Profile updated" confirmation.
   const reload = useCallback(() => {
     inFlight = null;
     return load();

@@ -35,6 +35,7 @@ const securityItems = [
   },
 ];
 
+// Security highlights grid.
 export function SecurityGrid() {
   return (
     <Section tone="muted" id="security">

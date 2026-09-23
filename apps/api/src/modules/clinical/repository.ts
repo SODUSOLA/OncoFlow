@@ -2,7 +2,9 @@ import { db } from "../../db/index.js";
 import { eq, sql, and, gt, inArray, desc } from "drizzle-orm";
 import { countdownCase, triageChecklist, prescription, labRequest, labResult, clinicalDecision, medicalRecord, clinicalNote } from "./schema.js";
 
+// Data access for countdown cases.
 export class CountdownCaseRepository {
+  // Finds a countdown case by id.
   async findById(id: string) {
     const row = await db
       .select()
@@ -12,6 +14,7 @@ export class CountdownCaseRepository {
     return row[0] ?? null;
   }
 
+  // Lists a patient's countdown cases.
   async findByPatient(patientId: string) {
     return db
       .select()
@@ -20,10 +23,7 @@ export class CountdownCaseRepository {
       .orderBy(countdownCase.createdAt);
   }
 
-  // Deliberately narrow: only cases still counting down (ACTIVE, day > 0). Used by
-  // CountdownJobService (the daily advance/escalate job — must never reprocess an already-
-  // escalated case) and CalendarService (only cases still awaiting a calendar slot). Do not
-  // widen this for the admin overview's needs — see findForOverview below instead.
+  // Deliberately narrow: only cases still counting down (ACTIVE, day > 0), for the daily job and calendar; the admin overview uses findForOverview.
   async findActive() {
     return db
       .select()
@@ -31,10 +31,7 @@ export class CountdownCaseRepository {
       .where(and(eq(countdownCase.status, "ACTIVE"), eq(countdownCase.isDeleted, false), gt(countdownCase.currentDay, 0)));
   }
 
-  // The admin oversight board (regional-admin Dashboard) needs the opposite scope from
-  // findActive: it specifically wants to see day-0 and ESCALATED cases too (that's the entire
-  // point of an SLA-breach view) — everything still open, excluding only resolved cases
-  // (CLEARED/DECLINED).
+  // Everything still open including day-0 and ESCALATED cases, excluding resolved ones, since SLA breaches are the point of the admin board.
   async findForOverview() {
     return db
       .select()
@@ -42,9 +39,7 @@ export class CountdownCaseRepository {
       .where(and(inArray(countdownCase.status, ["ACTIVE", "ESCALATED"]), eq(countdownCase.isDeleted, false)));
   }
 
-  // countdown_case has no facility_id of its own (only patient_id) — callers that need
-  // facility scoping (e.g. the unified calendar, FR-24) resolve the patient IDs for a
-  // facility first, then batch-fetch here rather than joining across module schemas.
+  // countdown_case has no facility_id, so callers resolve patient ids first and batch-fetch here instead of joining across modules.
   async findActiveByPatientIds(patientIds: string[]) {
     if (patientIds.length === 0) return [];
     return db
@@ -53,11 +48,13 @@ export class CountdownCaseRepository {
       .where(and(inArray(countdownCase.patientId, patientIds), eq(countdownCase.status, "ACTIVE"), eq(countdownCase.isDeleted, false)));
   }
 
+  // Inserts a countdown case.
   async create(data: typeof countdownCase.$inferInsert) {
     const row = await db.insert(countdownCase).values(data).returning();
     return row[0]!;
   }
 
+  // Updates a countdown case.
   async update(id: string, data: Partial<typeof countdownCase.$inferInsert>) {
     const row = await db
       .update(countdownCase)
@@ -68,12 +65,15 @@ export class CountdownCaseRepository {
   }
 }
 
+// Data access for triage checklists.
 export class TriageChecklistRepository {
+  // Finds a triage checklist by id.
   async findById(id: string) {
     const row = await db.select().from(triageChecklist).where(eq(triageChecklist.id, id)).limit(1);
     return row[0] ?? null;
   }
 
+  // Finds the checklist for a conversation.
   async findByConversation(conversationId: string) {
     const row = await db
       .select()
@@ -83,16 +83,16 @@ export class TriageChecklistRepository {
     return row[0] ?? null;
   }
 
-  // [append-only] — no update()/delete(); the 1:1-per-conversation uniqueness is enforced
-  // at the service layer (findByConversation check before create) so the caller gets a clean
-  // domain error instead of a raw DB unique-constraint violation (F3.2 DoD).
+  // Append-only with no update or delete; one-per-conversation is enforced in the service so callers get a domain error, not a DB violation.
   async create(data: typeof triageChecklist.$inferInsert) {
     const row = await db.insert(triageChecklist).values(data).returning();
     return row[0]!;
   }
 }
 
+// Data access for prescriptions.
 export class PrescriptionRepository {
+  // Finds a prescription by id.
   async findById(id: string) {
     const row = await db
       .select()
@@ -102,6 +102,7 @@ export class PrescriptionRepository {
     return row[0] ?? null;
   }
 
+  // Lists a patient's prescriptions.
   async findByPatient(patientId: string) {
     return db
       .select()
@@ -110,11 +111,13 @@ export class PrescriptionRepository {
       .orderBy(prescription.createdAt);
   }
 
+  // Inserts a prescription.
   async create(data: typeof prescription.$inferInsert) {
     const row = await db.insert(prescription).values(data).returning();
     return row[0]!;
   }
 
+  // Updates a prescription.
   async update(id: string, data: Partial<typeof prescription.$inferInsert>) {
     const row = await db
       .update(prescription)
@@ -125,7 +128,9 @@ export class PrescriptionRepository {
   }
 }
 
+// Data access for lab requests.
 export class LabRequestRepository {
+  // Finds a lab request by id.
   async findById(id: string) {
     const row = await db
       .select()
@@ -135,6 +140,7 @@ export class LabRequestRepository {
     return row[0] ?? null;
   }
 
+  // Lists a patient's lab requests.
   async findByPatient(patientId: string) {
     return db
       .select()
@@ -143,11 +149,13 @@ export class LabRequestRepository {
       .orderBy(labRequest.createdAt);
   }
 
+  // Inserts a lab request.
   async create(data: typeof labRequest.$inferInsert) {
     const row = await db.insert(labRequest).values(data).returning();
     return row[0]!;
   }
 
+  // Updates a lab request.
   async update(id: string, data: Partial<typeof labRequest.$inferInsert>) {
     const row = await db
       .update(labRequest)
@@ -158,7 +166,9 @@ export class LabRequestRepository {
   }
 }
 
+// Data access for lab results.
 export class LabResultRepository {
+  // Finds a lab result by id.
   async findById(id: string) {
     const row = await db
       .select()
@@ -168,6 +178,7 @@ export class LabResultRepository {
     return row[0] ?? null;
   }
 
+  // Lists a patient's lab results.
   async findByPatient(patientId: string) {
     return db
       .select()
@@ -176,6 +187,7 @@ export class LabResultRepository {
       .orderBy(labResult.createdAt);
   }
 
+  // Lists the results submitted against a lab request.
   async findByRequest(requestId: string) {
     return db
       .select()
@@ -183,9 +195,7 @@ export class LabResultRepository {
       .where(and(eq(labResult.requestId, requestId), eq(labResult.isDeleted, false)));
   }
 
-  // Backs F3.5's duplicate-detection rule — uses the same (file_hash, patient_id, test_date)
-  // composite index the table was built with (lab_result_file_hash_patient_test_date_idx),
-  // leading with file_hash and patient_id since that's the actual match condition here.
+  // Backs duplicate detection using the table's (file_hash, patient_id, test_date) index, leading with the two columns being matched.
   async findByHashAndPatient(fileHash: string, patientId: string) {
     return db
       .select()
@@ -193,11 +203,13 @@ export class LabResultRepository {
       .where(and(eq(labResult.fileHash, fileHash), eq(labResult.patientId, patientId), eq(labResult.isDeleted, false)));
   }
 
+  // Inserts a lab result.
   async create(data: typeof labResult.$inferInsert) {
     const row = await db.insert(labResult).values(data).returning();
     return row[0]!;
   }
 
+  // Updates a lab result.
   async update(id: string, data: Partial<typeof labResult.$inferInsert>) {
     const row = await db
       .update(labResult)
@@ -208,7 +220,9 @@ export class LabResultRepository {
   }
 }
 
+// Data access for clinical decisions.
 export class ClinicalDecisionRepository {
+  // Finds a clinical decision by id.
   async findById(id: string) {
     const row = await db
       .select()
@@ -228,11 +242,13 @@ export class ClinicalDecisionRepository {
     return row[0] ?? null;
   }
 
+  // Inserts a clinical decision.
   async create(data: typeof clinicalDecision.$inferInsert) {
     const row = await db.insert(clinicalDecision).values(data).returning();
     return row[0]!;
   }
 
+  // Updates a clinical decision.
   async update(id: string, data: Partial<typeof clinicalDecision.$inferInsert>) {
     const row = await db
       .update(clinicalDecision)
@@ -243,24 +259,24 @@ export class ClinicalDecisionRepository {
   }
 }
 
+// Data access for medical records.
 export class MedicalRecordRepository {
+  // Inserts a medical record.
   async create(data: typeof medicalRecord.$inferInsert) {
     const row = await db.insert(medicalRecord).values(data).returning();
     return row[0]!;
   }
 }
 
-// The "Add Clinical Note" action on the Consulting Oncologist shell — a free-text note tied to
-// a patient. Every note gets its own MedicalRecord (recordType "CONSULT_NOTE") rather than
-// reusing one shared record per patient: MedicalRecord.summary is itself real content (not a
-// container title), so a shared record would mean each new note silently overwrote the last
-// summary. One record per note keeps that field meaningful.
+// Each note gets its own MedicalRecord (CONSULT_NOTE) because the record's summary is real content that a shared record would overwrite.
 export class ClinicalNoteRepository {
+  // Inserts a clinical note.
   async create(data: typeof clinicalNote.$inferInsert) {
     const row = await db.insert(clinicalNote).values(data).returning();
     return row[0]!;
   }
 
+  // Lists a patient's clinical notes.
   async findByPatient(patientId: string) {
     return db
       .select({
@@ -276,9 +292,7 @@ export class ClinicalNoteRepository {
       .orderBy(desc(clinicalNote.createdAt));
   }
 
-  // Phase 6's Post-call Summary — "has this specific meeting already been finalized" is a direct
-  // FK lookup (MedicalRecord.sourceMeetingId), not a date-proximity guess against a patient who
-  // may have several same-day appointments.
+  // Finds the note for a specific meeting via MedicalRecord.sourceMeetingId rather than guessing by date.
   async findByMeeting(sourceMeetingId: string) {
     const row = await db
       .select({

@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { api } from "../../lib/api";
 import type { Appointment, Meeting } from "../../lib/types";
 
+// One appointment row with its join-call control.
 function AppointmentRow({ appointment }: { appointment: Appointment }) {
   const [meeting, setMeeting] = useState<Meeting | null>(null);
   const [checked, setChecked] = useState(false);
@@ -15,12 +16,7 @@ function AppointmentRow({ appointment }: { appointment: Appointment }) {
       .finally(() => setChecked(true));
   }, [appointment.id]);
 
-  // ONCOFLOW_SCHEDULING_AND_VIDEO_LIFECYCLE.md §3: "the patient never constructs a room URL or
-  // joins ad-hoc" — this used to build `https://${meeting.roomId}.daily.co` directly, which was
-  // never even the right shape for a Daily room URL (that's `https://<team-domain>.daily.co/
-  // <room-name>`, and the team domain isn't derivable client-side). Now it asks the real token
-  // endpoint for a join-ready URL, which also enforces this patient is an actual invited
-  // participant on this appointment (MeetingService.issueToken).
+  // Asks the token endpoint for a join-ready URL instead of building a room URL client-side, which also confirms the patient is an invited participant.
   async function joinCall() {
     if (!meeting) return;
     setJoining(true);
@@ -59,6 +55,7 @@ function AppointmentRow({ appointment }: { appointment: Appointment }) {
   );
 }
 
+// Lists a patient's video consultations.
 export function VideoConsultPanel({ patientId }: { patientId: string }) {
   const [appointments, setAppointments] = useState<Appointment[]>([]);
   const [loading, setLoading] = useState(true);

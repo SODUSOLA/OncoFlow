@@ -4,6 +4,7 @@ import { usePathname } from "next/navigation";
 import { motion, useReducedMotion } from "framer-motion";
 import { MOTION_MS } from "@/lib/motion";
 
+// Animates page changes keyed on the pathname.
 export function PageTransition({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const shouldReduceMotion = useReducedMotion();

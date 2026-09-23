@@ -19,43 +19,39 @@ import { inventoryRoutes } from "./modules/inventory/index.js";
 import { clinicalMetricsRoutes } from "./modules/clinical-metrics/index.js";
 import { availabilityRoutes } from "./modules/availability/index.js";
 import { nursingRoutes } from "./modules/nursing/index.js";
-// Imported directly from routes.js, not modules/audit/index.js — that index re-exports
-// service/repository only, deliberately not routes, to avoid a circular import (see the comment
-// in modules/audit/index.js for why).
+import { drugSupplyRoutes } from "./modules/drug-supply/index.js";
+// Imported straight from routes.js because modules/audit/index.js deliberately doesn't re-export routes (circular import).
 import { auditRoutes } from "./modules/audit/routes.js";
 import { config } from "./config.js";
 
 // The one route that accepts a base64 file body — see the body-limit split below.
 const UPLOAD_PATH = "/files/upload";
 
+// Builds and returns the fully configured Express app (middleware, routes, error handlers) without starting a listener.
 export function createApp() {
   const app = express();
 
+  // Security headers and CORS come first so every response, including errors, carries them.
   app.use(helmet());
+  // Cross-origin requests are limited to the configured origins, with credentials allowed.
   app.use(cors({ origin: config.corsOrigins, credentials: true }));
-  // Captures the raw body alongside normal JSON parsing — webhook signature verification
-  // (Daily.co, and eventually Monnify) has to HMAC the exact bytes as sent, and by the time
-  // req.body exists as a parsed object that's already lost.
-  // Body limits are deliberately split. express.json()'s default is 100kb, and because uploads
-  // arrive as base64 inside the JSON body (inflating bytes by 4/3), that capped real files at
-  // roughly 75kb — so any document or voice note of a realistic size was rejected by the parser
-  // before reaching the route. Worse, the resulting PayloadTooLargeError is not an AppError, so
-  // the error handler reported it as a generic 500 "Internal server error" and the cause was
-  // invisible from the client.
-  //
-  // Only /files/upload gets the large budget. Applying it globally would let any endpoint accept
-  // a multi-megabyte body, which is a cheap way to tie up the process.
+  // Keeps the raw request bytes alongside the parsed JSON so webhook HMAC signatures can be verified.
   const captureRawBody = (req: express.Request, _res: express.Response, buf: Buffer) => {
     (req as express.Request & { rawBody?: Buffer }).rawBody = buf;
   };
+  // Default JSON body limit for every route except uploads.
   const standardJson = express.json({ limit: "1mb", verify: captureRawBody });
+  // Larger JSON limit for base64 file uploads only, so other endpoints can't be used to tie up the process.
   const uploadJson = express.json({ limit: config.maxUploadBodyBytes, verify: captureRawBody });
+  // Picks the upload or standard body parser based on the request path.
   app.use((req, res, next) => {
     (req.path === UPLOAD_PATH ? uploadJson : standardJson)(req, res, next);
   });
+  // Parses cookies and attaches the per-request context (request id, actor) used by later middleware.
   app.use(cookieParser());
   app.use(attachRequestContext);
 
+  // Liveness probe used by Docker and load balancers.
   app.get("/health", (_req, res) => {
     res.json({ status: "ok", timestamp: new Date().toISOString() });
   });
@@ -76,6 +72,7 @@ export function createApp() {
   app.use(clinicalMetricsRoutes);
   app.use(availabilityRoutes);
   app.use(nursingRoutes);
+  app.use(drugSupplyRoutes);
 
   app.use(notFoundHandler);
   app.use(errorHandler);

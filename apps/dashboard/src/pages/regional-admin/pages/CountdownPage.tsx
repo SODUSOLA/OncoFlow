@@ -20,12 +20,7 @@ const STATUS_LABEL: Record<CardStatus, string> = {
   escalated: "Escalated",
 };
 
-// The shared Badge component's variant colors are generic Tailwind reds/ambers/greens used
-// across the whole dashboard (Login, patient views) — not the Regional Admin's locked palette.
-// Overriding per-instance via className (tailwind-merge resolves the conflicting bg-/text-
-// utilities) gets the exact admin-* SLA-badge colors from ONCOFLOW_DESIGN_SYSTEM.md's "SLA
-// countdown/badge" component (item 5: normal gray, warning orange, breached red) without
-// changing Badge's defaults for screens that were never re-specced.
+// Overrides Badge's generic colors per instance with the locked admin-* SLA badge colors, without changing Badge for other screens.
 const STATUS_BADGE_CLASS: Record<CardStatus, string> = {
   "on-track": "bg-admin-disabled-alt text-admin-text-secondary",
   "overdue-bloodwork": "bg-admin-danger/10 text-admin-danger-text",
@@ -35,15 +30,10 @@ const STATUS_BADGE_CLASS: Record<CardStatus, string> = {
   escalated: "bg-admin-danger/10 text-admin-danger-text",
 };
 
-// Derived from the real CountdownCase fields (no fabricated "protocol"/"consult" data — those
-// don't exist in this system's model). This ordering mirrors what the 7-day pathway actually
-// requires in sequence (labs -> QA review -> payment). Shared with the layout's bell alert and
-// the Notification Center's Critical column — see lib/countdownStatus.ts.
+// Status derived from real CountdownCase fields in the pathway's order (labs → QA → payment), shared with the bell alert and Notification Center.
 const deriveStatus = deriveCountdownStatus;
 
-// Matches the designer's 7-Day Countdown mockup exactly: 4 named columns, colored framing on
-// the flagged/ready states. The real data tracks a daily countdown (0-7) — bucketing adjacent
-// days into each column since there's no product spec for finer-grained stages.
+// Four named columns matching the mockup, bucketing adjacent countdown days since no finer stage spec exists.
 const COLUMNS = [
   { key: "day7", label: "Day 7", sub: "Initiation", match: (d: number) => d === 7 },
   { key: "day5", label: "Day 5", sub: "Pre-Auth & Labs", match: (d: number) => d === 5 || d === 6 },
@@ -51,6 +41,7 @@ const COLUMNS = [
   { key: "day0", label: "Day 0", sub: "Infusion Ready", match: (d: number) => d <= 2 },
 ] as const;
 
+// 7-day countdown board.
 export default function CountdownPage() {
   const { facilityIdsInRegion } = useRegionScope();
   const [cases, setCases] = useState<CountdownCase[]>([]);
@@ -58,6 +49,7 @@ export default function CountdownPage() {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
+    // Loads the region's countdown cases.
     function loadCases() {
       api.get<{ cases: CountdownCase[] }>("/countdown-cases?scope=overview").then((d) => setCases(d.cases)).catch(() => {});
     }
@@ -69,8 +61,7 @@ export default function CountdownPage() {
 
   const patientById = useMemo(() => new Map(patients.map((p) => [p.id, p])), [patients]);
 
-  // Region scope applied silently (no filter-pill row in the mockup) — a case only counts here
-  // if its patient's facility is in the admin's own region.
+  // Region scope applies silently: a case counts only if its patient's facility is in the admin's region.
   const visibleCases = useMemo(
     () => cases.filter((c) => {
       const fac = patientById.get(c.patientId)?.facilityId;
@@ -161,10 +152,7 @@ export default function CountdownPage() {
                         key={c.id}
                         className={cn(
                           "relative border-admin-border p-3.5",
-                          // A Day-0 card sits on the solid dark-green column header above (the
-                          // card itself keeps a plain white body), so the "flagged" red left-
-                          // border strip that reads fine elsewhere would clash here — the small
-                          // corner badge below is Day 0's only flagged indicator instead.
+                          // Day-0 cards sit on a dark header, so the red border strip would clash and the corner badge is the only flag.
                           flagged && !isDay0 && "border-l-4 border-l-admin-danger bg-admin-danger/5",
                         )}
                       >

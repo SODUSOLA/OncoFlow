@@ -36,9 +36,7 @@ export const metadata: Metadata = {
     description:
       "A secure, role-based platform that coordinates the full cancer care journey across hospitals, clinicians, and patients.",
   },
-  // iOS doesn't read the web manifest's start_url for "Add to Home Screen" bookmarks — it
-  // launches whatever URL was open when the user tapped Add to Home Screen. These tags make
-  // that bookmark open full-screen (no Safari chrome) instead of as a regular browser tab.
+  // iOS ignores the manifest's start_url for home-screen bookmarks, so these tags make the bookmark open full-screen.
   appleWebApp: {
     capable: true,
     statusBarStyle: "black-translucent",
@@ -50,6 +48,7 @@ export const viewport: Viewport = {
   themeColor: "#002147",
 };
 
+// Root layout with fonts and metadata.
 export default function RootLayout({
   children,
 }: Readonly<{

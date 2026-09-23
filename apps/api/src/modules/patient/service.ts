@@ -6,8 +6,7 @@ import { Patient } from "./entities/Patient.js";
 import { Wallet } from "./entities/Wallet.js";
 import { PATIENT_TIMELINE_EVENT_TYPES } from "./entities/TimelineEvent.js";
 import { sendRegistrationConfirmedEmail } from "./services/RegistrationConfirmedEmailService.js";
-// Facility is reference data (name for the confirmation email) — same read-only cross-module
-// direction the billing module already takes on it, no cycle risk.
+// Read-only cross-module use of facility reference data for the confirmation email; no cycle risk.
 import { FacilityRepository } from "../facility/repository.js";
 
 const patientRepo = new PatientRepository();
@@ -16,10 +15,7 @@ const facilityRepo = new FacilityRepository();
 
 const UNIQUE_ID_GENERATION_ATTEMPTS = 5;
 
-// Server-generated only — never accept a client-supplied ID (patient/routes.ts's own comment
-// on why: it's the one thing a patient must never be able to choose for themselves). Used both
-// by Admin's direct-entry POST /patients flow and by AuthService.verifyEmail's auto-registration
-// (request #5) — same ID format (`OC-NNNNNN`) either way, just issued at a different moment.
+// Server-generated OC-NNNNNN ID, never client-supplied, used by both admin registration and email-verification auto-registration.
 export async function generateUniquePatientId(): Promise<string> {
   for (let attempt = 0; attempt < UNIQUE_ID_GENERATION_ATTEMPTS; attempt++) {
     const candidate = `OC-${crypto.randomInt(0, 1_000_000).toString().padStart(6, "0")}`;
@@ -29,7 +25,9 @@ export async function generateUniquePatientId(): Promise<string> {
   throw new Error("Could not generate a unique patient ID — please try again");
 }
 
+// Business logic for patient registration and facility confirmation.
 export class PatientService {
+  // Registers a patient with a server-issued ID and creates their wallet.
   async registerPatient(data: {
     uniquePatientId: string;
     firstName: string;
@@ -46,8 +44,7 @@ export class PatientService {
       throw new Error("Patient with this ID already exists");
     }
 
-    // FR-01: same person, same facility, already has an active ID — reject before issuance
-    // rather than creating a second ID and splitting their care timeline.
+    // FR-01: rejects a duplicate before issuing an ID so a person's care timeline isn't split.
     const duplicate = await patientRepo.findPotentialDuplicate(data.firstName, data.lastName, data.dob, data.facilityId);
     if (duplicate) {
       throw new Error("It looks like you may already have an account");
@@ -91,11 +88,7 @@ export class PatientService {
     };
   }
 
-  // Request #5's other half: the patient record already exists and is fully usable by this
-  // point (auto-created at email verification) — this is Admin confirming the self-reported
-  // facility was right, optionally correcting it, and closing out onboarding. Idempotent-ish:
-  // re-confirming an already-confirmed patient just refreshes the timestamp rather than erroring,
-  // since there's no harm in it and no state to corrupt.
+  // Admin confirms or corrects the self-reported facility on an already-live record; re-confirming just refreshes the timestamp.
   async confirmFacility(patientId: string, facilityId?: string) {
     const patientRow = await patientRepo.findById(patientId);
     if (!patientRow) {
@@ -110,17 +103,12 @@ export class PatientService {
       throw new Error("Patient not found");
     }
 
-    // The registration request row is what drives Admin's pending queue — confirming is what
-    // "handled" now means (it used to be approval/creation). Best-effort: the confirmation
-    // itself already succeeded, and a stale queue row is a far smaller problem than failing
-    // a completed confirmation.
+    // Removes the registration request that drives Admin's queue; best-effort since the confirmation already succeeded.
     if (updated.userId) {
       await registrationRequestRepo.deleteByUserId(updated.userId).catch(() => {});
     }
 
-    // Fire-and-forget, same tolerance as every other outbound mail in this codebase — it's
-    // queued (BullMQ, with retries) rather than sent inline, so a transient vendor failure
-    // doesn't need to fail the admin's request.
+    // Queues the confirmation email (with retries) instead of sending inline, so a vendor failure can't fail the request.
     const facilityRow = await facilityRepo.findById(updated.facilityId);
     void sendRegistrationConfirmedEmail(
       updated.email,

@@ -1,9 +1,7 @@
 import { describe, it, expect } from "vitest";
 import { waitFor } from "./wait-for.js";
 
-// waitFor underpins the fire-and-forget assertions in email-verification, password-reset,
-// auto-registration and payment. If it ever returned a truthy value for a condition that never
-// held, all four suites would pass vacuously — so its contract is pinned here directly.
+// waitFor underpins several fire-and-forget assertions, so its contract is pinned to prevent those suites passing vacuously.
 describe("waitFor", () => {
   it("returns the value as soon as a sync check succeeds", async () => {
     expect(await waitFor(() => "ready")).toBe("ready");
@@ -13,8 +11,7 @@ describe("waitFor", () => {
     expect(await waitFor(() => undefined, { timeoutMs: 60, intervalMs: 10 })).toBeUndefined();
   });
 
-  // The bug this guards: an un-awaited async check returns a Promise, which is always truthy,
-  // so the first poll would "succeed" immediately and the caller would assert against nothing.
+  // Guards against an un-awaited async check returning an always-truthy Promise, so the first poll would succeed and assert against nothing.
   it("awaits an async check rather than treating its Promise as truthy", async () => {
     const result = await waitFor(
       () => Promise.resolve(undefined),

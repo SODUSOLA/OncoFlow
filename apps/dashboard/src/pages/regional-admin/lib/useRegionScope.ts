@@ -14,10 +14,7 @@ interface RegionScope {
   facilityIdsInRegion: Set<string>;
 }
 
-// Derives "my region" from the admin's own `facilityId` (already populated for Regional Admins,
-// see auth/schema.ts) cross-referenced against `Facility.region` — no `User.region` column exists
-// yet (still an open business question per 21-regional-admin-scope-definition.md), so this is a
-// client-side read of data that's already there rather than a new backend concept.
+// Derives "my region" from the admin's facilityId and Facility.region on the client, since no User.region column exists yet.
 export function useRegionScope(): RegionScope {
   const { user } = useAuth();
   const { facilities, loading } = useSyncExternalStore(

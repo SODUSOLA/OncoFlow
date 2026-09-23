@@ -4,7 +4,9 @@ import type { PatientTimelineEventType } from "../entities/TimelineEvent.js";
 
 const timelineRepo = new PatientTimelineRepository();
 
+// Business logic for the patient timeline.
 export class TimelineService {
+  // Records a timeline entry for a patient.
   async record(data: {
     patientId: string;
     eventType: PatientTimelineEventType;
@@ -18,6 +20,7 @@ export class TimelineService {
     });
   }
 
+  // Lists a patient's timeline entries.
   async getByPatient(patientId: string) {
     return timelineRepo.findByPatient(patientId);
   }

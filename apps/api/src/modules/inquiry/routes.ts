@@ -44,12 +44,14 @@ const router = Router();
 
 // Public — no session. A visitor's only credential is the per-inquiry token issued at creation.
 router.post("/public-inquiries", validateBody(createInquirySchema), createInquiryHandler);
+// Visitor reads their thread, authenticated by access token.
 router.get(
   "/public-inquiries/:id/messages",
   validateParams(inquiryIdParamSchema),
   validateQuery(visitorMessagesQuerySchema),
   getVisitorMessagesHandler,
 );
+// Visitor posts a message, authenticated by access token.
 router.post(
   "/public-inquiries/:id/messages",
   validateParams(inquiryIdParamSchema),
@@ -64,12 +66,14 @@ router.get(
   validateQuery(listInquiriesQuerySchema),
   listInquiriesHandler,
 );
+// Staff read an inquiry's thread.
 router.get(
   "/admin/inquiries/:id/messages",
   requirePermission("publicInquiry", "read"),
   validateParams(inquiryIdParamSchema),
   listStaffMessagesHandler,
 );
+// Staff reply to an inquiry.
 router.post(
   "/admin/inquiries/:id/messages",
   requirePermission("publicInquiry", "update"),
@@ -77,6 +81,7 @@ router.post(
   validateBody(staffMessageSchema),
   postStaffMessageHandler,
 );
+// Staff link an inquiry to an existing patient.
 router.post(
   "/admin/inquiries/:id/link",
   requirePermission("publicInquiry", "update"),
@@ -84,6 +89,7 @@ router.post(
   validateBody(linkPatientSchema),
   linkInquiryToPatientHandler,
 );
+// Staff close an inquiry.
 router.post(
   "/admin/inquiries/:id/close",
   requirePermission("publicInquiry", "update"),

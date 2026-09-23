@@ -4,15 +4,10 @@ import crypto from "node:crypto";
 import { user, userRole } from "../db/schema.js";
 import { User } from "../modules/auth/index.js";
 
-// Frontend dev/demo login accounts — one per stakeholder role, all sharing one password for
-// convenience. `user` has no name column (only `patient` does — see auth/schema.ts), so the
-// only place a "convincing" identity can live is the email address itself; apps/dashboard's
-// DashboardLayout only ever renders user.email, never a separate display name.
+// Demo login accounts, one per role with one shared password; the dashboard only shows user.email, so identity lives in the address.
 const DEMO_PASSWORD = "DemoPass123!";
 
-// PATIENT, SUPER_ADMIN, and the two national-level roles aren't tied to one facility
-// (patient/schema.ts's own comment on user.facilityId) — every other role gets one, round-robin
-// across the 5 seeded facilities below.
+// PATIENT, SUPER_ADMIN and the national roles aren't tied to one facility; every other role is assigned one round-robin.
 const DEMO_USERS: { email: string; password: string; roleName: string; facilityScoped: boolean }[] = [
   { email: "admin@oncoflow.dev", password: DEMO_PASSWORD, roleName: "SUPER_ADMIN", facilityScoped: false },
   { email: "funmilayo.bankole@oncoflow.dev", password: DEMO_PASSWORD, roleName: "REGIONAL_ADMIN", facilityScoped: true },
@@ -30,14 +25,11 @@ const DEMO_USERS: { email: string; password: string; roleName: string; facilityS
   { email: "tolu.adisa@oncoflow.dev", password: DEMO_PASSWORD, roleName: "SCRIBE", facilityScoped: true },
 ];
 
+// Seeds a demo staff login per role.
 export async function seedDemoUsers() {
   const facilityRows = await db.execute<{ id: string; region: string }>(sql`SELECT id, region FROM facility ORDER BY name`);
   let facilityIndex = 0;
-  // The pilot facility (LUTH, region "Lagos" — see 17-ideal-registration-onboarding-flow.md /
-  // seed/billing.ts's own pilotFacility lookup) is the only one carrying real showcase
-  // patients/invoices/tariffs/inventory stock. The lone REGIONAL_ADMIN demo account is pinned
-  // here specifically so a login actually shows populated data, instead of round-robining onto
-  // a facility (e.g. Kano) that only has the facility-agnostic staffing policy seeded.
+  // The lone REGIONAL_ADMIN and ONSITE_NURSING_OFFICER are pinned to the pilot Lagos facility, the only one with showcase data, so the nurse's requests fall in the admin's region.
   const pilotFacilityId = facilityRows.find((f) => f.region === "Lagos")?.id ?? facilityRows[0]?.id;
 
   for (const demo of DEMO_USERS) {
@@ -51,7 +43,7 @@ export async function seedDemoUsers() {
       const passwordHash = await User.hashPassword(demo.password);
       const facilityId = !demo.facilityScoped
         ? null
-        : demo.roleName === "REGIONAL_ADMIN"
+        : demo.roleName === "REGIONAL_ADMIN" || demo.roleName === "ONSITE_NURSING_OFFICER"
           ? pilotFacilityId ?? null
           : facilityRows.length > 0
             ? facilityRows[facilityIndex++ % facilityRows.length]!.id
@@ -84,8 +76,7 @@ export async function seedDemoUsers() {
   console.log(`Demo users seed complete — password for all: ${DEMO_PASSWORD}`);
 }
 
-// Guarded so importing this from seed/index.ts doesn't also trigger a second, racing
-// invocation (see identity.ts's own comment on this pattern).
+// Guarded so importing this from seed/index.ts doesn't trigger a second racing run.
 if (import.meta.url === `file://${process.argv[1]}`) {
   seedDemoUsers().catch(console.error);
 }

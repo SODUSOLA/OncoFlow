@@ -10,26 +10,19 @@ import {
   invoice, walletTransaction, wallet,
 } from "../db/schema.js";
 
-// Enriches one existing demo patient (Adebayo — already has organically-built wallet/invoice/
-// messaging history from manual testing) with the handful of entities no other seed script
-// touches: countdown case, lab requests/results, appointments + a meeting, notifications, and
-// a fuller timeline. Goal is a single login that has *something* behind every patient-facing
-// screen, for reviewing the whole app without hitting empty states.
-//
-// lab_result.file_id is a real FK, so this creates a `file` row to point at — but R2 isn't
-// configured in dev (see documents/controller.ts's "not configured" 502), so its storage_key
-// is a placeholder, not real uploaded bytes. Fine for exercising the Records list/badge UI;
-// actual file download/preview will fail the same way any other dev-env file lookup does.
+// Enriches one demo patient with countdown case, labs, appointments, meeting, notifications and timeline so every patient screen has data; file rows use placeholder storage keys.
 const SHOWCASE_PATIENT_EMAIL = "adebayo.ogunlesi@example.com";
 const VMO_EMAIL = "chukwuemeka.obi@oncoflow.dev";
 const ONCOLOGIST_EMAIL = "adaeze.nwankwo@oncoflow.dev";
 
+// Returns the user id for an email.
 async function findUserIdByEmail(email: string): Promise<string> {
   const rows = await db.select({ id: user.id }).from(user).where(eq(user.email, email)).limit(1);
   if (rows.length === 0) throw new Error(`User not found: ${email} — run seedDemoUsers/seedPatients first`);
   return rows[0]!.id;
 }
 
+// Seeds the showcase patient's extra records.
 export async function seedShowcasePatient() {
   const patientRows = await db.select().from(patient).where(eq(patient.email, SHOWCASE_PATIENT_EMAIL)).limit(1);
   if (patientRows.length === 0) {
@@ -53,11 +46,12 @@ export async function seedShowcasePatient() {
   const oncologistId = await findUserIdByEmail(ONCOLOGIST_EMAIL);
 
   const now = Date.now();
+  // Returns a date the given number of days ago.
   const daysAgo = (n: number) => new Date(now - n * 86_400_000);
+  // Returns a date the given number of days ahead.
   const daysFromNow = (n: number) => new Date(now + n * 86_400_000);
 
-  // Countdown case — day 3 of a 7-day post-treatment window, labs already prompted so the
-  // Dashboard's "Next Phase Protocol" card and the pending lab request below tell one story.
+  // A countdown case on day 3 with labs already prompted, matching the pending lab request below.
   await db.insert(countdownCase).values({
     id: crypto.randomUUID(),
     patientId: pat.id,
@@ -105,8 +99,7 @@ export async function seedShowcasePatient() {
     fileHash: crypto.createHash("sha256").update(`${pat.id}-cbc-panel`).digest("hex"),
   });
 
-  // Upcoming virtual consult (Dashboard "Next Event" card, Appointments calendar, Video
-  // Consultation waiting room) with a scheduled meeting behind it.
+  // Upcoming virtual consult with a scheduled meeting behind it.
   const upcomingAppointmentId = crypto.randomUUID();
   await db.insert(appointment).values({
     id: upcomingAppointmentId,
@@ -121,8 +114,7 @@ export async function seedShowcasePatient() {
   await db.insert(meeting).values({
     id: crypto.randomUUID(),
     appointmentId: upcomingAppointmentId,
-    // Daily.co isn't configured in dev — same caveat as the file upload above; this exercises
-    // the waiting-room UI, not an actual joinable room.
+    // Daily isn't configured in dev, so this only exercises the waiting-room UI.
     provider: "daily",
     roomId: `oncoflow-demo-${upcomingAppointmentId.slice(0, 8)}`,
     status: "SCHEDULED",
@@ -141,8 +133,7 @@ export async function seedShowcasePatient() {
     paymentConfirmedAt: daysAgo(11),
   });
 
-  // Notification feed — one of each type the frontend already labels, mixed read/unread so
-  // the PatientTopBar's unread badge has something to count.
+  // One notification of each labeled type, mixed read and unread so the unread badge has a count.
   await db.insert(notification).values([
     { id: crypto.randomUUID(), recipientId: patientUserId, type: "APPOINTMENT_REMINDER", status: "SENT", sentAt: daysAgo(0) },
     { id: crypto.randomUUID(), recipientId: patientUserId, type: "LAB_RESULT_REVIEWED", status: "READ", sentAt: daysAgo(11) },
@@ -151,9 +142,7 @@ export async function seedShowcasePatient() {
     { id: crypto.randomUUID(), recipientId: patientUserId, type: "NEW_MESSAGE", status: "PENDING" },
   ]);
 
-  // Round out the Dashboard timeline with the appointments above plus real references to
-  // whatever invoice/wallet-transaction rows this patient already has from prior manual testing
-  // — falls back to the patient's own id (a generic STATUS_CHANGE reference) if none exist yet.
+  // Rounds out the timeline with real invoice or wallet references, falling back to the patient's own id.
   const [oneInvoice] = await db.select({ id: invoice.id }).from(invoice).where(eq(invoice.patientId, pat.id)).limit(1);
   const [oneWalletTxn] = await db
     .select({ id: walletTransaction.id })

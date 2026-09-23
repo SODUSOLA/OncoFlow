@@ -11,6 +11,7 @@ const patientRepo = new PatientRepository();
 
 // --- Visitor-facing (no session — access is proven by the per-inquiry token instead) ---
 
+// Creates a public inquiry and returns the visitor's access token once.
 export async function createInquiryHandler(req: Request, res: Response) {
   try {
     const { name, email, phone, message } = req.body;
@@ -36,6 +37,7 @@ export async function createInquiryHandler(req: Request, res: Response) {
   }
 }
 
+// Loads an inquiry and verifies the visitor's access token, returning an error status on failure.
 async function loadInquiryForVisitor(id: string, token: unknown) {
   if (typeof token !== "string" || !token) return { error: 403 as const };
   const inquiry = await inquiryRepo.findById(id);
@@ -44,6 +46,7 @@ async function loadInquiryForVisitor(id: string, token: unknown) {
   return { inquiry };
 }
 
+// Returns the message thread for a visitor who holds the inquiry's token.
 export async function getVisitorMessagesHandler(req: Request, res: Response) {
   try {
     const result = await loadInquiryForVisitor(String(req.params.id), req.query.token);
@@ -61,6 +64,7 @@ export async function getVisitorMessagesHandler(req: Request, res: Response) {
   }
 }
 
+// Posts a visitor's message, reopening the inquiry if it was closed.
 export async function postVisitorMessageHandler(req: Request, res: Response) {
   try {
     const { token, content } = req.body;
@@ -69,8 +73,7 @@ export async function postVisitorMessageHandler(req: Request, res: Response) {
       res.status(result.error).json({ error: result.error === 404 ? "Inquiry not found" : "Forbidden" });
       return;
     }
-    // A visitor replying to a closed inquiry is a real follow-up, not noise — reopen it so it
-    // resurfaces in staff's open queue instead of sitting silently in Closed.
+    // A reply to a closed inquiry is a real follow-up, so it's reopened to resurface in staff's open queue.
     if (result.inquiry.status === "CLOSED") {
       await inquiryRepo.update(result.inquiry.id, { status: "OPEN" });
     } else {
@@ -85,6 +88,7 @@ export async function postVisitorMessageHandler(req: Request, res: Response) {
 
 // --- Staff-facing (requireAuthenticated + publicInquiry permission, enforced in routes.ts) ---
 
+// Lists inquiries for staff.
 export async function listInquiriesHandler(req: Request, res: Response) {
   try {
     const rows = await inquiryRepo.findAll();
@@ -96,6 +100,7 @@ export async function listInquiriesHandler(req: Request, res: Response) {
   }
 }
 
+// Lists an inquiry's messages for staff.
 export async function listStaffMessagesHandler(req: Request, res: Response) {
   try {
     const inquiry = await inquiryRepo.findById(String(req.params.id));
@@ -113,6 +118,7 @@ export async function listStaffMessagesHandler(req: Request, res: Response) {
   }
 }
 
+// Posts a staff reply to an inquiry.
 export async function postStaffMessageHandler(req: Request, res: Response) {
   try {
     const inquiry = await inquiryRepo.findById(String(req.params.id));
@@ -139,6 +145,7 @@ export async function postStaffMessageHandler(req: Request, res: Response) {
   }
 }
 
+// Links an inquiry to an existing patient record.
 export async function linkInquiryToPatientHandler(req: Request, res: Response) {
   try {
     const inquiry = await inquiryRepo.findById(String(req.params.id));
@@ -159,6 +166,7 @@ export async function linkInquiryToPatientHandler(req: Request, res: Response) {
   }
 }
 
+// Closes an inquiry.
 export async function closeInquiryHandler(req: Request, res: Response) {
   try {
     const inquiry = await inquiryRepo.findById(String(req.params.id));

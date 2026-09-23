@@ -18,6 +18,7 @@ const values = [
   { title: "Calm, not urgent", body: "No gamification, no manufactured urgency beyond the SLA timers the product genuinely needs." },
 ];
 
+// About page.
 export default function AboutPage() {
   return (
     <>

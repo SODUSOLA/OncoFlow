@@ -2,20 +2,20 @@ import type { Request, Response } from "express";
 import type { AuthenticatedRequest } from "../../lib/rbac.js";
 import { userHasPermission } from "../../lib/rbac.js";
 import { FileService } from "./service.js";
-// Cross-module read (same pattern as clinical/controller.ts and messaging/service.ts) — needed
-// to check "is this file's/query's patientId the caller's own patient record" (Patient role
-// spec: "can upload own labs") before falling back to the staff-level file:create/read grant.
+// Cross-module read to check whether a file's patient is the caller's own record before falling back to staff grants.
 import { PatientRepository } from "../patient/index.js";
 import { config } from "../../config.js";
 
 const fileSvc = new FileService();
 const patientRepo = new PatientRepository();
 
+// True when the patient record belongs to the caller.
 async function callerOwnsPatient(callerId: string, patientId: string): Promise<boolean> {
   const patientRow = await patientRepo.findById(patientId);
   return !!patientRow?.userId && patientRow.userId === callerId;
 }
 
+// Uploads a file (base64 JSON), stores it in R2 and queues a virus scan.
 export async function uploadFileHandler(req: Request, res: Response) {
   try {
     const { patientId, mimeType, content } = req.body;
@@ -25,9 +25,7 @@ export async function uploadFileHandler(req: Request, res: Response) {
     }
     const uploadedBy = (req as AuthenticatedRequest).userId;
 
-    // A file not tied to any patient (patientId omitted) is a staff/system upload — that
-    // still needs the file:create permission. A patient uploading their own file (e.g. a lab
-    // result) doesn't need a blanket grant, only ownership of the patientId they're attaching it to.
+    // A file with no patient is a staff or system upload needing file:create; a patient's own file needs only ownership.
     if (patientId) {
       const isSelf = await callerOwnsPatient(uploadedBy, patientId);
       if (!isSelf && !(await userHasPermission(uploadedBy, "file", "create"))) {
@@ -40,10 +38,7 @@ export async function uploadFileHandler(req: Request, res: Response) {
     }
 
     const buffer = Buffer.from(content as string, "base64");
-    // Checked on the decoded bytes, not the base64 string, so the limit means what it says.
-    // The body parser also caps the request (app.ts), but that produces a generic
-    // "body too large" about the envelope; this is the one that can name the actual file limit,
-    // and it keeps the rule intact if the parser budget is ever raised independently.
+    // Checked on decoded bytes so the limit is accurate and the error can name the real file limit, independent of the parser's budget.
     if (buffer.byteLength > config.maxUploadBytes) {
       const limitMb = (config.maxUploadBytes / (1024 * 1024)).toFixed(0);
       res.status(413).json({
@@ -62,6 +57,7 @@ export async function uploadFileHandler(req: Request, res: Response) {
   }
 }
 
+// Returns a file's metadata, blocked once it is flagged infected.
 export async function getFileHandler(req: Request, res: Response) {
   try {
     const result = await fileSvc.findById(String(req.params.id));
@@ -73,9 +69,7 @@ export async function getFileHandler(req: Request, res: Response) {
       return;
     }
 
-    // F4.6: block the file from being served once flagged infected — no reviewer-override
-    // role exists in this codebase, so this blocks unconditionally rather than half-gating it
-    // behind a permission nobody has been granted.
+    // F4.6: an infected file is blocked unconditionally, since no reviewer-override role exists.
     if (result.file.virusScanStatus === "INFECTED") {
       res.status(403).json({ error: "File blocked: flagged as infected, pending review" });
       return;
@@ -91,12 +85,7 @@ export async function getFileHandler(req: Request, res: Response) {
   }
 }
 
-// Serves the actual bytes. GET /files/:id only ever returned metadata — storage_key, mime
-// type, scan status — and nothing in the codebase read the object back out of R2 except the
-// virus-scan worker, so an uploaded avatar or lab document had no way to reach a browser at
-// all. This runs the exact same authorization as getFileHandler (ownership-or-permission,
-// then the infected-file block) before minting a fresh, short-TTL signed URL and redirecting
-// to it — never a public bucket link, per docs/build-plan/10-security-gates.md Gate 6.
+// Serves the file bytes: same authorization as the metadata route, then a fresh short-TTL signed R2 redirect, never a public bucket link.
 export async function downloadFileHandler(req: Request, res: Response) {
   try {
     const result = await fileSvc.findById(String(req.params.id));
@@ -108,23 +97,17 @@ export async function downloadFileHandler(req: Request, res: Response) {
       return;
     }
 
-    // Same F4.6 rule as getFileHandler: an infected file is blocked outright, not just hidden
-    // from the metadata response — otherwise the flag would be cosmetic while the bytes stayed
-    // fetchable through this route.
+    // The same F4.6 block applies here so the infected flag isn't cosmetic while the bytes stay fetchable.
     if (result.file.virusScanStatus === "INFECTED") {
       res.status(403).json({ error: "File blocked: flagged as infected, pending review" });
       return;
     }
 
-    // ?download=true asks for Content-Disposition: attachment (a save dialog) instead of
-    // letting the browser render the file inline — useful for a lab PDF, wrong default for an
-    // avatar `<img>` or an inline chat image.
+    // ?download=true forces an attachment (save dialog) instead of inline rendering.
     const forceDownload = req.query.download === "true";
     const url = await fileSvc.getSignedUrl(result.file, { forceDownload });
 
-    // Never cached: per Gate 6, every access mints a fresh signed URL after a fresh
-    // authorization check, not a URL an intermediary could hand out again without that check
-    // re-running.
+    // Never cached, so every access re-runs authorization and mints a fresh signed URL.
     res.set("Cache-Control", "no-store");
     res.redirect(url);
   } catch (err) {
@@ -138,6 +121,7 @@ export async function downloadFileHandler(req: Request, res: Response) {
   }
 }
 
+// Lists a patient's files (own for patients, permission for staff).
 export async function listPatientFilesHandler(req: Request, res: Response) {
   try {
     const patientId = typeof req.query.patientId === "string" ? req.query.patientId : undefined;

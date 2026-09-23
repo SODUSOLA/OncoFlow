@@ -26,23 +26,22 @@ export interface AuditActivityRow {
   actorEmail: string | null;
 }
 
+// Data access for the append-only audit log.
 export class AuditRepository {
+  // Inserts one audit row.
   async create(data: typeof auditLog.$inferInsert) {
     const rows = await db.insert(auditLog).values(data).returning();
     return rows[0]!;
   }
 
-  // No facility_id column exists on audit_log (see schema.ts) — region-scoping happens by first
-  // resolving which staff (user ids) belong to the caller's region, then filtering on those.
+  // audit_log has no facility column, so region scoping resolves the region's staff user ids first and filters on those.
   async findUserIdsByFacilityIds(facilityIds: string[]): Promise<string[]> {
     if (facilityIds.length === 0) return [];
     const rows = await db.select({ id: user.id }).from(user).where(inArray(user.facilityId, facilityIds));
     return rows.map((r) => r.id);
   }
 
-  // `actorIds === null` means unrestricted (SUPER_ADMIN, or a caller with no facility) — every
-  // event, not scoped to any region. `actorIds === []` means a region resolved to zero staff,
-  // which is a real "nothing to show" case, not the same as unrestricted.
+  // actorIds null means unrestricted; an empty array means the region has no staff, which is a genuine empty result.
   async findRecent(actorIds: string[] | null, limit: number): Promise<AuditActivityRow[]> {
     if (actorIds !== null && actorIds.length === 0) return [];
 

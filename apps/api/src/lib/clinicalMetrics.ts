@@ -1,21 +1,4 @@
-// Centralizes BMI/BSA/CrCl/eGFR computation and their tiering, per
-// ONCOFLOW_LAB_AND_METRICS_WORKFLOW.md Track 1 — "a small static config/lookup... centralized
-// in one place so Nursing Officer's view, the Video Room, and any other surface compute
-// identically." Every consumer (nursing-entry service, Safety Check Banner, Patient File)
-// imports from here rather than re-implementing the formulas.
-//
-// RESOLVED (was open): eGFR and CrCl are two separate, independently-labeled calculations, per
-// the doc's later resolution — CrCl (Cockcroft-Gault) was always given; eGFR uses CKD-EPI 2021
-// (race-free), the doc's own recommendation since the source spec didn't specify a formula.
-// Their tier/stage boundaries do NOT line up (CrCl tiers: 50-59/30-49, from the original source
-// doc; eGFR/KDIGO staging: 45-59/30-44, the real KDIGO cutoffs) — flagged in the doc itself as
-// something to know, not a bug if the two disagree at the boundary.
-//
-// BMI classification (WHO standard) is the standard clinical band. The source doc references
-// "the clinical spec you provided" for these without including the actual cutoff numbers in
-// this doc, so — same as everywhere else in this project — flagging rather than guessing: these
-// are the well-established standard values, not confirmed against whatever internal spec was
-// referenced. Get clinical sign-off before relying on them for a real dosing/eligibility decision.
+// Single home for BMI/BSA/CrCl/eGFR maths and tiering so every surface computes identically; eGFR (CKD-EPI 2021) and CrCl (Cockcroft-Gault) are separate calculations with different boundaries.
 
 import type { bmiClassificationEnum, crclTierEnum, egfrStageEnum } from "../db/enums.js";
 
@@ -41,14 +24,14 @@ export interface ClinicalMetricsResult {
   egfrStage: EgfrStage;
 }
 
-// Below this CrCl, per the product spec: locks the case pending Senior Clinical Director /
-// Chief Consultant sign-off (case_lock.triggeredBy = CRCL_CRITICAL).
+// CrCl below this locks the case pending senior clinical sign-off (case_lock.triggeredBy = CRCL_CRITICAL).
 export const CRCL_CASE_LOCK_THRESHOLD = 50;
 // eGFR case-lock trigger fires independently at KDIGO G4/G5 (eGFR < 30).
 export const EGFR_CASE_LOCK_STAGES: readonly EgfrStage[] = ["G4", "G5"];
 
 const UMOL_L_PER_MG_DL = 88.4;
 
+// Classifies BMI by the standard WHO bands; these cutoffs are not confirmed against an internal spec, so get clinical sign-off before dosing decisions.
 export function classifyBmi(bmi: number): BmiClassification {
   if (bmi < 18.5) return "UNDERWEIGHT";
   if (bmi < 25) return "NORMAL";
@@ -56,6 +39,7 @@ export function classifyBmi(bmi: number): BmiClassification {
   return "OBESE";
 }
 
+// Maps a Cockcroft-Gault CrCl value to its tier.
 export function classifyCrcl(crcl: number): CrclTier {
   if (crcl >= 90) return "NORMAL";
   if (crcl >= 60) return "MILD_IMPAIRMENT";
@@ -74,6 +58,7 @@ export function classifyEgfr(egfr: number): EgfrStage {
   return "G5";
 }
 
+// Computes BMI, BSA, CrCl and eGFR with their tiers from one set of biometric inputs.
 export function computeClinicalMetrics(input: ClinicalMetricsInput): ClinicalMetricsResult {
   const { weightKg, heightCm, ageYears, sex, serumCreatinineUmolL } = input;
   const heightM = heightCm / 100;
@@ -107,6 +92,7 @@ export function computeClinicalMetrics(input: ClinicalMetricsInput): ClinicalMet
   };
 }
 
+// Rounds a number to the given decimal places.
 function round(n: number, decimals: number): number {
   const factor = 10 ** decimals;
   return Math.round(n * factor) / factor;

@@ -8,6 +8,7 @@ export interface TranscriptData {
   createdAt: Date;
 }
 
+// Domain entity for a transcript segment.
 export class Transcript {
   constructor(private data: TranscriptData) {}
 
@@ -19,13 +20,12 @@ export class Transcript {
   get editedAt() { return this.data.editedAt; }
   get createdAt() { return this.data.createdAt; }
 
-  // Post-hoc correction — the Oncologist editing the transcript inline during/after the
-  // call (F3.7). Not append-only like Message: this is the one exception, since the whole
-  // point of this feature is a human-editable transcript, not an immutable log.
+  // The one editable exception to append-only messaging: the oncologist corrects the transcript inline (F3.7).
   edit(content: string, editedBy: string): Transcript {
     return new Transcript({ ...this.data, content, editedBy, editedAt: new Date() });
   }
 
+  // Serializes the transcript segment for API responses.
   toJSON() {
     return {
       id: this.data.id,

@@ -6,6 +6,7 @@ export const metadata: Metadata = {
   description: "How OncoFlow uses cookies on its public website.",
 };
 
+// Cookie policy page.
 export default function CookiesPage() {
   return (
     <LegalPageLayout title="Cookie Policy" lastUpdated="Draft — not yet finalized">

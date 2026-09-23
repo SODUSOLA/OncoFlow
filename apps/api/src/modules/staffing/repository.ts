@@ -2,7 +2,9 @@ import { db } from "../../db/index.js";
 import { eq, and, inArray, isNull, sql } from "drizzle-orm";
 import { shiftRequirement, shiftAssignment } from "./schema.js";
 
+// Data access for shift requirements.
 export class ShiftRequirementRepository {
+  // Lists shift requirements for the given facilities.
   async findByFacilityIds(facilityIds: string[]) {
     if (facilityIds.length === 0) return [];
     return db
@@ -11,13 +13,16 @@ export class ShiftRequirementRepository {
       .where(and(inArray(shiftRequirement.facilityId, facilityIds), eq(shiftRequirement.isDeleted, false)));
   }
 
+  // Inserts a shift requirement.
   async create(data: typeof shiftRequirement.$inferInsert) {
     const row = await db.insert(shiftRequirement).values(data).returning();
     return row[0]!;
   }
 }
 
+// Data access for shift assignments.
 export class ShiftAssignmentRepository {
+  // Lists assignments for the facilities in an ISO week.
   async findForWeek(facilityIds: string[], isoYear: number, isoWeek: number) {
     if (facilityIds.length === 0) return [];
     return db
@@ -31,14 +36,13 @@ export class ShiftAssignmentRepository {
       ));
   }
 
+  // Inserts a shift assignment.
   async create(data: typeof shiftAssignment.$inferInsert) {
     const row = await db.insert(shiftAssignment).values(data).returning();
     return row[0]!;
   }
 
-  // Self-service read — a nurse checking their OWN published assignments for a week (the
-  // Nursing Officer Schedule tab's cross-support banner: is any of it at a facility other than
-  // my own?). No facility filter, since ownership is already the userId match.
+  // Self-service read of a nurse's own published assignments for a week, to spot cross-facility support.
   async findForUserWeek(userId: string, isoYear: number, isoWeek: number) {
     return db
       .select()
@@ -51,9 +55,7 @@ export class ShiftAssignmentRepository {
       ));
   }
 
-  // Publishing is a batch action over a whole week's still-draft rows — a nurse's schedule
-  // shouldn't be revised piecemeal after the week's been published, so this only ever
-  // transitions draft (publishedAt IS NULL) rows, never re-publishes/overwrites one already set.
+  // Publishes only still-draft rows so a published week is never revised piecemeal or overwritten.
   async publishWeek(facilityIds: string[], isoYear: number, isoWeek: number) {
     if (facilityIds.length === 0) return 0;
     const rows = await db

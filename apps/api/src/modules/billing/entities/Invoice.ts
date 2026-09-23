@@ -14,6 +14,7 @@ export interface InvoiceData {
   issuedAt: Date | null;
 }
 
+// Invoice domain entity that enforces the status state machine.
 export class Invoice {
   constructor(private data: InvoiceData) {}
 
@@ -21,6 +22,7 @@ export class Invoice {
   get status() { return this.data.status; }
   get totalKobo() { return this.data.totalKobo; }
 
+  // True when the invoice may move to the target status.
   canTransitionTo(target: InvoiceStatus): boolean {
     const transitions: Record<InvoiceStatus, InvoiceStatus[]> = {
       DRAFT: ["SENT", "VOID"],
@@ -32,6 +34,7 @@ export class Invoice {
     return transitions[this.data.status]?.includes(target) ?? false;
   }
 
+  // Returns a copy moved to the target status, or throws if illegal.
   transition(target: InvoiceStatus): Invoice {
     if (!this.canTransitionTo(target)) {
       throw new Error(`Cannot transition invoice from ${this.data.status} to ${target}`);
@@ -43,6 +46,7 @@ export class Invoice {
     });
   }
 
+  // Serializes the invoice for API responses.
   toJSON() {
     return {
       id: this.data.id,
@@ -63,9 +67,11 @@ export interface InvoiceItemData {
   amountKobo: bigint;
 }
 
+// Domain entity for one invoice line item.
 export class InvoiceItem {
   constructor(private data: InvoiceItemData) {}
 
+  // Serializes the line item, with the bigint kobo amount as a string.
   toJSON() {
     return { ...this.data, amountKobo: this.data.amountKobo.toString() };
   }

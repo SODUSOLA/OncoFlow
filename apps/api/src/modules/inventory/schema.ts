@@ -11,6 +11,8 @@ export const drug = pgTable("drug", {
   name: varchar("name", { length: 255 }).notNull(),
   strength: varchar("strength", { length: 100 }).notNull(),
   category: varchar("category", { length: 100 }).notNull(),
+  // Stock at or below this raises a low-stock alert; null means alerting isn't configured for the drug yet.
+  reorderThreshold: integer("reorder_threshold"),
   createdAt: timestamp("created_at").notNull().defaultNow(),
   updatedAt: timestamp("updated_at").notNull().defaultNow(),
   isDeleted: boolean("is_deleted").notNull().default(false),

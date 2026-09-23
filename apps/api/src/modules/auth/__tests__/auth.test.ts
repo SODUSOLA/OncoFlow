@@ -6,6 +6,7 @@ import { eq } from "drizzle-orm";
 
 const app = createApp();
 
+// Extracts the session id from a login response's set-cookie header.
 function sessionIdFrom(loginRes: { headers: { "set-cookie"?: string[] } }): string {
   const cookies = loginRes.headers["set-cookie"] ?? [];
   const cookieStr = cookies.find((c) => c.startsWith("oncoflow_session="));
@@ -56,11 +57,7 @@ it("register grants the PATIENT role — the only real caller of this endpoint t
   await db.delete(user).where(eq(user.id, userId)).catch(() => {});
 });
 
-// Gender is part of the intake snapshot now. It was added as a NOT NULL column in migration
-// 0011, which deliberately dropped its temporary backfill default so new rows must carry a real
-// value, and patient.gender is NOT NULL too — so a snapshot without it could never satisfy the
-// auto-registration that reads it (verifyEmail -> registerPatient). The registration wizard
-// collects biological sex on step 1 and always sends it.
+// Gender is part of the intake snapshot because both the snapshot and patient.gender are NOT NULL, so auto-registration can't work without it.
 it("register with a complete intake creates a pending patient_registration_request", async () => {
   const email = `intake-${Date.now()}@example.com`;
   const res = await request(app)
@@ -85,14 +82,7 @@ it("register with a complete intake creates a pending patient_registration_reque
   await db.delete(user).where(eq(user.id, userId)).catch(() => {});
 });
 
-// The intake snapshot is deliberately all-or-nothing: register() only writes it when fullName,
-// dob, gender and phone are all present. A partial intake creates the login but no snapshot,
-// so auto-registration correctly no-ops rather than half-creating a patient with a missing
-// field. Pinned explicitly so the rule is asserted rather than assumed.
-//
-// Note this means a partial intake is currently accepted silently (201, no snapshot). That is
-// almost certainly a client bug when it happens, and rejecting it with a 400 would surface it
-// — left as-is here because changing it is a contract change, not a test fix.
+// The intake snapshot is all-or-nothing; a partial intake creates the login but no snapshot (currently accepted silently, and changing that is a contract change).
 it("register with an intake missing gender creates no registration request", async () => {
   const email = `partial-intake-${Date.now()}@example.com`;
   const res = await request(app)
@@ -196,9 +186,7 @@ it("logout revokes session", async () => {
 });
 
 it("GET /auth/profile works for a plain PATIENT account with no permission grants", async () => {
-  // Regression test: this endpoint was previously gated by requirePermission("user", "read"),
-  // which a freshly-registered PATIENT account never has (seed/identity.ts deliberately grants
-  // it none) — every such account got a 403 here, breaking any client's "am I logged in" check.
+  // Regression test: profile was gated by user:read, which fresh PATIENT accounts lack, so every one got a 403 on the "am I logged in" check.
   const email = `profile-${Date.now()}@example.com`;
   await request(app).post("/auth/register").send({ email, password: "Password123!" });
 

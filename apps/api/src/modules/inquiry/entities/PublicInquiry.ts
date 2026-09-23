@@ -14,14 +14,14 @@ export interface PublicInquiryData {
   updatedAt: Date;
 }
 
+// Domain entity for a public inquiry.
 export class PublicInquiry {
   constructor(private data: PublicInquiryData) {}
 
   get id() { return this.data.id; }
   get status() { return this.data.status; }
 
-  // Public/visitor-facing view — deliberately omits linkedPatientId/assignedTo, which are
-  // internal staff-workflow fields a visitor has no reason to see.
+  // Visitor-facing view that omits internal staff-workflow fields (linkedPatientId, assignedTo).
   toVisitorJSON() {
     return {
       id: this.data.id,
@@ -31,6 +31,7 @@ export class PublicInquiry {
     };
   }
 
+  // Serializes the inquiry for staff.
   toJSON() {
     return {
       id: this.data.id,

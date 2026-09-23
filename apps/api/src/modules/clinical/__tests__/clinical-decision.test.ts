@@ -17,6 +17,7 @@ let testPatientId: string;
 let testQaUserId: string;
 let testDirectorUserId: string;
 
+// Inserts a file and lab result for the decision tests.
 async function makeLabResult() {
   const fileRows = await db.insert(file).values({
     id: crypto.randomUUID(), patientId: testPatientId, uploadedBy: testQaUserId,

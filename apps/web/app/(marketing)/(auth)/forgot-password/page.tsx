@@ -8,6 +8,7 @@ export const metadata: Metadata = {
   description: "Reset your OncoFlow account password.",
 };
 
+// Forgot-password page.
 export default function ForgotPasswordPage() {
   return (
     <AuthCard

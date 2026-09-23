@@ -21,9 +21,13 @@ const idParamSchema = z.object({ id: z.string().uuid() });
 
 const router = Router();
 
+// Lists all drugs.
 router.get("/inventory/drugs", requirePermission("inventory", "read"), listDrugsHandler);
+// Stock and open variances for the caller's scope.
 router.get("/inventory/overview", requirePermission("inventory", "read"), validateQuery(overviewQuerySchema), getInventoryOverviewHandler);
+// Records a stock movement.
 router.post("/inventory/movements", requirePermission("inventory", "update"), validateBody(recordMovementSchema), recordMovementHandler);
+// Resolves a reconciliation variance.
 router.post(
   "/inventory/reconciliations/:id/resolve",
   requirePermission("inventory", "update"),

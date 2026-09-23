@@ -14,6 +14,7 @@ const addressRepo = new AddressRepository();
 const contactRepo = new EmergencyContactRepository();
 const walletRepo = new WalletRepository();
 
+// Inserts a test facility and returns its row.
 async function createFacility() {
   const rows = await db.insert(facility).values({
     id: crypto.randomUUID(),

@@ -8,9 +8,7 @@ import {
   TriageChecklistService, PrescriptionService, LabRequestService, LabResultService,
   ClinicalDecisionService, CountdownCaseService, ClinicalNoteService,
 } from "./service.js";
-// Cross-module read (same pattern as messaging/service.ts importing PatientRepository) —
-// needed to check "is this lab result's/query's patientId the caller's own patient record"
-// before falling back to the staff-level labResult:read permission.
+// Cross-module read to check whether a result's patient is the caller's own record before falling back to staff grants.
 import { PatientRepository } from "../patient/index.js";
 
 const caseRepo = new CountdownCaseRepository();
@@ -23,13 +21,13 @@ const countdownCaseSvc = new CountdownCaseService();
 const clinicalNoteSvc = new ClinicalNoteService();
 const patientRepo = new PatientRepository();
 
+// True when the patient record belongs to the caller.
 async function callerOwnsPatient(callerId: string, patientId: string): Promise<boolean> {
   const patientRow = await patientRepo.findById(patientId);
   return !!patientRow?.userId && patientRow.userId === callerId;
 }
 
-// patientId query: own-record path (Patient role — "view own 7-day countdown status"), no
-// blanket countdownCase:read grant needed. No patientId: unchanged staff-wide listing.
+// With patientId it's the patient's own countdown status; without it, the staff-wide listing.
 export async function listCountdownCasesHandler(req: Request, res: Response) {
   try {
     const patientId = typeof req.query.patientId === "string" ? req.query.patientId : undefined;
@@ -46,8 +44,7 @@ export async function listCountdownCasesHandler(req: Request, res: Response) {
       return;
     }
 
-    // Unchanged staff-wide listing (every active case, not scoped to one patient) — still needs
-    // the blanket permission grant, now checked here since the route itself only requires auth.
+    // The staff-wide listing still needs the blanket permission, checked here since the route only requires authentication.
     if (!(await userHasPermission(callerId, "countdownCase", "read"))) {
       res.status(403).json({ error: "Forbidden" });
       return;
@@ -59,6 +56,7 @@ export async function listCountdownCasesHandler(req: Request, res: Response) {
   }
 }
 
+// Completes the triage checklist for a patient.
 export async function completeTriageChecklistHandler(req: Request, res: Response) {
   try {
     const completedBy = (req as AuthenticatedRequest).userId;
@@ -74,6 +72,7 @@ export async function completeTriageChecklistHandler(req: Request, res: Response
   }
 }
 
+// Returns a patient's triage checklist.
 export async function getTriageChecklistHandler(req: Request, res: Response) {
   try {
     const result = await triageSvc.getByConversation(String(req.params.conversationId));
@@ -87,6 +86,7 @@ export async function getTriageChecklistHandler(req: Request, res: Response) {
   }
 }
 
+// Creates a prescription.
 export async function createPrescriptionHandler(req: Request, res: Response) {
   try {
     const doctorId = (req as AuthenticatedRequest).userId;
@@ -100,6 +100,7 @@ export async function createPrescriptionHandler(req: Request, res: Response) {
   }
 }
 
+// Lists prescriptions.
 export async function listPrescriptionsHandler(req: Request, res: Response) {
   try {
     const patientId = typeof req.query.patientId === "string" ? req.query.patientId : undefined;
@@ -114,6 +115,7 @@ export async function listPrescriptionsHandler(req: Request, res: Response) {
   }
 }
 
+// Creates a lab request.
 export async function createLabRequestHandler(req: Request, res: Response) {
   try {
     const requestedBy = (req as AuthenticatedRequest).userId;
@@ -125,6 +127,7 @@ export async function createLabRequestHandler(req: Request, res: Response) {
   }
 }
 
+// Returns one lab request.
 export async function getLabRequestHandler(req: Request, res: Response) {
   try {
     const result = await labRequestSvc.get(String(req.params.id));
@@ -135,6 +138,7 @@ export async function getLabRequestHandler(req: Request, res: Response) {
   }
 }
 
+// Lists lab requests.
 export async function listLabRequestsHandler(req: Request, res: Response) {
   try {
     const patientId = typeof req.query.patientId === "string" ? req.query.patientId : undefined;
@@ -157,6 +161,7 @@ export async function listLabRequestsHandler(req: Request, res: Response) {
   }
 }
 
+// Marks a lab request as uploaded.
 export async function markLabRequestUploadedHandler(req: Request, res: Response) {
   try {
     const result = await labRequestSvc.markUploaded(String(req.params.id));
@@ -168,14 +173,13 @@ export async function markLabRequestUploadedHandler(req: Request, res: Response)
   }
 }
 
+// Marks a lab request as reviewed.
 export async function markLabRequestReviewedHandler(req: Request, res: Response) {
   try {
     const result = await labRequestSvc.markReviewed(String(req.params.id));
     res.json({ labRequest: result });
   } catch (err) {
-    // markReviewed can throw a real ConflictError (F4.6's virus-scan gate) alongside the
-    // string-matched "Cannot transition" case the sibling handler above uses — checking the
-    // actual error class here is more reliable than extending the string match further.
+    // markReviewed can throw a real ConflictError from the virus-scan gate, so the class is checked instead of the message.
     if (err instanceof ConflictError) {
       res.status(409).json({ error: err.message });
       return;
@@ -186,9 +190,7 @@ export async function markLabRequestReviewedHandler(req: Request, res: Response)
   }
 }
 
-// Patient role spec: "can... upload own labs" — fulfilling an existing LabRequest with the
-// actual file is the patient self-upload path (a LabRequest must already exist; this doesn't
-// let a patient invent one). Staff (uploading on a patient's behalf) still need labResult:create.
+// Patients may self-upload the result against an existing lab request; staff uploading for them need labResult:create.
 export async function uploadLabResultHandler(req: Request, res: Response) {
   try {
     const uploadedBy = (req as AuthenticatedRequest).userId;
@@ -207,8 +209,7 @@ export async function uploadLabResultHandler(req: Request, res: Response) {
   }
 }
 
-// F3.5: Regional Admin always gets the scoped {fileId, testDate, possibleDuplicate} view —
-// never the full clinical record — regardless of which permission let them reach this route.
+// Regional Admin always gets only the scoped {fileId, testDate, possibleDuplicate} view, whichever permission granted access.
 export async function getLabResultHandler(req: Request, res: Response) {
   try {
     const userId = (req as AuthenticatedRequest).userId;
@@ -220,8 +221,7 @@ export async function getLabResultHandler(req: Request, res: Response) {
       return;
     }
 
-    // Own-record check happens after the fetch (need the result's patientId) — mirrors
-    // getPatientHandler's isSelf pattern.
+    // The own-record check runs after the fetch because it needs the result's patientId.
     const result = await labResultSvc.get(String(req.params.id));
     const isSelf = await callerOwnsPatient(userId, result.patientId);
     if (!isSelf && !(await userHasPermission(userId, "labResult", "read"))) {
@@ -235,6 +235,7 @@ export async function getLabResultHandler(req: Request, res: Response) {
   }
 }
 
+// Lists lab results.
 export async function listLabResultsHandler(req: Request, res: Response) {
   try {
     const patientId = typeof req.query.patientId === "string" ? req.query.patientId : undefined;
@@ -262,6 +263,7 @@ export async function listLabResultsHandler(req: Request, res: Response) {
   }
 }
 
+// Maps a clinical decision error message to an HTTP status.
 function clinicalDecisionErrorStatus(message: string): number {
   if (message === "Clinical decision not found") return 404;
   if (message.includes("already recorded") || message.includes("already exists")) return 409;
@@ -269,6 +271,7 @@ function clinicalDecisionErrorStatus(message: string): number {
   return 500;
 }
 
+// Records the QA officer's recommendation on a result.
 export async function recordQaRecommendationHandler(req: Request, res: Response) {
   try {
     const qaUserId = (req as AuthenticatedRequest).userId;
@@ -281,6 +284,7 @@ export async function recordQaRecommendationHandler(req: Request, res: Response)
   }
 }
 
+// Records the final clinical decision.
 export async function recordFinalDecisionHandler(req: Request, res: Response) {
   try {
     const directorUserId = (req as AuthenticatedRequest).userId;
@@ -293,6 +297,7 @@ export async function recordFinalDecisionHandler(req: Request, res: Response) {
   }
 }
 
+// Returns a clinical decision.
 export async function getClinicalDecisionHandler(req: Request, res: Response) {
   try {
     const result = await clinicalDecisionSvc.get(String(req.params.id));
@@ -303,6 +308,7 @@ export async function getClinicalDecisionHandler(req: Request, res: Response) {
   }
 }
 
+// Sends lab results to QA for review.
 export async function sendResultsToQaHandler(req: Request, res: Response) {
   try {
     const { countdownCaseId, labResultId } = req.body;
@@ -315,6 +321,7 @@ export async function sendResultsToQaHandler(req: Request, res: Response) {
   }
 }
 
+// Creates a clinical note.
 export async function createClinicalNoteHandler(req: Request, res: Response) {
   try {
     const authorId = (req as AuthenticatedRequest).userId;
@@ -326,6 +333,7 @@ export async function createClinicalNoteHandler(req: Request, res: Response) {
   }
 }
 
+// Lists clinical notes.
 export async function listClinicalNotesHandler(req: Request, res: Response) {
   try {
     const patientId = String(req.query.patientId);
@@ -336,6 +344,7 @@ export async function listClinicalNotesHandler(req: Request, res: Response) {
   }
 }
 
+// Returns the clinical note for a meeting.
 export async function getClinicalNoteByMeetingHandler(req: Request, res: Response) {
   try {
     const summary = await clinicalNoteSvc.getSummaryByMeeting(String(req.params.meetingId));

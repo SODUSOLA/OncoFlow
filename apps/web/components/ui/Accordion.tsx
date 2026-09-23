@@ -11,6 +11,7 @@ export interface AccordionItemData {
   answer: React.ReactNode;
 }
 
+// Accordion showing one open item at a time.
 export function Accordion({ items, className }: { items: AccordionItemData[]; className?: string }) {
   const [openIndex, setOpenIndex] = useState<number | null>(0);
   const baseId = useId();

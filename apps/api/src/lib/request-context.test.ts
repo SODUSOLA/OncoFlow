@@ -10,9 +10,7 @@ import { requirePermissionScoped } from "./rbac.js";
 import { SESSION_COOKIE_NAME } from "./session-cookie.js";
 import { closeRedis, connectRedis } from "./redis.js";
 
-// Exercises the real cookie -> session -> user -> facilityId derivation path
-// (request-context.ts) feeding into requirePermissionScoped's facility comparator,
-// rather than a synthetic req.facilityId set directly by the test.
+// Exercises the real cookie → session → user → facilityId path feeding requirePermissionScoped, not a synthetic req.facilityId.
 function createTestApp(resourceFacilityId: string) {
   const app = express();
   app.use(cookieParser());
@@ -37,9 +35,7 @@ beforeAll(async () => {
   const { role, permission, rolePermission, user, userRole, session } = await import("../modules/auth/schema.js");
   const { facility } = await import("../modules/facility/schema.js");
 
-  // SELECT-then-insert, not a blind insert: re-running this suite against a persistent
-  // (non-ephemeral) local Postgres — as opposed to CI's fresh-container-per-run — would
-  // otherwise collide on role_name_unique on the second run.
+  // Select-then-insert so re-running against a persistent local Postgres doesn't collide on role_name_unique.
   const existingRole = await db.execute<{ id: string }>(sql`SELECT id FROM "role" WHERE name = 'ONSITE_NURSING_OFFICER' LIMIT 1`);
   if (existingRole.length > 0) {
     roleId = existingRole[0]!.id;

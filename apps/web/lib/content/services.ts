@@ -15,10 +15,7 @@ export interface ServiceClassification {
   mode: "Virtual or physical" | "Physical only" | "Subscription";
 }
 
-/**
- * Plain-language framing of the PRD's six service classifications
- * (§18.1 Master Service Classification), stripped of tariff jargon.
- */
+// Plain-language framing of the PRD's six service classifications (§18.1), without tariff jargon.
 export const serviceClassifications: ServiceClassification[] = [
   {
     icon: CalendarClock,

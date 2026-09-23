@@ -3,12 +3,10 @@ import { sql, and, eq } from "drizzle-orm";
 import crypto from "node:crypto";
 import { facility, shiftRequirement } from "../db/schema.js";
 
-// Standing per-facility nurse staffing policy — weekday 0=Mon .. 6=Sun. Judgment call, no
-// product spec for exact headcounts: weekdays need more coverage than weekends, matching
-// typical outpatient oncology clinic patterns (heavier Mon/Wed/Fri per FR-20's chemo/virtual
-// day split).
+// Standing nurse headcount per weekday (0=Mon), heavier on Mon/Wed/Fri per the FR-20 split; a judgment call with no product spec.
 const WEEKDAY_REQUIRED_COUNTS = [3, 2, 3, 2, 3, 1, 0]; // Mon Tue Wed Thu Fri Sat Sun
 
+// Seeds per-facility staffing requirements once.
 export async function seedStaffing() {
   const facilities = await db.select().from(facility).where(sql`${facility.isDeleted} = false`);
 

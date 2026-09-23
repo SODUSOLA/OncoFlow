@@ -16,6 +16,7 @@ export interface LabResultData {
   createdAt: Date;
 }
 
+// Domain entity for an uploaded lab result.
 export class LabResult {
   constructor(private data: LabResultData) {}
 
@@ -26,8 +27,7 @@ export class LabResult {
   get reviewedBy() { return this.data.reviewedBy; }
   get status() { return this.data.status; }
   get fileId() { return this.data.fileId; }
-  // test_date is the date printed on the report itself — distinct from created_at (the
-  // upload timestamp). Never derive one from the other.
+  // The date printed on the report, distinct from created_at (the upload time); never derive one from the other.
   get testDate() { return this.data.testDate; }
   get fileHash() { return this.data.fileHash; }
   get possibleDuplicate() { return this.data.possibleDuplicate; }
@@ -49,9 +49,7 @@ export class LabResult {
     };
   }
 
-  // F3.5 Admin-scoping rule: {file_id, test_date, possible_duplicate} ONLY — a distinct
-  // method, not a "hide some fields" flag on toJSON(), so a future clinical field added to
-  // the table can't accidentally leak into the Admin view by default.
+  // Admin-scoped view ({file_id, test_date, possible_duplicate} only) as its own method so new clinical fields can't leak into it by default.
   toAdminJSON() {
     return {
       fileId: this.data.fileId,

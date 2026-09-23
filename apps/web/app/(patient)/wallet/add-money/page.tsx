@@ -13,6 +13,7 @@ const OPTIONS = [
   { icon: QrCode, label: "Scan my QR Code", description: "Show QR code to any OncoFlow user" },
 ];
 
+// Add-money page.
 export default function AddMoneyPage() {
   const router = useRouter();
 

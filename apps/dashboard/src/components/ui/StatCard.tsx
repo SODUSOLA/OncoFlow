@@ -21,8 +21,7 @@ interface StatCardProps extends VariantProps<typeof valueVariants> {
   icon?: ReactNode;
   trend?: ReactNode;
   className?: string;
-  /** Renders a left accent border in the same color as the value — used for the "flagged" stat
-   * cards (SLA Breaches, Critical Shortages) so they read as alerts, not just data. */
+  // Adds a left accent border in the value's color so flagged stats read as alerts.
   emphasized?: boolean;
 }
 
@@ -33,6 +32,7 @@ const emphasisBorder: Record<string, string> = {
   neutral: "",
 };
 
+// Card showing a labelled statistic with optional icon and trend.
 export function StatCard({ label, value, icon, trend, variant = "neutral", emphasized, className }: StatCardProps) {
   return (
     <Card className={cn("flex items-start justify-between gap-3 p-4", emphasized && emphasisBorder[variant ?? "neutral"], className)}>

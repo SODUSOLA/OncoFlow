@@ -12,9 +12,7 @@ import { user } from "../auth/schema.js";
 import { meeting } from "../messaging/schema.js";
 import { file } from "../documents/schema.js";
 
-// ============================================================================
-// ONCOFLOW_PATIENT_DATA_MODELS.md §1 — Regimen / Cycle
-// ============================================================================
+// Regimen and cycle tables (PATIENT_DATA_MODELS §1).
 
 export const regimen = pgTable("regimen", {
   id: uuid("id").primaryKey().defaultRandom(),
@@ -34,8 +32,7 @@ export const regimen = pgTable("regimen", {
   patientIdIdx: index("regimen_patient_id_idx").on(t.patientId),
 }));
 
-// completed_cycles / current cycle are derived from these rows at query time, never stored —
-// see RegimenRepository.
+// Completed and current cycle counts are derived from these rows at query time, never stored.
 export const regimenCycle = pgTable("regimen_cycle", {
   id: uuid("id").primaryKey().defaultRandom(),
   regimenId: uuid("regimen_id").notNull().references(() => regimen.id),
@@ -54,9 +51,7 @@ export const regimenCycle = pgTable("regimen_cycle", {
   regimenCycleNumberUnique: uniqueIndex("regimen_cycle_regimen_id_cycle_number_unique").on(t.regimenId, t.cycleNumber),
 }));
 
-// ============================================================================
-// ONCOFLOW_PATIENT_DATA_MODELS.md §2 — Vitals (time-series)
-// ============================================================================
+// Vitals time-series tables (PATIENT_DATA_MODELS §2).
 
 export const vitalReading = pgTable("vital_reading", {
   id: uuid("id").primaryKey().defaultRandom(),
@@ -75,8 +70,7 @@ export const vitalReading = pgTable("vital_reading", {
   patientTypeRecordedIdx: index("vital_reading_patient_id_vital_type_recorded_at_idx").on(t.patientId, t.vitalType, t.recordedAt),
 }));
 
-// Severity (e.g. the orange "elevated" blood-pressure treatment) is computed at query time
-// against this table, never hand-set per reading — same rule as lab_analyte_reference below.
+// Severity is computed at query time against this table, never set per reading.
 export const vitalReferenceRange = pgTable("vital_reference_range", {
   vitalType: vitalTypeEnum("vital_type").primaryKey(),
   low: numeric("low").notNull(),
@@ -85,13 +79,9 @@ export const vitalReferenceRange = pgTable("vital_reference_range", {
   updatedAt: timestamp("updated_at").notNull().defaultNow(),
 });
 
-// ============================================================================
-// ONCOFLOW_LAB_AND_METRICS_WORKFLOW.md Track 1 — Clinical Metrics Snapshot
-// ============================================================================
+// Clinical metrics snapshot tables (LAB_AND_METRICS Track 1).
 
-// A deliberate exception to "never store computed values" (per the doc): bmi/bsa/crcl are
-// fixed to the cycle they were recorded for, so they must not silently change if the formulas
-// or reference bands are revised later.
+// A deliberate exception to "never store computed values": bmi/bsa/crcl are frozen per cycle so later formula changes don't rewrite history.
 export const clinicalMetricsSnapshot = pgTable("clinical_metrics_snapshot", {
   id: uuid("id").primaryKey().defaultRandom(),
   patientId: uuid("patient_id").notNull().references(() => patient.id),
@@ -103,16 +93,13 @@ export const clinicalMetricsSnapshot = pgTable("clinical_metrics_snapshot", {
   heightCm: numeric("height_cm").notNull(),
   ageYears: integer("age_years").notNull(),
   sex: biologicalSexEnum("sex").notNull(),
-  // Computed results (snapshot, per the exception above). Creatinine is deliberately NOT a
-  // column here — CrCl reads it from nursing_lab_value under this snapshot's nursing_lab_entry,
-  // so there is exactly one place creatinine is ever recorded, not two that could disagree.
+  // Computed results; creatinine lives in nursing_lab_value so it is only recorded in one place.
   bmi: numeric("bmi").notNull(),
   bmiClassification: bmiClassificationEnum("bmi_classification").notNull(),
   bsa: numeric("bsa").notNull(),
   crcl: numeric("crcl").notNull(),
   crclTier: crclTierEnum("crcl_tier").notNull(),
-  // eGFR (CKD-EPI 2021) — a separate calculation from CrCl above, never one standing in for the
-  // other. Computed alongside CrCl from the same inputs, no additional Nursing Officer entry.
+  // eGFR (CKD-EPI 2021), a separate calculation from CrCl computed from the same inputs.
   egfr: numeric("egfr").notNull(),
   egfrStage: egfrStageEnum("egfr_stage").notNull(),
   supersededAt: timestamp("superseded_at"),
@@ -143,9 +130,7 @@ export const nursingLabEntry = pgTable("nursing_lab_entry", {
 export const nursingLabValue = pgTable("nursing_lab_value", {
   id: uuid("id").primaryKey().defaultRandom(),
   nursingLabEntryId: uuid("nursing_lab_entry_id").notNull().references(() => nursingLabEntry.id),
-  // References lab_analyte_reference.analyteCode below (declared after this table, so the FK
-  // constraint is added via a separate ALTER rather than an inline .references() to avoid a
-  // forward-reference; the repository still always writes/reads against real analyte codes).
+  // References lab_analyte_reference; the FK is added by a separate ALTER because that table is declared later.
   analyteCode: text("analyte_code").notNull(),
   value: numeric("value").notNull(),
   unit: text("unit").notNull(),
@@ -154,32 +139,26 @@ export const nursingLabValue = pgTable("nursing_lab_value", {
   entryIdIdx: index("nursing_lab_value_entry_id_idx").on(t.nursingLabEntryId),
 }));
 
-// Seeded, not user-editable — clinical constants, centralized so every surface (Nursing
-// Officer's entry form, the Video Room's Safety Check Banner, Patient File) computes identical
-// severity from the same bands.
+// Seeded clinical constants, centralized so every surface computes identical severity.
 export const labAnalyteReference = pgTable("lab_analyte_reference", {
   analyteCode: text("analyte_code").primaryKey(),
   displayName: text("display_name").notNull(),
   unit: text("unit").notNull(),
   normalLow: numeric("normal_low").notNull(),
   normalHigh: numeric("normal_high").notNull(),
-  // Not given in the source reference doc for the FBC/E-U-Cr panel — only "Normal (x-y)" ranges
-  // were provided, so these stay nullable until a clinical lead supplies real critical cutoffs.
+  // Nullable until a clinical lead supplies critical cutoffs; the source only gave normal ranges.
   criticalLow: numeric("critical_low"),
   criticalHigh: numeric("critical_high"),
 });
 
-// ============================================================================
-// ONCOFLOW_LAB_AND_METRICS_WORKFLOW.md Track 2 — Lab Document Approval Chain
-// ============================================================================
+// Lab document approval chain tables (LAB_AND_METRICS Track 2).
 
 export const labDocument = pgTable("lab_document", {
   id: uuid("id").primaryKey().defaultRandom(),
   patientId: uuid("patient_id").notNull().references(() => patient.id),
   uploadedBy: uuid("uploaded_by").notNull().references(() => user.id),
   uploadedAt: timestamp("uploaded_at").notNull().defaultNow(),
-  // Reuses the existing file/virus-scan infrastructure (documents module) rather than a raw
-  // storage-pointer column — this system already has a real signed-upload/download pipeline.
+  // Reuses the existing file and virus-scan pipeline rather than a raw storage pointer.
   fileId: uuid("file_id").notNull().references(() => file.id),
   // Date printed on the report itself — what Admin cross-references at the first review stage.
   claimedCollectionDate: date("claimed_collection_date").notNull(),
@@ -199,26 +178,20 @@ export const labDocumentReview = pgTable("lab_document_review", {
   reviewedBy: uuid("reviewed_by").notNull().references(() => user.id),
   reviewedAt: timestamp("reviewed_at").notNull().defaultNow(),
   decision: labDocumentReviewDecisionEnum("decision").notNull(),
-  // Required (at the service layer, not a DB constraint) when decision is REJECTED or
-  // HOLD_FROM_CHEMO.
+  // Required at the service layer when the decision is REJECTED or HOLD_FROM_CHEMO.
   reason: text("reason"),
   createdAt: timestamp("created_at").notNull().defaultNow(),
 }, (t) => ({
   labDocumentIdIdx: index("lab_document_review_lab_document_id_idx").on(t.labDocumentId),
 }));
 
-// ============================================================================
-// Shared case-lock mechanism
-// ============================================================================
+// Shared case-lock table.
 
 export const caseLock = pgTable("case_lock", {
   id: uuid("id").primaryKey().defaultRandom(),
   patientId: uuid("patient_id").notNull().references(() => patient.id),
   triggeredBy: caseLockTriggerEnum("triggered_by").notNull(),
-  // Polymorphic — points at clinical_metrics_snapshot.id (CRCL_CRITICAL) or
-  // lab_document_review.id (QA_HOLD) depending on triggeredBy. No FK constraint is possible
-  // across two different target tables, so this is a plain uuid column; the repository always
-  // resolves it via triggeredBy, never blindly joins it.
+  // Polymorphic uuid (snapshot or review id by triggeredBy) with no FK, since it targets two tables.
   triggeredByReference: uuid("triggered_by_reference").notNull(),
   triggeredAt: timestamp("triggered_at").notNull().defaultNow(),
   status: caseLockStatusEnum("status").notNull().default("LOCKED"),
@@ -231,8 +204,5 @@ export const caseLock = pgTable("case_lock", {
   updatedAt: timestamp("updated_at").notNull().defaultNow(),
 }, (t) => ({
   patientIdIdx: index("case_lock_patient_id_idx").on(t.patientId),
-  // A patient should have at most one currently-active lock — enforced at the service layer
-  // (checked before insert), not a partial unique index, since this Postgres/Drizzle setup's
-  // other unique indexes are all unconditional and a WHERE-based partial unique would be the
-  // first of its kind in this schema.
+  // At most one active lock per patient, enforced in the service rather than by a partial unique index.
 }));

@@ -12,6 +12,7 @@ export const metadata: Metadata = {
     "What OncoFlow does and the hybrid virtual and physical care model behind it, explained in plain language.",
 };
 
+// Solutions page.
 export default function SolutionsPage() {
   return (
     <>

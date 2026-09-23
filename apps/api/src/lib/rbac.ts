@@ -3,13 +3,10 @@ import { db } from "../db/index.js";
 import { getRedis } from "./redis.js";
 import { sql } from "drizzle-orm";
 import { AppError, ForbiddenError, UnauthorizedError } from "./errors.js";
-// Cross-module coupling (global-conventions.md §2): every access-denied decision must produce
-// an append-only AuditLog row, so the RBAC gate itself is the one place that has to know about it.
+// Coupled to the audit module because every access-denied decision must leave an append-only AuditLog row.
 import { auditService } from "../modules/audit/index.js";
 
-// Audit logging is a side effect, not the security decision itself — a write failure here
-// (e.g. actorId with no matching user row in a test/edge case) must never turn a clean
-// 401/403 into a 500.
+// Audit writes are best-effort so a logging failure can't turn a clean 401/403 into a 500.
 async function safeAuditLog(event: Parameters<typeof auditService.recordEvent>[0]): Promise<void> {
   try {
     await auditService.recordEvent(event);
@@ -31,6 +28,7 @@ export type FacilityComparator = (userFacilityId: string, resourceFacilityId: st
 
 const PERMISSION_CACHE_TTL = 900;
 
+// Loads a user's permission strings, cached in Redis for 15 minutes.
 async function resolveUserPermissions(userId: string): Promise<string[]> {
   const redis = getRedis();
   const cacheKey = `perms:${userId}`;
@@ -57,9 +55,7 @@ async function resolveUserPermissions(userId: string): Promise<string[]> {
   return perms;
 }
 
-// Exported for service-layer role checks that are conditional, not a blanket route gate —
-// e.g. "require triage_checklist_id only when the prescriber is specifically an MO" can't be
-// expressed as route middleware since the same route legitimately serves multiple roles.
+// Exported for conditional service-layer role checks that route middleware can't express.
 export async function userHasRole(userId: string, roleName: string): Promise<boolean> {
   const rows = await db.execute<{ matched: boolean }>(sql`
     SELECT EXISTS(
@@ -72,27 +68,19 @@ export async function userHasRole(userId: string, roleName: string): Promise<boo
   return Boolean(rows[0]?.matched);
 }
 
+// True when the permission list contains resource:action.
 function permsInclude(perms: string[], resource: string, action: PermissionAction): boolean {
   return perms.includes(`${resource}:${action}`);
 }
 
-// Exported for the same reason as userHasRole: service/controller-layer ownership-or-permission
-// checks (e.g. "allow if this is the caller's own patient record, otherwise require staff
-// patient:read") can't be expressed as route middleware, since the "own record" half of the
-// check needs the resource loaded first.
+// Exported for ownership-or-permission checks in services/controllers, where the resource must be loaded first.
 export async function userHasPermission(userId: string, resource: string, action: PermissionAction): Promise<boolean> {
   if (await userHasRole(userId, "SUPER_ADMIN")) return true;
   const perms = await resolveUserPermissions(userId);
   return permsInclude(perms, resource, action);
 }
 
-// Every route gate below funnels through this. It used to live inline in requireAuthenticated()
-// only, which meant MFA was silently unenforced on the 32 routes gated purely by
-// requirePermission/requireRole — including POST /invoices, appointment mutations and inventory
-// movements. That was a bypass available to *every* role, not just SUPER_ADMIN, so the check
-// belongs in one shared place that each gate must call rather than in a single middleware.
-//
-// Returns true when the request has been rejected (caller must stop); false to continue.
+// Shared by every route gate so MFA is enforced on permission-only and role-only routes too; returns true when the request was rejected.
 async function rejectedForUnverifiedMfa(
   req: Request,
   next: NextFunction,
@@ -108,22 +96,15 @@ async function rejectedForUnverifiedMfa(
   return true;
 }
 
-// Routes that must stay reachable while a session is authenticated-but-not-yet-MFA-verified,
-// otherwise the user is deadlocked: they cannot complete MFA because completing MFA requires
-// passing the MFA gate. /auth/mfa/enroll is here for the same reason one step earlier — under
-// the staff policy (lib/mfa-policy.ts) an account can be *required* to use MFA before it holds
-// any secret at all, so the route that issues that secret cannot itself demand a verified one.
-// /auth/logout must stay open so a stuck session can always be ended.
-// Matched against req.path; routers mount at root (app.ts) so these are the full paths.
+// Paths reachable while authenticated but not MFA-verified, so users can enrol, verify or log out instead of deadlocking.
 const MFA_EXEMPT_PATHS = new Set(["/auth/mfa/enroll", "/auth/mfa/verify", "/auth/logout"]);
 
+// True when the request path is exempt from the MFA gate.
 function isMfaExempt(req: Request): boolean {
   return MFA_EXEMPT_PATHS.has(req.path);
 }
 
-// For self-service actions (logout, viewing/editing your own profile) that should work for
-// any authenticated account regardless of role/permission grants — not everything behind
-// auth is a permission check. Deliberately does not touch req.permissions.
+// Gate for self-service actions that need a session but no role or permission grant.
 export function requireAuthenticated() {
   return async (req: Request, res: Response, next: NextFunction): Promise<void> => {
     const authed = req as AuthenticatedRequest;
@@ -138,6 +119,7 @@ export function requireAuthenticated() {
   };
 }
 
+// Gate requiring the caller to hold the resource:action permission (SUPER_ADMIN bypasses permission checks only).
 export function requirePermission(resource: string, action: PermissionAction) {
   return async (req: Request, res: Response, next: NextFunction): Promise<void> => {
     const userId = (req as AuthenticatedRequest).userId;
@@ -146,8 +128,7 @@ export function requirePermission(resource: string, action: PermissionAction) {
       return;
     }
 
-    // Deliberately ahead of the SUPER_ADMIN short-circuit: that bypass is about *permissions*,
-    // and must never double as an MFA exemption for the most privileged role on the platform.
+    // Runs before the SUPER_ADMIN short-circuit so that bypass never doubles as an MFA exemption.
     if (!isMfaExempt(req) && await rejectedForUnverifiedMfa(req, next, resource)) return;
 
     try {
@@ -173,11 +154,7 @@ export function requirePermission(resource: string, action: PermissionAction) {
   };
 }
 
-// For actions restricted to specific roles regardless of the generic resource:action permission
-// model — e.g. "only a Virtual Medical Officer can complete a triage checklist," "only an
-// Onsite Nursing Officer can open a physical case." requirePermission's resource:action grants
-// don't express "and it must specifically be role X, not just anyone with this permission" —
-// use this alongside requirePermission (both as separate middleware) when that distinction matters.
+// Gate restricting an action to specific roles, for cases the resource:action model can't express; combine with requirePermission when needed.
 export function requireRole(...roleNames: string[]) {
   return async (req: Request, _res: Response, next: NextFunction): Promise<void> => {
     const userId = (req as AuthenticatedRequest).userId;
@@ -210,6 +187,7 @@ export function requireRole(...roleNames: string[]) {
   };
 }
 
+// Gate that also requires the resource's facility to be within the caller's facility scope.
 export function requirePermissionScoped(
   resource: string,
   action: PermissionAction,
@@ -259,11 +237,13 @@ export function requirePermissionScoped(
   };
 }
 
+// Drops one user's cached permissions so grant changes take effect immediately.
 export async function invalidatePermissionCache(userId: string): Promise<void> {
   const redis = getRedis();
   await redis.del(`perms:${userId}`);
 }
 
+// Drops the cached permissions of every user holding the role.
 export async function invalidatePermissionCacheForRole(roleId: string): Promise<void> {
   const rows = await db.execute<{ user_id: string }>(sql`
     SELECT DISTINCT ur.user_id FROM user_role ur WHERE ur.role_id = ${roleId}

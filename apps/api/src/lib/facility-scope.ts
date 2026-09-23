@@ -2,27 +2,10 @@ import type { Request, Response } from "express";
 import { sql } from "drizzle-orm";
 import { db } from "../db/index.js";
 import { userHasRole, type AuthenticatedRequest } from "./rbac.js";
-// Same cross-module coupling as rbac.ts: an access-denied decision must leave an audit row,
-// and this is one of the places that decision is made.
+// Coupled to the audit module like rbac.ts, since a denied facility access must leave an audit row.
 import { auditService } from "../modules/audit/index.js";
 
-// Resolves which facilities a caller is allowed to see, server-side.
-//
-// Why this exists: every staff-facing list endpoint used to take `?facilityId` straight from
-// the query string and filter by it, with no check that the caller belonged to that facility —
-// so Hospital A staff could read Hospital B's patients by changing one ID, and `?facilityId=all`
-// returned every patient on the platform. `requirePermissionScoped` existed in rbac.ts but was
-// wired to zero routes.
-//
-// The rule encoded here follows 21-regional-admin-scope-definition.md: a facility-scoped user is
-// scoped to their REGION (every facility sharing their own facility's `region`), not to a single
-// facility — that doc's whole point is that a Regional Admin legitimately covers several
-// facilities. `User.region` was recommended there but never added, so region is derived from the
-// caller's own facility, which is already populated for every facility-scoped staff account.
-//
-// Returns `null` for unrestricted access. That's SUPER_ADMIN, plus accounts with no facilityId
-// at all — the national-level roles (National Clinical Director, National Director of Nursing
-// Services) whose remit is cross-region by definition (see seed/demo-users.ts facilityScoped:false).
+// Returns the facility ids a caller may see (their whole region, not one facility), or null for unrestricted callers such as SUPER_ADMIN and national roles.
 export async function accessibleFacilityIds(userId: string): Promise<string[] | null> {
   if (await userHasRole(userId, "SUPER_ADMIN")) return null;
 
@@ -41,23 +24,13 @@ export async function accessibleFacilityIds(userId: string): Promise<string[] | 
   return inRegion.map((r) => r.id);
 }
 
-// Narrows a requested `?facilityId` against what the caller may actually see.
-//
-// Two separate concerns are deliberately kept apart here:
-//   * authorization — may this caller see that facility at all?
-//   * filtering — which facility did they ask to narrow the list to?
-// An unrestricted caller still gets their explicit `?facilityId` honoured as a *filter*;
-// dropping it would silently widen the result set and break facility filtering for
-// SUPER_ADMIN and national roles.
-//
-// - explicit id the caller may not see: `forbidden`, so the caller can 403 rather than return
-//   a confusingly empty list.
-// - `"all"` / omitted: the caller's own accessible facilities, or unrestricted if they have none.
+// Narrows a requested ?facilityId against the caller's scope, keeping authorization (may they see it) separate from filtering (what they asked for).
 export type FacilityScopeResolution =
   | { kind: "unrestricted" }
   | { kind: "forbidden" }
   | { kind: "restricted"; facilityIds: string[] };
 
+// Pure resolver: forbidden for an explicit id outside scope; "all" or omitted yields the caller's accessible facilities or unrestricted.
 export function resolveRequestedFacilityScope(
   requested: string | undefined,
   allowed: string[] | null,
@@ -78,16 +51,10 @@ export function resolveRequestedFacilityScope(
   return { kind: "restricted", facilityIds: allowed };
 }
 
-// Controller-side wrapper: reads `?facilityId`, narrows it against the caller's real scope, and
-// on refusal writes the audit row and sends the 403 itself, returning null so the handler just
-// returns. Exists because the alternative — repeating twenty lines of scope-resolve-audit-403 in
-// every list handler that accepts `?facilityId` — is exactly how one of them ends up subtly
-// different from the others, which is the bug class this whole module exists to close.
-// The `forbidden` case never escapes — it is turned into a 403 here — so it is excluded from
-// the return type. That lets callers narrow on `kind` without TypeScript still believing a
-// forbidden result could reach them.
+// The allowed outcomes only, since `forbidden` is turned into a 403 inside resolveScopeOrDeny and never reaches callers.
 export type AllowedFacilityScope = Exclude<FacilityScopeResolution, { kind: "forbidden" }>;
 
+// Controller helper that resolves ?facilityId, and on refusal audits and sends the 403 itself, returning null so the handler can just return.
 export async function resolveScopeOrDeny(
   req: Request,
   res: Response,
@@ -100,8 +67,7 @@ export async function resolveScopeOrDeny(
   if (scope.kind !== "forbidden") return scope;
 
 
-  // Best-effort, same tolerance as rbac.ts's own audit calls — a logging failure must never
-  // turn a correct 403 into a 500.
+  // Best-effort audit write: a logging failure must never turn a correct 403 into a 500.
   await auditService.recordEvent({
     actorId: userId, action: "ACCESS_DENIED", resource, result: "DENIED", ip: req.ip,
   }).catch(() => {});

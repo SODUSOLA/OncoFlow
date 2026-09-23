@@ -36,21 +36,23 @@ const listTariffsQuerySchema = z.object({
 
 const router = Router();
 
-// requireAuthenticated on read/pay: a patient reading or paying their OWN invoice is a right,
-// not a grant — ownership-or-permission check lives in the controller (callerOwnsPatient).
-// create/send/void stay staff-only — "cannot generate or edit invoices" is a hard rule.
+// Read and pay require only authentication (ownership check in the controller); create, send and void stay staff-only.
 router.post("/invoices", requirePermission("invoice", "create"), validateBody(createInvoiceSchema), createInvoiceHandler);
+// Lists invoices (own for patients, scoped for staff).
 router.get("/invoices", requireAuthenticated(), validateQuery(listInvoicesQuerySchema), listInvoicesHandler);
+// Reads one invoice.
 router.get("/invoices/:id", requireAuthenticated(), validateParams(invoiceIdParamSchema), getInvoiceHandler);
+// Sends a draft invoice to the patient.
 router.post("/invoices/:id/send", requirePermission("invoice", "update"), validateParams(invoiceIdParamSchema), sendInvoiceHandler);
+// Pays an invoice from the wallet.
 router.post("/invoices/:id/pay", requireAuthenticated(), validateParams(invoiceIdParamSchema), payInvoiceHandler);
+// Voids an invoice.
 router.post("/invoices/:id/void", requirePermission("invoice", "update"), validateParams(invoiceIdParamSchema), voidInvoiceHandler);
-// Reference/lookup data (category names, not scoped to any one patient) — every authenticated
-// user reasonably needs this to render invoice titles, same reasoning as the facility list.
+// Reference data any authenticated user needs to render invoice titles.
 router.get("/classifications", requireAuthenticated(), listClassificationsHandler);
-// Staff-only fee-breakdown lookup for the Invoice Generator preview (tariff:read) — not a
-// patient-facing endpoint, no ownership concept applies to a per-facility rate sheet.
+// Staff-only fee-breakdown lookup for the Invoice Generator preview.
 router.get("/tariffs", requirePermission("tariff", "read"), validateQuery(listTariffsQuerySchema), listTariffsHandler);
+// Lists wallet transactions (own for patients).
 router.get("/wallet/transactions", requireAuthenticated(), validateQuery(walletTransactionsQuerySchema), listWalletTransactionsHandler);
 
 export { router as billingRoutes };

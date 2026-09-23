@@ -1,9 +1,7 @@
 import { db } from "../db/index.js";
 import { sql } from "drizzle-orm";
 
-// Truncates every table in the public schema (CASCADE handles FK ordering) — a clean slate
-// before reseeding. Schema/migrations are untouched; this only clears data. Local dev database
-// only (DATABASE_URL in .env points at localhost:6432) — never point this at anything else.
+// Truncates every public table for a clean reseed, leaving schema and migrations intact; local dev database only.
 export async function cleanup() {
   await db.execute(sql`
     DO $$

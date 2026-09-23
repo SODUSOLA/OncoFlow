@@ -5,10 +5,7 @@ import { user } from "../auth/schema.js";
 import { regimenCycle } from "../clinical-metrics/schema.js";
 import { file } from "../documents/schema.js";
 
-// ONCOFLOW_NURSING_OFFICER_BUILD_GUIDE.md — the real unit of work. Tied to one physical
-// visitation (a regimen_cycle), not a standalone document: the wizard's documentation sheet and
-// (later, Finding 2) a structured data-entry form are both content *within* a case, and QA
-// reviews the case as a whole rather than document-by-document.
+// The unit of work: one physical visitation (a regimen_cycle), with the documentation sheet as content within the case that QA reviews as a whole.
 export const nursingCase = pgTable("nursing_case", {
   id: uuid("id").primaryKey().defaultRandom(),
   patientId: uuid("patient_id").notNull().references(() => patient.id),
@@ -29,14 +26,12 @@ export const nursingCaseReview = pgTable("nursing_case_review", {
   reviewedBy: uuid("reviewed_by").notNull().references(() => user.id),
   reviewedAt: timestamp("reviewed_at").notNull().defaultNow(),
   decision: nursingCaseReviewDecisionEnum("decision").notNull(),
-  // Required (checked in the service, not the DB) when decision is REQUIREMENTS_INCOMPLETE —
-  // a QA rejection with no stated reason gives the Nursing Officer nothing to act on.
+  // Required (in the service) for REQUIREMENTS_INCOMPLETE, since a rejection without a reason gives the nurse nothing to act on.
   reason: text("reason"),
   createdAt: timestamp("created_at").notNull().defaultNow(),
 });
 
-// References nursing_case_id, not the patient directly — this is content *within* a case
-// (per the build guide's explicit correction), not a standalone entity.
+// Belongs to a case rather than a patient, since it is content within the case.
 export const nursingDocumentationSheet = pgTable("nursing_documentation_sheet", {
   id: uuid("id").primaryKey().defaultRandom(),
   nursingCaseId: uuid("nursing_case_id").notNull().references(() => nursingCase.id),
@@ -50,10 +45,7 @@ export const nursingDocumentationSheet = pgTable("nursing_documentation_sheet", 
   deletedAt: timestamp("deleted_at"),
 });
 
-// Finding 3 — a rejected upload (the file table's own virus-scan pipeline flagged it INFECTED)
-// feeds Regional Admin's existing alert aggregator as a new source, not a new notification
-// system. nursingCaseId is nullable: the rejection can happen before Step 2 in principle, or if
-// the case context is otherwise unresolved at upload time.
+// A rejected (INFECTED) upload feeds Regional Admin's alert aggregator; nursingCaseId is nullable since the case may be unresolved at upload time.
 export const uploadSecurityIncident = pgTable("upload_security_incident", {
   id: uuid("id").primaryKey().defaultRandom(),
   nursingCaseId: uuid("nursing_case_id").references(() => nursingCase.id),

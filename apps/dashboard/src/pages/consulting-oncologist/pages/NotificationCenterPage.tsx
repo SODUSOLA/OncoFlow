@@ -10,19 +10,14 @@ import { useAuth } from "../../../lib/auth";
 import { useConsultantAlerts } from "../lib/useConsultantAlerts";
 import type { ConsultAlert } from "../lib/alertsStore";
 
-// Phase 8 — deliberately a different layout from Regional Admin's 3-column bento (two columns +
-// a stacked right-side panel, per the build guide), but the same underlying principle: this page
-// renders the shared alert aggregator (useConsultantAlerts), it does not compute alerts itself.
+// Renders the shared alert aggregator in two columns plus a side panel instead of computing alerts itself.
 const MAX_CARDS = 8;
 const MAX_LOG_ITEMS = 8;
 const NOTE_PATIENT_LIMIT = 15;
 
 interface NoteLogEntry { id: string; note: string; createdAt: string; patientName: string }
 
-// Real, bounded, read-only — recent clinical notes across this consultant's own recent patients
-// (same appointment window the alert aggregator uses). Deliberately not "Patient Messages": this
-// role has no `conversation:read` grant, so /conversations?assignedTo= would just 403 — the same
-// RBAC wall Clinical Chat sits behind, handled the same honest way rather than faking a feed.
+// Recent clinical notes across the consultant's own recent patients; no Patient Messages feed since this role lacks conversation:read.
 function useClinicalNoteLog(limit: number) {
   const { user } = useAuth();
   const [entries, setEntries] = useState<NoteLogEntry[]>([]);
@@ -62,6 +57,7 @@ function useClinicalNoteLog(limit: number) {
   return { entries, loading };
 }
 
+// Notification center listing consultant alerts and the recent note log.
 export default function NotificationCenterPage() {
   const navigate = useNavigate();
   const { alerts, loading } = useConsultantAlerts();
@@ -141,6 +137,7 @@ export default function NotificationCenterPage() {
   );
 }
 
+// One alert card with its action button.
 function AlertCard({ alert, onAction }: { alert: ConsultAlert; onAction: () => void }) {
   const critical = alert.severity === "critical";
   const Icon = critical ? TriangleAlert : Clock3;

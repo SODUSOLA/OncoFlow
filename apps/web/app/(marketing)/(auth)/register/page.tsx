@@ -8,6 +8,7 @@ export const metadata: Metadata = {
   description: "Register as a patient with OncoFlow and receive your permanent Unique Patient ID.",
 };
 
+// Patient registration page.
 export default function RegisterPage() {
   return (
     <AuthCard

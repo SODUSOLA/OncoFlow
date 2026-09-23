@@ -9,12 +9,10 @@ import { useConsultantShell } from "../ConsultantLayout";
 import { VITAL_LABELS, VITAL_UNITS, type VitalLatest } from "../lib/clinicalTypes";
 import { derivePostConsultSlaState, formatCountdown, postConsultDeadlineMs } from "../lib/consultSla";
 
-// Phase 6 — buildable now with manual/editable fields, per the guide: auto-population from a
-// transcript is a follow-up once Decision 3 (transcription/AI summary source) lands. ClinicalNote
-// has no update path (see apps/api/src/modules/clinical/service.ts) — so "Sync to EHR & Finalize"
-// creating the note IS the lock; there is deliberately no separate "save draft" persistence.
+// Manual, editable fields for now; notes have no update path, so Sync to EHR & Finalize creating the note is the lock.
 interface SummaryNote { id: string; note: string; authorId: string; createdAt: string }
 
+// Serializes assessment, findings and plan into one note body.
 function composeNote(assessment: string, findings: string, plan: string[]): string {
   const planText = plan.filter((p) => p.trim()).map((p) => `- ${p.trim()}`).join("\n");
   return [
@@ -24,6 +22,7 @@ function composeNote(assessment: string, findings: string, plan: string[]): stri
   ].join("\n");
 }
 
+// Parses a saved note body back into assessment, findings and plan.
 function parseNote(note: string): { assessment: string; findings: string; plan: string[] } {
   const sections: Record<string, string> = {};
   let current = "";
@@ -44,6 +43,7 @@ function parseNote(note: string): { assessment: string; findings: string; plan: 
   };
 }
 
+// Post-call summary page for a finished consultation.
 export default function PostCallSummaryPage() {
   const { appointmentId } = useParams<{ appointmentId: string }>();
   const navigate = useNavigate();
@@ -111,6 +111,7 @@ export default function PostCallSummaryPage() {
   const slaState = useMemo(() => derivePostConsultSlaState(meeting?.endedAt ?? null, !!summary), [meeting?.endedAt, summary]);
   const finalized = !!summary;
 
+  // Saves the summary as a clinical note tied to the meeting.
   async function finalize() {
     if (!patient || !meeting) return;
     setSaving(true);
@@ -281,6 +282,7 @@ export default function PostCallSummaryPage() {
 
 const VITAL_ICON: Record<string, typeof Heart> = { HEART_RATE_BPM: Heart, TEMPERATURE_C: Thermometer, SPO2_PERCENT: Droplets };
 
+// Labelled form field wrapper.
 function Field({ label, children }: { label: string; children: React.ReactNode }) {
   return (
     <div className="mt-4">

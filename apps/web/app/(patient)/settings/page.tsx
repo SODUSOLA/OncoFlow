@@ -10,6 +10,7 @@ import { api } from "@/lib/api";
 import type { AuthSession } from "@/lib/types";
 import { invalidateMyPatient } from "@/lib/useMyPatient";
 
+// Disabled settings row for a feature that isn't built yet.
 function ComingSoonRow({ icon: Icon, label, description }: { icon: typeof Bell; label: string; description: string }) {
   return (
     <div className="flex items-center gap-3 py-3">
@@ -25,10 +26,12 @@ function ComingSoonRow({ icon: Icon, label, description }: { icon: typeof Bell; 
   );
 }
 
+// One active session row with a revoke button.
 function SessionRow({ session, onRevoke }: { session: AuthSession; onRevoke: (id: string) => void }) {
   const [revoking, setRevoking] = useState(false);
   const Icon = /mobile|iphone|android/i.test(session.device) ? Smartphone : Monitor;
 
+  // Revokes the session.
   async function handleRevoke() {
     setRevoking(true);
     try {
@@ -61,6 +64,7 @@ function SessionRow({ session, onRevoke }: { session: AuthSession; onRevoke: (id
   );
 }
 
+// Settings page with sessions and sign out.
 export default function SettingsPage() {
   const router = useRouter();
   const [sessions, setSessions] = useState<AuthSession[]>([]);
@@ -82,17 +86,17 @@ export default function SettingsPage() {
     })();
   }, [load]);
 
+  // Removes a revoked session from the list.
   function handleRevoked(id: string) {
     setSessions((prev) => prev.filter((s) => s.id !== id));
   }
 
+  // Signs the patient out and returns to login.
   async function handleSignOut() {
     await api.post("/auth/logout").catch(() => {
       /* clear the client-visible session regardless of whether the API call succeeded */
     });
-    // The patient record is cached in a module-level store that outlives this component, so it
-    // has to be cleared explicitly — otherwise the next account to sign in on this tab would
-    // briefly render the previous patient's name, ID and wallet balance.
+    // Clears the module-level patient cache so the next account on this tab doesn't briefly see the previous patient's data.
     invalidateMyPatient();
     router.push("/login");
   }

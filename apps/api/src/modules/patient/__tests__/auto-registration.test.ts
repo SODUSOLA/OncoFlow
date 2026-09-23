@@ -26,6 +26,7 @@ let regionalAdminCookie: string;
 let plainCookie: string;
 const createdUserIds: string[] = [];
 
+// Creates a user and returns a valid session cookie for requests.
 async function createSessionCookie(): Promise<{ userId: string; cookie: string }> {
   const userId = crypto.randomUUID();
   await db.insert(user).values({
@@ -39,29 +40,22 @@ async function createSessionCookie(): Promise<{ userId: string; cookie: string }
   return { userId, cookie: `${SESSION_COOKIE_NAME}=${sessionId}` };
 }
 
-// /auth/verify-email is IP-rate-limited (8/15min — deliberately tight now that the token is a
-// 6-digit code), and every request in a test run would otherwise share 127.0.0.1 and trip it.
-// Each simulated patient gets its own X-Forwarded-For, which is what the limiter keys on
-// (lib/rate-limit.ts getDefaultKey) — closer to reality than bypassing the limiter in test env,
-// and it keeps the limiter itself exercised rather than switched off.
+// Each simulated patient gets its own X-Forwarded-For so the tight verify-email IP limiter stays exercised instead of tripping on 127.0.0.1.
 let fakeIpCounter = 0;
+// Returns a unique fake client IP for the next request.
 function nextFakeIp(): string {
   fakeIpCounter += 1;
   return `203.0.113.${fakeIpCounter % 254}`;
 }
 
-// Registers through the real public endpoint and pulls the OTP straight out of the mocked
-// mailer — the same capture pattern email-verification.test.ts uses, since the code is only
-// ever stored hashed.
+// Registers through the public endpoint and reads the OTP from the mocked mailer, since the code is only stored hashed.
 async function registerPatientAndCaptureCode(
   facilityId: string,
   overrides: { fullName?: string; dob?: string } = {},
 ): Promise<{ userId: string; email: string; code: string }> {
   const { sendVerificationEmail } = await import("../../auth/services/VerificationEmailService.js");
   const email = `autoreg-${Date.now()}-${Math.random().toString(36).slice(2)}@example.com`;
-  // Unique identity per patient by default — registerPatient enforces FR-01 (same name + DOB +
-  // facility is a duplicate), so reusing one fixed name across tests would silently exercise the
-  // duplicate path instead of the happy path. The duplicate case gets its own explicit test.
+  // Unique identity per patient by default, since a fixed name would hit the FR-01 duplicate path instead of the happy path.
   const uniqueSuffix = crypto.randomUUID().slice(0, 8);
 
   const res = await request(app).post("/auth/register").send({
@@ -77,11 +71,7 @@ async function registerPatientAndCaptureCode(
   const userId: string = res.body.user.id;
   createdUserIds.push(userId);
 
-  // Polled rather than slept against a fixed 50ms. The verification email is fire-and-forget
-  // (register does not await issueAndSendVerificationEmail), and the suite runs one worker per
-  // core, so on a loaded machine the send had simply not landed inside the fixed delay and this
-  // failed intermittently with "expected 0 to be greater than 0". Polling waits only as long
-  // as it needs to and is not sensitive to machine load.
+  // Polled rather than slept because the fire-and-forget send can lag on a loaded machine.
   const calls = await waitFor(() => {
     const found = vi.mocked(sendVerificationEmail).mock.calls.filter(([to]) => to === email);
     return found.length > 0 ? found : undefined;
@@ -158,8 +148,7 @@ describe("auto-registration on email verification", () => {
 
     const rows = await db.select().from(patient).where(eq(patient.userId, userId));
     expect(rows[0]!.firstName).toBe("Ada");
-    // Everything after the first token is the surname — a middle name stays with it rather
-    // than being dropped.
+    // Everything after the first token is the surname, so a middle name stays with it.
     expect(rows[0]!.lastName).toMatch(/ Okonkwo$/);
   });
 
@@ -176,14 +165,12 @@ describe("auto-registration on email verification", () => {
     const second = await registerPatientAndCaptureCode(testFacilityId, { fullName: sharedName, dob: sharedDob });
     const secondVerify = await request(app).post("/auth/verify-email").set("X-Forwarded-For", nextFakeIp()).send({ token: second.code });
 
-    // Verification itself must still succeed: the email really was verified, and failing here
-    // would strand the user (token spent, resend refuses once verified) with no way forward.
+    // Verification must still succeed, otherwise the user is stranded with a spent token.
     expect(secondVerify.status).toBe(200);
     const userRows = await db.select().from(user).where(eq(user.id, second.userId));
     expect(userRows[0]!.emailVerifiedAt).not.toBeNull();
 
-    // No patient record — the account lands in the `notLinked` state the patient app already
-    // handles, and stays in Admin's queue for a human to sort out.
+    // No patient record: the account lands in the notLinked state and stays in Admin's queue.
     expect(await db.select().from(patient).where(eq(patient.userId, second.userId))).toHaveLength(0);
     const stillPending = await db.select().from(patientRegistrationRequest).where(eq(patientRegistrationRequest.userId, second.userId));
     expect(stillPending).toHaveLength(1);

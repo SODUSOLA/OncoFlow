@@ -1,9 +1,7 @@
 import { TriangleAlert } from "lucide-react";
 import { TRIGGER_LABEL, type CaseLockData, type VitalLatest } from "../lib/clinicalTypes";
 
-// Deliberately decoupled from the daily-js call layer entirely — this reads the same case-lock
-// and vitals data Patient File and Pre-call Briefing already read, not anything video-related.
-// Renders nothing when there's nothing to flag, rather than an empty "all clear" banner.
+// Reads the same case-lock and vitals data as the patient file rather than video state, and renders nothing when there's nothing to flag.
 export function SafetyCheckBanner({ caseLock, vitals }: { caseLock: CaseLockData | null; vitals: VitalLatest[] }) {
   const elevated = vitals.filter((v) => v.severity === "ELEVATED");
   if (!caseLock && elevated.length === 0) return null;

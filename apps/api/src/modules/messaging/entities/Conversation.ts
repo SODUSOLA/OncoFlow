@@ -3,8 +3,7 @@ import type { conversationTypeEnum, conversationStatusEnum } from "../../../db/e
 type ConversationType = (typeof conversationTypeEnum.enumValues)[number];
 type ConversationStatus = (typeof conversationStatusEnum.enumValues)[number];
 
-// FR-31: Admin inquiry gets a 5-minute response SLA, MO side-effect gets 2 minutes —
-// the tighter window reflects clinical urgency, not just channel volume.
+// FR-31: 5-minute SLA for admin inquiries and 2 minutes for MO side-effects, reflecting clinical urgency.
 const SLA_WINDOW_MS: Record<ConversationType, number> = {
   ADMIN_INQUIRY: 5 * 60 * 1000,
   MO_SIDE_EFFECT: 2 * 60 * 1000,
@@ -21,6 +20,7 @@ export interface ConversationData {
   assignedTo: string | null;
 }
 
+// Domain entity for a conversation, including its SLA clock.
 export class Conversation {
   constructor(private data: ConversationData) {}
 
@@ -33,17 +33,18 @@ export class Conversation {
   get slaBreached() { return this.data.slaBreached; }
   get assignedTo() { return this.data.assignedTo; }
 
+  // Computes the SLA deadline for a conversation type from a start time.
   static slaDeadlineFor(conversationType: ConversationType, from: Date): Date {
     return new Date(from.getTime() + SLA_WINDOW_MS[conversationType]);
   }
 
-  // Only the first real reply stops the SLA clock — a SYSTEM message (auto-reply, etc.)
-  // must never count as the staff response it's standing in for.
+  // Only the first real reply stops the SLA clock; a SYSTEM auto-reply must not count as the staff response.
   recordFirstResponse(at: Date): Conversation {
     if (this.data.firstResponseAt) return this;
     return new Conversation({ ...this.data, firstResponseAt: at });
   }
 
+  // Marks the SLA as breached if the deadline passed with no response.
   checkBreach(now: Date): Conversation {
     if (this.data.slaBreached || this.data.firstResponseAt || !this.data.slaDeadline) return this;
     if (now > this.data.slaDeadline) {
@@ -52,10 +53,12 @@ export class Conversation {
     return this;
   }
 
+  // Returns a copy marked CLOSED.
   close(): Conversation {
     return new Conversation({ ...this.data, status: "CLOSED" });
   }
 
+  // Serializes the conversation for API responses.
   toJSON() {
     return {
       id: this.data.id,

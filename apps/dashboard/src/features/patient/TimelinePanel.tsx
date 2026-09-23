@@ -11,6 +11,7 @@ const EVENT_LABELS: Record<TimelineEvent["eventType"], string> = {
   WALLET: "Wallet Activity",
 };
 
+// Shows a patient's timeline events.
 export function TimelinePanel({ patientId }: { patientId: string }) {
   const [events, setEvents] = useState<TimelineEvent[]>([]);
   const [loading, setLoading] = useState(true);

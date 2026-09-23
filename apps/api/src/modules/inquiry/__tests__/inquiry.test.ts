@@ -13,6 +13,7 @@ const app = createApp();
 let regionalAdminCookie: string;
 let plainCookie: string;
 
+// Creates a user and returns a valid session cookie for requests.
 async function createSessionCookie(): Promise<{ userId: string; cookie: string }> {
   const userId = crypto.randomUUID();
   await db.insert(user).values({
@@ -38,6 +39,7 @@ beforeAll(async () => {
   plainCookie = plain.cookie;
 });
 
+// Creates a public inquiry through the API for tests.
 async function createInquiry() {
   const res = await request(app).post("/public-inquiries").send({
     name: "Test Visitor", email: `visitor-${crypto.randomUUID()}@example.com`, message: "How much does a consult cost?",

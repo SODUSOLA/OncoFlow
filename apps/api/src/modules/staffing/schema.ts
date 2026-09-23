@@ -2,11 +2,7 @@ import { pgTable, uuid, smallint, timestamp, boolean, integer } from "drizzle-or
 import { facility } from "../facility/schema.js";
 import { user } from "../auth/schema.js";
 
-// A standing per-facility staffing target, not week-specific — how many nurses a facility
-// needs on a given weekday, as ongoing policy. Weekday: 0=Mon .. 6=Sun (matches
-// appointment/entities/weekly-structure.ts's lagosDayOfWeek convention, shifted so Monday is 0
-// rather than that function's Sunday-indexed scale, since this module has no existing
-// precedent to match and Monday-first reads naturally for a weekly staffing grid).
+// Standing per-facility policy: how many nurses are needed on a weekday (0=Mon..6=Sun), not tied to any specific week.
 export const shiftRequirement = pgTable("shift_requirement", {
   id: uuid("id").primaryKey().defaultRandom(),
   facilityId: uuid("facility_id").notNull().references(() => facility.id),
@@ -17,10 +13,7 @@ export const shiftRequirement = pgTable("shift_requirement", {
   isDeleted: boolean("is_deleted").notNull().default(false),
 });
 
-// One row per nurse assigned to a facility+weekday for a specific ISO week — unlike
-// shiftRequirement (policy), this is the actual roster for a real calendar week.
-// publishedAt is null while still a draft; Publish Schedule sets it for a whole week's rows
-// at once so a nurse's schedule doesn't change under them after publication.
+// The actual roster for one ISO week; publishedAt stays null while a draft and is set for the whole week on publish.
 export const shiftAssignment = pgTable("shift_assignment", {
   id: uuid("id").primaryKey().defaultRandom(),
   facilityId: uuid("facility_id").notNull().references(() => facility.id),

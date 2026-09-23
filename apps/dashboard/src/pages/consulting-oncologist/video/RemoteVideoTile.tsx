@@ -2,9 +2,7 @@ import { useEffect, useRef } from "react";
 import { UserRound } from "lucide-react";
 import type { RemoteParticipantView } from "./useDailyCall";
 
-// Full-bleed remote participant tile. Attaching a daily-js MediaStreamTrack to a <video> element
-// is manual in Call Object mode (there's no Prebuilt iframe doing this for you) — this is the one
-// place in the Room that does it.
+// Full-bleed remote tile; attaching the daily-js track to the <video> element is manual in Call Object mode and happens only here.
 export function RemoteVideoTile({ participant }: { participant: RemoteParticipantView | null }) {
   const videoRef = useRef<HTMLVideoElement>(null);
 

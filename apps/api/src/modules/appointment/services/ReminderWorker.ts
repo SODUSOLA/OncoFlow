@@ -8,9 +8,7 @@ import { UserRepository } from "../../auth/index.js";
 import { notificationService } from "../../notification/index.js";
 import { enqueueEmail } from "../../../lib/email-queue.js";
 
-// Deliberately a separate module from ReminderQueue.ts, same split as lib/email-worker.ts vs
-// lib/email-queue.ts — importing this file is what starts a Worker consuming from Redis, and
-// that should only happen once, in the real server process.
+// Separate from ReminderQueue.ts because importing this starts a Worker, which should happen once in the real server process.
 const connection = new IORedis(config.redisUrl, { maxRetriesPerRequest: null });
 
 const apptRepo = new AppointmentRepository();
@@ -21,10 +19,10 @@ const OFFSET_LABEL: Record<ReminderJobData["offset"], string> = {
   "-60min": "in 1 hour", "-30min": "in 30 minutes", "-15min": "in 15 minutes", "0min": "now",
 };
 
+// Sends the reminder notification for one appointment job.
 export async function processReminderJob(data: ReminderJobData): Promise<void> {
   const appointment = await apptRepo.findById(data.appointmentId);
-  // A cancelled/deleted appointment (or one whose reminder somehow fires after completion)
-  // isn't an error — just nothing to remind anyone about anymore.
+  // A cancelled or deleted appointment has nothing left to remind anyone about, so it is skipped rather than treated as an error.
   if (!appointment || appointment.isDeleted || appointment.status === "CANCELLED") return;
 
   const patient = await patientRepo.findById(appointment.patientId);
@@ -64,6 +62,7 @@ export async function processReminderJob(data: ReminderJobData): Promise<void> {
 
 let worker: Worker<ReminderJobData> | null = null;
 
+// Starts the reminder Worker once and returns the existing one on repeat calls.
 export function startReminderWorker(): Worker<ReminderJobData> {
   if (worker) return worker;
   worker = new Worker<ReminderJobData>(

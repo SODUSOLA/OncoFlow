@@ -6,6 +6,7 @@ interface DashboardLayoutProps {
   children: ReactNode;
 }
 
+// Generic single-page shell with a header for roles that don't have their own layout.
 export function DashboardLayout({ role, children }: DashboardLayoutProps) {
   const { user, logout } = useAuth();
 

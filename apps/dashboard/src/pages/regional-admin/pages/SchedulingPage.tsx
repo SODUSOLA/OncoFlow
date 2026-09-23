@@ -15,14 +15,12 @@ const WEEKDAY_LABELS = ["Mon", "Tue", "Wed", "Thu", "Fri"] as const;
 const PAGE_SIZE = 5;
 const AVATAR_COLORS = ["bg-blue-100 text-blue-700", "bg-purple-100 text-purple-700", "bg-teal-100 text-teal-700", "bg-orange-100 text-orange-700"];
 
+// Returns the uppercase first letter of an email for an avatar.
 function initialOf(email: string) {
   return email.slice(0, 1).toUpperCase();
 }
 
-// The design system treats this as "a static SVG asset, not a chart component" — a decorative
-// rotated-square frame around the real utilization number, not a proportional gauge. (An earlier
-// pass here built an actual functional radial progress ring; per the locked spec that's more
-// sophistication than the design calls for, so it's replaced with the plainer static shape.)
+// A static decorative diamond around the utilization number, per the design system, not a proportional gauge.
 function UtilizationDiamond({ percent }: { percent: number }) {
   const color = percent < 80 ? "#E67E22" : "#2D6A4F";
   return (
@@ -59,9 +57,7 @@ const TRANSFER_STATUS_VARIANT: Record<TransferRequestRow["status"], "warning" | 
   DECLINED: "critical",
 };
 
-// Not part of the new design pass's spec (the mockup doesn't show a transfer panel at all), but
-// real, working functionality already in this app — kept and retokened, not removed, since
-// dropping a shipped feature is a scope decision of its own, not a restyle.
+// Transfer panel isn't in the new mockups but is shipped functionality, so it's kept and retokened rather than removed.
 function TransferPanel({ patients }: { patients: Patient[] }) {
   const { user } = useAuth();
   const { region, facilitiesInRegion, loading: scopeLoading } = useRegionScope();
@@ -72,6 +68,7 @@ function TransferPanel({ patients }: { patients: Patient[] }) {
   const [submitting, setSubmitting] = useState(false);
   const [result, setResult] = useState<string | null>(null);
 
+  // Loads transfer requests for the region.
   function loadTransfers() {
     const q = region ? `?region=${encodeURIComponent(region)}` : "";
     api.get<{ transfers: TransferRequestRow[] }>(`/transfers${q}`).then((d) => setTransfers(d.transfers)).catch(() => {});
@@ -83,6 +80,7 @@ function TransferPanel({ patients }: { patients: Patient[] }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [region, scopeLoading]);
 
+  // Submits a new patient transfer request.
   async function submitTransfer() {
     if (!patientId || !fromFacilityId || !toFacilityId) return;
     setSubmitting(true);
@@ -193,12 +191,9 @@ function TransferPanel({ patients }: { patients: Patient[] }) {
   );
 }
 
-// Row-level severity: 0 conflict days -> fully staffed; a majority of the week's days short ->
-// critical; some but not most -> partial. Drives both the action button (below) and could drive
-// row styling — one function, not independently-styled cell/button logic per the acceptance
-// criteria ("Action button label/style derives from the same staffing-severity logic as the
-// cell styling").
+// Row severity from the share of short weekdays, driving both the action button and cell styling from one function.
 type RowSeverity = "none" | "partial" | "critical";
+// Classifies a facility's week as none, partial or critical.
 function rowSeverity(row: WeekOverviewRow): RowSeverity {
   const shortDays = row.weekdays.slice(0, 5).filter(isStaffingConflict).length;
   if (shortDays === 0) return "none";
@@ -206,6 +201,7 @@ function rowSeverity(row: WeekOverviewRow): RowSeverity {
   return "partial";
 }
 
+// Scheduling page with the weekly staffing grid and transfer panel.
 export default function SchedulingPage() {
   const { isoYear, isoWeek } = useMemo(() => getIsoWeek(new Date()), []);
   const { region, facilitiesInRegion, loading: scopeLoading } = useRegionScope();
@@ -223,6 +219,7 @@ export default function SchedulingPage() {
   const [page, setPage] = useState(0);
   const tableRef = useRef<HTMLDivElement>(null);
 
+  // Loads the week's staffing overview.
   function load() {
     setLoading(true);
     const q = new URLSearchParams({ isoYear: String(isoYear), isoWeek: String(isoWeek) });
@@ -238,9 +235,7 @@ export default function SchedulingPage() {
   }, []);
 
   useEffect(() => {
-    // Waits for the region to resolve before fetching — an unscoped fetch (region still null)
-    // would return every facility system-wide, and could race with the later scoped one if
-    // it happens to take longer (a real bug seen in dev with a large unscoped facility set).
+    // Waits for the region to resolve so an unscoped fetch can't return every facility or race the scoped one.
     if (scopeLoading) return;
     load();
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -266,6 +261,7 @@ export default function SchedulingPage() {
   const pageCount = Math.max(1, Math.ceil(rows.length / PAGE_SIZE));
   const pagedRows = rows.slice(page * PAGE_SIZE, page * PAGE_SIZE + PAGE_SIZE);
 
+  // Computes a facility's week utilization percentage.
   function rowUtilization(row: WeekOverviewRow): number {
     let required = 0;
     let assigned = 0;
@@ -276,6 +272,7 @@ export default function SchedulingPage() {
     return required === 0 ? 100 : Math.round((assigned / required) * 100);
   }
 
+  // Opens the assign-nurse dialog for a facility and weekday.
   async function openAssign(facilityId: string, weekday: number) {
     setAssigning({ facilityId, weekday });
     setSelectedNurseId("");
@@ -287,6 +284,7 @@ export default function SchedulingPage() {
     }
   }
 
+  // Assigns the selected nurse.
   async function confirmAssign() {
     if (!assigning || !selectedNurseId) return;
     setAssignLoading(true);
@@ -303,6 +301,7 @@ export default function SchedulingPage() {
     }
   }
 
+  // Publishes the week's schedule.
   async function publishSchedule() {
     setPublishing(true);
     setPublishResult(null);
@@ -340,9 +339,7 @@ export default function SchedulingPage() {
               <MapIcon className="size-3.5" aria-hidden="true" /> Map View
             </button>
           </div>
-          {/* A real dropdown here would offer a choice this role doesn't have — Regional Admin
-              only ever sees their own region (derived from their own facility, not selectable).
-              Styled to match the mockup's control without pretending it does something it can't. */}
+          {/* Static region label matching the mockup's control; a dropdown would offer a choice Regional Admin doesn't have. */}
           <span className="rounded-admin-sm border border-admin-border bg-white px-3 py-1.5 text-admin-caption font-medium text-admin-text-secondary">
             {region ?? "—"} Region
           </span>

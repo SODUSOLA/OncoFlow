@@ -5,6 +5,7 @@ import { StaffingService } from "./service.js";
 
 const staffingSvc = new StaffingService();
 
+// Parses and validates isoYear and isoWeek from a request source, or returns null.
 function parseIsoWeekParams(source: Record<string, unknown>): { isoYear: number; isoWeek: number } | null {
   const isoYear = Number(source.isoYear);
   const isoWeek = Number(source.isoWeek);
@@ -12,6 +13,7 @@ function parseIsoWeekParams(source: Record<string, unknown>): { isoYear: number;
   return { isoYear, isoWeek };
 }
 
+// Returns the weekly staffing overview for the caller's scope.
 export async function getWeekOverviewHandler(req: Request, res: Response) {
   try {
     const params = parseIsoWeekParams(req.query as Record<string, unknown>);
@@ -27,8 +29,7 @@ export async function getWeekOverviewHandler(req: Request, res: Response) {
   }
 }
 
-// requireAuthenticated, not requirePermission — every staff account reading their OWN
-// assignments is a right, not a grant (same pattern as everywhere else in this codebase).
+// Staff reading their own assignments is a right, so it needs only authentication.
 export async function getMyAssignmentsHandler(req: Request, res: Response) {
   try {
     const params = parseIsoWeekParams(req.query as Record<string, unknown>);
@@ -44,6 +45,7 @@ export async function getMyAssignmentsHandler(req: Request, res: Response) {
   }
 }
 
+// Assigns a nurse to a facility shift.
 export async function assignNurseHandler(req: Request, res: Response) {
   try {
     const { facilityId, weekday, isoYear, isoWeek, userId } = req.body;
@@ -56,6 +58,7 @@ export async function assignNurseHandler(req: Request, res: Response) {
   }
 }
 
+// Publishes a facility week's draft assignments.
 export async function publishWeekHandler(req: Request, res: Response) {
   try {
     const params = parseIsoWeekParams(req.body as Record<string, unknown>);
@@ -71,10 +74,10 @@ export async function publishWeekHandler(req: Request, res: Response) {
   }
 }
 
+// Lists nurses eligible for assignment at a facility.
 export async function listEligibleNursesHandler(req: Request, res: Response) {
   try {
-    // Staff directory for a facility — narrowed to the caller's scope so one region cannot
-    // enumerate another's nursing roster off an untrusted `?facilityId`.
+    // Narrowed to the caller's scope so one region can't enumerate another's nursing roster via an untrusted ?facilityId.
     const scope = await resolveScopeOrDeny(req, res, "staffing");
     if (!scope) return;
     const nurses = await staffingSvc.findEligibleNurses(

@@ -13,9 +13,7 @@ import { computeFileHash, buildStorageKey } from "../services/StorageService.js"
 import { config } from "../../../config.js";
 import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
 
-// file.patient_id has a real FK to patient.id — a bare crypto.randomUUID() with no matching
-// row (what several tests below used to pass) trips that constraint. This creates one real
-// patient row tests can share/reference instead.
+// Creates a real patient row because file.patient_id has an FK a random uuid would violate.
 async function createTestPatient(): Promise<string> {
   const facRows = await db.insert(facility).values({
     id: crypto.randomUUID(), name: "Documents Test Facility", region: "Lagos", address: "D St", status: "ACTIVE",
@@ -29,10 +27,7 @@ async function createTestPatient(): Promise<string> {
   return patRows[0]!.id;
 }
 
-// A logged-in user with no roles/permissions at all — "not this patient's owner, and not
-// staff either" — for asserting the download route 403s the same way the metadata route does.
-// Session-cookie login, not a synthetic req.userId, since the ownership check depends on the
-// real cookie -> session -> userId derivation.
+// Creates a logged-in user with no roles, via a real session cookie, to assert non-owners get the same 403 as the metadata route.
 async function createSessionCookie(): Promise<{ userId: string; cookie: string }> {
   const userId = crypto.randomUUID();
   await db.insert(user).values({
@@ -55,10 +50,7 @@ vi.mock("@aws-sdk/client-s3", () => {
   };
 });
 
-// getSignedUrl computes a real signature from the client's config (region, credentials), which
-// the bare { send } mock above doesn't have — mocked here the same way PutObjectCommand's
-// actual network call is mocked, so the download tests exercise the route's own logic
-// (authorization, infected-file block, the redirect itself) without needing real R2 signing.
+// Mocks the presigner because getSignedUrl needs real client config, so the tests exercise only the route's own logic.
 vi.mock("@aws-sdk/s3-request-presigner", () => ({
   getSignedUrl: vi.fn(
     (_client: unknown, command: { Bucket: string; Key: string }) =>
@@ -201,11 +193,7 @@ describe("FileService — upload", () => {
     expect(res.body.file.fileHash).toBe(computeFileHash(content));
   });
 
-  // The reported bug: uploading a document or a voice note failed with
-  // {"error":"Internal server error","code":"INTERNAL_ERROR"}. The cause was express.json()'s
-  // 100kb default body limit — and because uploads are base64 in a JSON body (4/3 inflation),
-  // the real file ceiling was about 75kb, which almost any photo, PDF or voice note exceeds.
-  // 500kb here is comfortably past the old limit and comfortably inside the new one.
+  // Regression: the old 100kb body limit (75kb of file after base64) rejected realistic uploads with a generic 500; 500kb is past the old limit and inside the new one.
   it("accepts a file far larger than the old 100kb body limit", async () => {
     const pid = await createTestPatient();
     const content = Buffer.alloc(500 * 1024, "a");
@@ -217,10 +205,7 @@ describe("FileService — upload", () => {
     expect(res.body.file.fileHash).toBe(computeFileHash(content));
   });
 
-  // The limit is enforced on decoded bytes in the controller as well as by the parser, so it
-  // can report the actual file limit rather than a generic complaint about the envelope.
-  // maxUploadBytes is lowered here because the parser budget is derived from it at import and
-  // would otherwise reject the request first — this exercises the controller's own branch.
+  // The controller enforces the limit on decoded bytes to report the real file limit; maxUploadBytes is lowered so the parser doesn't reject first.
   it("rejects a file over the configured limit with 413, naming the limit", async () => {
     const pid = await createTestPatient();
     const original = config.maxUploadBytes;
@@ -281,10 +266,7 @@ describe("FileService — get file by id", () => {
   });
 });
 
-// The bug this route fixes: uploads wrote to R2 and GET /files/:id returned metadata only —
-// storage_key, mime type, scan status — with nothing anywhere that read the object back out,
-// so an uploaded avatar or lab document had no way to ever reach a browser. This is the
-// content-serving half of the pair.
+// The content-serving half of the pair: uploads reached R2 but nothing read them back to a browser.
 describe("GET /files/:id/content — signed download", () => {
   let uploadedId: string;
   let uploadedStorageKey: string;
@@ -330,9 +312,7 @@ describe("GET /files/:id/content — signed download", () => {
     expect(res.status).toBe(404);
   });
 
-  // Same authorization as GET /files/:id (ownership-or-permission) — this file has no
-  // patientId, so an outsider with no file:read grant must be refused the bytes exactly as
-  // they're already refused the metadata.
+  // Same ownership-or-permission rule as the metadata route, so outsiders are refused the bytes too.
   it("returns 403 for a caller who is neither the file's owner nor holds file:read", async () => {
     const outsider = await createSessionCookie();
     const res = await request(app).get(`/files/${uploadedId}/content`).set("Cookie", outsider.cookie);

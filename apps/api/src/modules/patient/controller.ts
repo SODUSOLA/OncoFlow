@@ -13,8 +13,7 @@ import { timelineService } from "./services/TimelineService.js";
 import { placeCall } from "./services/CallService.js";
 import { maskPhone } from "../../lib/maskPhone.js";
 import { resolveScopeOrDeny } from "../../lib/facility-scope.js";
-// Cross-module read, same pattern as billing/controller.ts's PatientRepository import: this
-// module needs the facility's label, which it does not own.
+// Cross-module read of the facility label, which this module doesn't own.
 import { FacilityRepository } from "../facility/index.js";
 
 const patientSvc = new PatientService();
@@ -25,6 +24,7 @@ const walletRepo = new WalletRepository();
 const registrationRequestRepo = new PatientRegistrationRequestRepository();
 const facilityRepo = new FacilityRepository();
 
+// Registers a patient record, generating the Unique Patient ID server-side.
 export async function registerPatientHandler(req: Request, res: Response) {
   try {
     const { uniquePatientId, firstName, lastName, dob, gender, phone, email, facilityId, userId } = req.body;
@@ -45,8 +45,7 @@ export async function registerPatientHandler(req: Request, res: Response) {
       userId,
     });
 
-    // This request is now fulfilled — a linked patient exists, so it should stop showing up
-    // as pending. Best-effort: the patient record is already created either way.
+    // Marks the registration request fulfilled now that a linked patient exists; best-effort.
     if (userId) {
       await registrationRequestRepo.deleteByUserId(userId).catch(() => {});
     }
@@ -62,10 +61,7 @@ export async function registerPatientHandler(req: Request, res: Response) {
   }
 }
 
-// The frontend's own entry point: "who am I, as a patient" — every other patient endpoint
-// needs a patientId the caller already knows, but a freshly-logged-in patient doesn't have
-// one yet without this. Inherently self-scoped by definition (looks up by the caller's own
-// userId), so no ownership check needed beyond requireAuthenticated() on the route.
+// The frontend's entry point for "who am I as a patient"; self-scoped by the caller's userId, so no ownership check is needed.
 export async function getMyPatientHandler(req: Request, res: Response) {
   try {
     const callerId = (req as AuthenticatedRequest).userId;
@@ -79,9 +75,7 @@ export async function getMyPatientHandler(req: Request, res: Response) {
     const addresses = await addressRepo.findByPatient(patientRow.id);
     const contacts = await contactRepo.findByPatient(patientRow.id);
     const wallet = await walletRepo.findByPatient(patientRow.id);
-    // Resolved here rather than left to the client: the patient's own profile wants the
-    // facility's *name*, and patient.facilityId alone would force every screen showing it to
-    // fetch the whole facility list just to look up one label.
+    // Resolves the facility name here so screens don't fetch the whole facility list for one label.
     const facilityRow = patientRow.facilityId ? await facilityRepo.findById(patientRow.facilityId) : null;
 
     res.json({
@@ -96,6 +90,7 @@ export async function getMyPatientHandler(req: Request, res: Response) {
   }
 }
 
+// Returns a patient record for its owner or staff with patient:read.
 export async function getPatientHandler(req: Request, res: Response) {
   try {
     const { id } = req.params;
@@ -109,11 +104,7 @@ export async function getPatientHandler(req: Request, res: Response) {
       return;
     }
 
-    // The route only requires being authenticated (requireAuthenticated()), not a blanket
-    // patient:read grant — a patient reading their OWN record is a right, not a permission.
-    // Reading someone else's record still needs the staff-level permission. Without this check,
-    // any authenticated caller could fetch any patient by ID — "cannot view any other patient's
-    // data, under any circumstance" isn't actually true without it.
+    // Authenticated only: reading your own record is a right, while another patient's record needs the staff permission.
     const callerId = (req as AuthenticatedRequest).userId;
     const isSelf = patientRow.userId !== null && patientRow.userId === callerId;
     if (!isSelf && !(await userHasPermission(callerId, "patient", "read"))) {
@@ -140,14 +131,12 @@ export async function getPatientHandler(req: Request, res: Response) {
   }
 }
 
+// Searches patients within the caller's facility scope.
 export async function searchPatientsHandler(req: Request, res: Response) {
   try {
     const q = typeof req.query.q === "string" ? req.query.q : undefined;
 
-    // `?facilityId` is client-supplied and therefore untrusted: it is narrowed against what
-    // this caller may actually see (lib/facility-scope.ts) rather than used as the filter
-    // directly. Before this, `?facilityId=all` returned every patient on the platform and an
-    // explicit id let one hospital's staff read another hospital's patients.
+    // The client-supplied ?facilityId is narrowed to the caller's real scope, closing the cross-hospital and "all" leak.
     const scope = await resolveScopeOrDeny(req, res, "patient");
     if (!scope) return;
 
@@ -158,9 +147,7 @@ export async function searchPatientsHandler(req: Request, res: Response) {
     let filtered = patients;
     if (q) {
       const query = q.toLowerCase();
-      // Deliberately no phone match here — this is a staff-facing search (FR-04), and even
-      // using phone as a search key without displaying it back is a side-channel for staff
-      // to probe for/confirm a patient's number.
+      // No phone matching, since searching by phone would let staff probe for a patient's number.
       filtered = patients.filter(
         (p) =>
           p.firstName.toLowerCase().includes(query) ||
@@ -178,9 +165,7 @@ export async function searchPatientsHandler(req: Request, res: Response) {
         gender: p.gender,
         status: p.status,
         facilityId: p.facilityId,
-        // Masked, not omitted — safe for Admin-scoped staff to see enough to recognize a
-        // number without it becoming the side-channel the unmasked field would be (see the
-        // comment on the `q` filter above).
+        // The phone is masked rather than omitted, so staff can recognize it without a side-channel.
         phoneMasked: maskPhone(p.phone),
       })),
     });
@@ -189,13 +174,11 @@ export async function searchPatientsHandler(req: Request, res: Response) {
   }
 }
 
-// Self-edits are scoped to non-clinical fields only (per the Patient role spec: "can edit own
-// profile — non-clinical fields i.e. second email, PP, and phone number"). Staff with
-// patient:update can correct any of the fields below; a patient editing their own record
-// cannot touch identity/clinical-adjacent fields like name, DOB, gender, or status.
+// Patients may self-edit only non-clinical fields (phone, second email, picture); staff with patient:update can correct the rest.
 const SELF_EDITABLE_FIELDS = ["phone", "secondaryEmail", "profilePictureFileId"] as const;
 const STAFF_EDITABLE_FIELDS = ["firstName", "lastName", "dob", "gender", "phone", "email", "status"] as const;
 
+// Updates a patient's fields, limited for self-edits.
 export async function updatePatientHandler(req: Request, res: Response) {
   try {
     const { id } = req.params;
@@ -226,8 +209,7 @@ export async function updatePatientHandler(req: Request, res: Response) {
     const updates: Record<string, unknown> = {};
     for (const field of allowedFields) {
       if (req.body[field] !== undefined) {
-        // Clearing an optional contact field arrives as "" from a form input; store it as NULL
-        // rather than an empty string so "unset" has one representation in the database.
+        // A cleared contact field arrives as "" and is stored as NULL so "unset" has one representation.
         const value = req.body[field];
         updates[field] = field === "secondaryEmail" && value === "" ? null : value;
       }
@@ -245,6 +227,7 @@ export async function updatePatientHandler(req: Request, res: Response) {
   }
 }
 
+// Soft-deletes a patient.
 export async function deletePatientHandler(req: Request, res: Response) {
   try {
     const { id } = req.params;
@@ -265,6 +248,7 @@ export async function deletePatientHandler(req: Request, res: Response) {
   }
 }
 
+// Adds an address to a patient.
 export async function createAddressHandler(req: Request, res: Response) {
   try {
     const { id } = req.params;
@@ -299,6 +283,7 @@ export async function createAddressHandler(req: Request, res: Response) {
   }
 }
 
+// Adds an emergency contact to a patient.
 export async function createEmergencyContactHandler(req: Request, res: Response) {
   try {
     const { id } = req.params;
@@ -334,6 +319,7 @@ export async function createEmergencyContactHandler(req: Request, res: Response)
   }
 }
 
+// Returns a patient's wallet (own or by permission).
 export async function getWalletHandler(req: Request, res: Response) {
   try {
     const patientId = typeof req.query.patientId === "string" ? req.query.patientId : undefined;
@@ -366,9 +352,7 @@ export async function getWalletHandler(req: Request, res: Response) {
   }
 }
 
-// TimelineService itself has existed since earlier (F0.x) but had no HTTP route at all — this
-// closes that gap. Recording entries into it (on invoice/appointment/consultation events) is
-// separate, not-yet-wired follow-up work; this endpoint only reads whatever's there.
+// Exposes TimelineService, which had no HTTP route; it only reads, and recording entries is separate follow-up work.
 export async function getPatientTimelineHandler(req: Request, res: Response) {
   try {
     const { id } = req.params;
@@ -400,11 +384,7 @@ export async function getPatientTimelineHandler(req: Request, res: Response) {
   }
 }
 
-// Route is already gated on patient:call (Regional Admin / Onsite Nursing Officer only, see
-// routes.ts + seed/identity.ts) — no further ownership/permission check needed here. The raw
-// phone number is read server-side to hand to CallService and is never put in the response
-// body (FR-04 / Data Classification §8 — same restriction Patient.toJSON() already enforces
-// for every other staff-facing response).
+// Gated on patient:call, so no ownership check; the raw number is passed to CallService server-side and never returned (FR-04).
 export async function callPatientHandler(req: Request, res: Response) {
   try {
     const { id } = req.params;
@@ -427,10 +407,7 @@ export async function callPatientHandler(req: Request, res: Response) {
   }
 }
 
-// Gated on patient:create, not patient:read — this is the queue that feeds the facility
-// confirmation action (PATCH /patients/:id/confirm-facility), not general record browsing.
-// The patient record itself already exists by the time a row shows up here (auto-created at
-// email verification); `patientId` is included so the confirm action has something to target.
+// Gated on patient:create as the queue feeding facility confirmation; patientId is included since the record already exists.
 export async function listPendingRegistrationsHandler(_req: Request, res: Response) {
   try {
     const rows = await registrationRequestRepo.findAllPending();
@@ -458,6 +435,7 @@ export async function listPendingRegistrationsHandler(_req: Request, res: Respon
   }
 }
 
+// Confirms a patient's facility (Regional Admin onboarding step).
 export async function confirmFacilityHandler(req: Request, res: Response) {
   try {
     const { id } = req.params;

@@ -16,6 +16,7 @@ let moUserId: string;
 let oncologistUserId: string;
 let testTriageChecklistId: string;
 
+// Returns the id of the named role, creating it if missing.
 async function ensureRole(name: string) {
   const existing = await db.execute<{ id: string }>(sql`SELECT id FROM "role" WHERE name = ${name} LIMIT 1`);
   if (existing.length > 0) return existing[0]!.id;

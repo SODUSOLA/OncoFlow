@@ -2,9 +2,7 @@ import { useState } from "react";
 import { api } from "../../lib/api";
 import type { Patient } from "../../lib/types";
 
-// Non-clinical, self-editable fields only — the backend enforces this same restriction
-// server-side (SELF_EDITABLE_FIELDS in patient/controller.ts), this just mirrors it in the UI
-// so a patient isn't shown inputs for fields their own edit can never actually change.
+// Shows only the non-clinical fields patients may edit, mirroring the server's SELF_EDITABLE_FIELDS restriction.
 export function ProfilePanel({ patient, onUpdated }: { patient: Patient; onUpdated: () => void }) {
   const [phone, setPhone] = useState(patient.phone ?? "");
   const [secondaryEmail, setSecondaryEmail] = useState(patient.secondaryEmail ?? "");
@@ -12,6 +10,7 @@ export function ProfilePanel({ patient, onUpdated }: { patient: Patient; onUpdat
   const [result, setResult] = useState<string | null>(null);
   const [uploading, setUploading] = useState(false);
 
+  // Saves the edited profile fields.
   async function handleSave() {
     setSaving(true);
     setResult(null);
@@ -26,6 +25,7 @@ export function ProfilePanel({ patient, onUpdated }: { patient: Patient; onUpdat
     }
   }
 
+  // Uploads a new profile picture and stores its file id.
   async function handlePictureUpload(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
     if (!file) return;
@@ -124,6 +124,7 @@ export function ProfilePanel({ patient, onUpdated }: { patient: Patient; onUpdat
   );
 }
 
+// Reads a file as a base64 string.
 function fileToBase64(file: File): Promise<string> {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();

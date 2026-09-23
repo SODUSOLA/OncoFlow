@@ -3,17 +3,7 @@ import { sql } from "drizzle-orm";
 import crypto from "node:crypto";
 import { role, permission, rolePermission } from "../db/schema.js";
 
-// PATIENT deliberately receives NO permission grants below, and that's correct, not an
-// oversight: every "view/edit own X" capability in the Patient role spec (profile, timeline,
-// invoices, wallet, lab results, lab requests, files, conversations, messages, meetings) is
-// enforced via an ownership check in the relevant controller/service (callerOwnsPatient —
-// patient/controller.ts, clinical/controller.ts, documents/controller.ts, billing/controller.ts,
-// messaging/service.ts), not a resource:action grant. Granting PATIENT a blanket permission
-// like patient:read or invoice:read here would let any patient read every OTHER patient's
-// data too — permissions in this system aren't scoped to "own records only," ownership checks
-// are what make self-service safe. If a genuinely role-wide (not per-record) PATIENT capability
-// is ever needed, that's the case to add a real grant for — self-access to one's own records
-// should keep going through ownership, not a permission.
+// PATIENT intentionally has no grants: self-service is enforced by ownership checks, and a blanket permission would expose every other patient's data.
 const ROLES = [
   "PATIENT",
   "REGIONAL_ADMIN",
@@ -81,11 +71,7 @@ const PERMISSIONS: { resource: string; action: string; description: string }[] =
   { resource: "transcriptionAssignment", action: "read", description: "Read the transcription queue / own claimed assignments (F3.11)" },
   { resource: "transcriptionAssignment", action: "claim", description: "Claim an item from the shared transcription queue (Scribe only, requireRole — F3.11)" },
   { resource: "transcriptionAssignment", action: "update", description: "Release or finalize a claimed transcription assignment (Scribe only, requireRole — F3.11)" },
-  // FR-24: one calendar endpoint reused by every role — same permission string for all of
-  // them, since the endpoint itself resolves per-caller scope server-side (controller), not
-  // per-role permission variants. Like every other permission here, only SUPER_ADMIN is
-  // granted it for now; per-role grants are pending the same real RBAC-seeding pass the rest
-  // of this file is waiting on.
+  // One calendar permission for every role since the endpoint resolves scope per caller; only SUPER_ADMIN is granted it for now.
   { resource: "calendar", action: "read", description: "Read the unified calendar (FR-24)" },
   { resource: "staffing", action: "read", description: "Read the facility staffing/shift grid" },
   { resource: "staffing", action: "update", description: "Assign nurses to shifts and publish a week's schedule" },
@@ -94,10 +80,7 @@ const PERMISSIONS: { resource: string; action: string; description: string }[] =
   { resource: "transferRequest", action: "create", description: "Initiate a patient facility transfer request" },
   { resource: "transferRequest", action: "read", description: "Read facility transfer requests" },
   { resource: "audit", action: "read", description: "Read a region-scoped activity feed (logins, logouts, access-denied events) for own facility-scoped staff" },
-  // Pre-existing gap, closed in passing: no "file" resource was ever defined here, so
-  // requirePermission("file", ...)/userHasPermission(..., "file", ...) checks in
-  // documents/controller.ts had silently never granted anything to any staff role — only a
-  // caller uploading/reading their OWN patient's file (ownership) ever worked.
+  // Defines the "file" resource that was never declared, so staff file permissions previously granted nothing.
   { resource: "file", action: "create", description: "Upload a file attached to a patient record (staff uploading on a patient's behalf, e.g. Nursing Officer identity/documentation capture)" },
   { resource: "file", action: "read", description: "Read a file's metadata / fetch its signed download URL" },
   { resource: "clinicalNote", action: "create", description: "Add a free-text clinical note to a patient's medical record" },
@@ -114,8 +97,22 @@ const PERMISSIONS: { resource: string; action: string; description: string }[] =
   { resource: "nursingCase", action: "create", description: "Start a nursing case for a patient's regimen cycle visitation" },
   { resource: "nursingCase", action: "update", description: "Review a nursing case's documentation and record a QA decision (QA Officer only)" },
   { resource: "securityIncident", action: "read", description: "Read upload-security-incident reports (rejected/infected file uploads)" },
+  // Drug supply chain (ONCOFLOW_DRUG_RECONCILIATION_WORKFLOW.md): ownership is enforced in the controllers on top of these grants.
+  { resource: "drugRequest", action: "create", description: "Request drugs, and view/cancel one's own requests (Nursing Officer)" },
+  { resource: "drugRequest", action: "read", description: "Read the drug request queue for one's region (Regional Admin)" },
+  { resource: "drugDispatch", action: "create", description: "Dispatch a drug request from regional stock (Regional Admin)" },
+  { resource: "drugDispatch", action: "update", description: "Acknowledge receipt of a dispatch addressed to oneself (Nursing Officer)" },
+  { resource: "drugStock", action: "read", description: "Read one's own drug stock (Nursing Officer)" },
+  { resource: "drugUsage", action: "create", description: "Log a drug administered against one's own nursing case" },
+  { resource: "drugLoss", action: "create", description: "Report spillage or breakage of drugs in one's own stock" },
+  { resource: "drugLoss", action: "read", description: "Read drug loss reports for one's region (Regional Admin)" },
+  { resource: "drugReconciliation", action: "create", description: "Record a physical stock count (officers: own stock only)" },
+  { resource: "drugReconciliation", action: "read", description: "Read stock reconciliations and their variances" },
+  { resource: "drugReconciliation", action: "update", description: "Resolve a reconciliation variance and count any officer's or regional stock (Regional Admin)" },
+  { resource: "drugAlert", action: "read", description: "Read regional stock, per-officer stock and drug alerts (Regional Admin)" },
 ];
 
+// Seeds roles, permissions and the per-role grants.
 export async function seedIdentity() {
   for (const name of ROLES) {
     const existingRole = await db.execute<{ id: string }>(
@@ -170,6 +167,7 @@ export async function seedIdentity() {
     }
   }
 
+  // Grants the listed permission keys to a role, skipping existing grants.
   async function grantPermissionsToRole(roleName: string, keys: string[]) {
     const roleId = roleMap.get(roleName)!;
     for (const key of keys) {
@@ -185,20 +183,12 @@ export async function seedIdentity() {
     }
   }
 
-  // First real (non-SUPER_ADMIN) per-role grant in this seed — scoped tightly to what
-  // apps/dashboard's Regional Admin view actually exercises today: patient search + the new
-  // registration-approval flow (patient:create), invoice generation/listing, the 7-day
-  // countdown table, and lab results (labResult:read's own description above already
-  // documents "Regional Admin gets the scoped view" as the intent).
+  // Regional Admin grants, scoped to what its dashboard uses: patient search and registration, invoicing, countdown, and scoped lab results.
   await grantPermissionsToRole("REGIONAL_ADMIN", [
-    // patient:update covers confirming/reassigning a new patient's facility
-    // (PATCH /patients/:id/confirm-facility) — the last step of onboarding now that the
-    // patient record itself is auto-created at email verification.
+    // patient:update covers confirming or reassigning a facility, the last onboarding step.
     "patient:read", "patient:create", "patient:update", "patient:call",
     "invoice:create", "invoice:read", "tariff:read",
-    // appointment:create + availability:read — ONCOFLOW_SCHEDULING_AND_VIDEO_LIFECYCLE.md's
-    // revived New Consultation flow: Admin picks a consultant, sees their real availability,
-    // and schedules into it.
+    // appointment:create plus availability:read power the New Consultation flow.
     "appointment:read", "appointment:update", "appointment:create",
     "availability:read",
     "countdownCase:read",
@@ -208,38 +198,33 @@ export async function seedIdentity() {
     "inventory:read", "inventory:update",
     "transferRequest:create", "transferRequest:read",
     "audit:read",
-    // ONCOFLOW_NURSING_OFFICER_BUILD_GUIDE.md Finding 3 — a rejected upload feeds Regional
-    // Admin's existing alert aggregator as a new source, not a new notification system.
+    // Lets Regional Admin see rejected-upload incidents in its alert aggregator.
     "securityIncident:read",
+    // Dispatches drug requests, oversees regional and per-officer stock, and reviews losses and variances.
+    "drugRequest:read", "drugDispatch:create", "drugLoss:read",
+    "drugReconciliation:create", "drugReconciliation:read", "drugReconciliation:update",
+    "drugAlert:read",
   ]);
 
-  // Second real per-role grant — the Virtual Medical Officer handling MO_SIDE_EFFECT reports:
-  // reading/replying to conversations they're assigned, and closing one once the encounter is
-  // resolved (closeConversation's ownership-or-permission check needs conversation:update here).
+  // Virtual Medical Officer grants for side-effect reports, including conversation:update to close one.
   await grantPermissionsToRole("VIRTUAL_MEDICAL_OFFICER", [
     "conversation:create", "conversation:read", "conversation:update",
     "message:create", "message:read",
   ]);
 
-  // Third real per-role grant — Onsite Nursing Officer, extended per
-  // ONCOFLOW_NURSING_OFFICER_BUILD_GUIDE.md: the case wizard (start a case, read the patient +
-  // that day's regimen cycles, upload identity/documentation files, report a security incident
-  // for a file the scan flags), plus the Inventory tab's read/write on their own facility's
-  // ledger (client only ever queries its own facilityId — see listRegimenCyclesHandler's
-  // explicit facility check for the equivalent server-side guard on the schedule endpoint).
+  // Onsite Nursing Officer grants for the case wizard (cases, regimen cycles, files, incidents) and the Inventory tab.
   await grantPermissionsToRole("ONSITE_NURSING_OFFICER", [
     "patient:call", "patient:read",
     "regimen:read",
     "nursingCase:create",
     "file:create", "file:read",
-    "inventory:read", "inventory:update",
+    // Read-only catalog; stock now moves only through the ledgers (requests, receipts, usage, loss), never manual edits.
+    "inventory:read",
+    "drugRequest:create", "drugDispatch:update", "drugStock:read", "drugUsage:create", "drugLoss:create",
+    "drugReconciliation:create",
   ]);
 
-  // Fourth real per-role grant — Consulting Oncologist's first-ever grant in this seed, scoped
-  // to what apps/dashboard's Consultant build actually exercises: the Appointment Grid, Patient
-  // File (read-only clinical history), the Video Consult room (provisioning/reading a Daily.co
-  // meeting and its transcript, signing off once corrected — meeting:update's ownership check
-  // is against appointment.oncologistId, not a broad grant), and adding clinical notes.
+  // Consulting Oncologist grants: appointment grid, patient file, video room and transcript, and clinical notes.
   await grantPermissionsToRole("CONSULTING_ONCOLOGIST", [
     "patient:read",
     "appointment:read", "appointment:update",
@@ -252,9 +237,7 @@ export async function seedIdentity() {
     "activityLog:read",
   ]);
 
-  // Fifth real per-role grant — Quality Assurance Officer's first-ever grant in this seed,
-  // scoped to reviewing a nursing case as a whole (nursingCase:update, requireRole-gated to
-  // this role at the route layer too) and reading the patient context while doing so.
+  // QA Officer grants: reviewing a nursing case as a whole and reading patient context.
   await grantPermissionsToRole("QUALITY_ASSURANCE_OFFICER", [
     "nursingCase:update",
     "patient:read",
@@ -265,9 +248,7 @@ export async function seedIdentity() {
   console.log("Identity seed complete.");
 }
 
-// Only self-invoke when run directly (`npx tsx src/seed/identity.ts`) — seed/index.ts also
-// imports and awaits this export, and without this guard both invocations would race on the
-// same "does this role exist yet?" check against an empty database (23505 duplicate key).
+// Self-invokes only when run directly, since seed/index.ts also awaits it and two runs would race on an empty database.
 if (import.meta.url === `file://${process.argv[1]}`) {
   seedIdentity().catch(console.error);
 }

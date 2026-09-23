@@ -12,9 +12,9 @@ const labDocumentRepo = new LabDocumentRepository();
 const activityLogRepo = new ActivityLogRepository();
 const caseLockRepo = new CaseLockRepository();
 
+// Business logic for regimens.
 export class RegimenService {
-  // Cycle progress ("4/6 Cycles") is derived here, never stored — per
-  // ONCOFLOW_PATIENT_DATA_MODELS.md §1.
+  // Cycle progress ("4/6 Cycles") is derived here, never stored.
   async getForPatient(patientId: string) {
     const active = await regimenRepo.findActiveByPatient(patientId);
     if (!active) return null;
@@ -38,13 +38,18 @@ export class RegimenService {
   async listCyclesForFacilityAndDate(facilityId: string, date: string) {
     return regimenRepo.findCyclesByFacilityAndDate(facilityId, date);
   }
+
+  // Cycles still due (today's and any overdue), what the Schedule tab and case wizard actually let a nurse act on.
+  async listDueCyclesForFacility(facilityId: string, throughDate: string) {
+    return regimenRepo.findDueCyclesByFacility(facilityId, throughDate);
+  }
 }
 
 const VITAL_TYPES = ["WEIGHT_KG", "BLOOD_PRESSURE_SYSTOLIC", "BLOOD_PRESSURE_DIASTOLIC", "HEART_RATE_BPM", "TEMPERATURE_C", "SPO2_PERCENT"] as const;
 
+// Business logic for vitals.
 export class VitalsService {
-  // Severity is computed here against vital_reference_range, never stored per-reading — same
-  // rule the lab panel follows.
+  // Severity is computed here against vital_reference_range, never stored per reading.
   async getLatestForPatient(patientId: string) {
     const [latest, ranges] = await Promise.all([
       vitalsRepo.findLatestByPatient(patientId),
@@ -70,11 +75,13 @@ export class VitalsService {
     });
   }
 
+  // Returns a patient's readings for one vital type with severity.
   async getTrendForPatient(patientId: string, vitalType: string, limit: number) {
     const rows = await vitalsRepo.findTrendByPatient(patientId, vitalType, limit);
     return rows.map((r) => ({ id: r.id, value: Number(r.value), recordedAt: r.recordedAt, source: r.source })).reverse();
   }
 
+  // Records a vital reading.
   async recordReading(data: { patientId: string; vitalType: string; value: number; source: string; recordedBy?: string; meetingId?: string }) {
     return vitalsRepo.insertReading({
       id: crypto.randomUUID(),
@@ -91,7 +98,9 @@ export class VitalsService {
 
 export interface LabValueInput { analyteCode: string; value: number; unit: string }
 
+// Business logic for clinical metrics snapshots.
 export class ClinicalMetricsService {
+  // Returns the current snapshot for a patient with its derived values.
   async getCurrentForPatient(patientId: string) {
     const snapshot = await metricsRepo.findCurrentByPatient(patientId);
     if (!snapshot) return null;
@@ -110,10 +119,7 @@ export class ClinicalMetricsService {
     };
   }
 
-  // The Nursing Officer's real per-cycle entry — biometrics + the FBC/E-U-Cr batch in one
-  // submission, per ONCOFLOW_LAB_AND_METRICS_WORKFLOW.md's Track 1 extension. Built now (ahead
-  // of the Nursing Officer phase itself) because it's real, reusable business logic — the CrCl
-  // case-lock trigger in particular needs to exist before any snapshot can be recorded safely.
+  // Records the Nursing Officer's per-cycle biometrics and lab batch, computing metrics and triggering the CrCl case lock.
   async recordSnapshot(data: {
     patientId: string; regimenCycleId?: string; recordedBy: string;
     weightKg: number; heightCm: number; ageYears: number; sex: "MALE" | "FEMALE";
@@ -171,11 +177,7 @@ export class ClinicalMetricsService {
       unit: v.unit,
     })));
 
-    // CrCl and eGFR can both fire on the same snapshot — per the doc, that's still one open
-    // case_lock, not two. Check for an existing unresolved lock before inserting; if the case
-    // is already locked, a second trigger on the same cycle doesn't stack another row (the
-    // existing lock's own record already captures "this patient's case is locked", and
-    // resolution isn't per-trigger).
+    // CrCl and eGFR can both fire but should produce one open case lock, so an existing unresolved lock is reused.
     const crclCritical = computed.crcl < CRCL_CASE_LOCK_THRESHOLD;
     const egfrCritical = EGFR_CASE_LOCK_STAGES.includes(computed.egfrStage);
     if (crclCritical || egfrCritical) {
@@ -196,7 +198,9 @@ export class ClinicalMetricsService {
   }
 }
 
+// Business logic for lab documents.
 export class LabDocumentService {
+  // Lists a patient's lab documents with review info.
   async listForPatient(patientId: string) {
     const rows = await labDocumentRepo.findByPatientWithAdminReview(patientId);
     return rows.map((r) => ({
@@ -210,7 +214,9 @@ export class LabDocumentService {
   }
 }
 
+// Business logic for the clinical activity log.
 export class ActivityLogService {
+  // Returns a patient's recent activity entries.
   async getForPatient(patientId: string, limit: number) {
     const rows = await activityLogRepo.findByPatient(patientId, limit);
     return rows.map((r) => ({
@@ -222,7 +228,9 @@ export class ActivityLogService {
   }
 }
 
+// Business logic for case locks.
 export class CaseLockService {
+  // Returns the patient's active case lock.
   async getActiveForPatient(patientId: string) {
     return caseLockRepo.findActiveByPatient(patientId);
   }

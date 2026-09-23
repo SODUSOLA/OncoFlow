@@ -4,14 +4,7 @@ import { getRedis } from "./redis.js";
 import { RateLimitError } from "./errors.js";
 import { config } from "../config.js";
 
-// Every request in a test run originates from 127.0.0.1, so without this all 47 suites share
-// one bucket per limiter — and because counters live in Redis for the full 15-minute window,
-// they also survive *between* runs. That made failures depend on how recently the suite last
-// ran: consecutive full runs produced 4, then 12, then more spurious 429s as counters piled up.
-// Namespacing per process gives each vitest worker its own buckets, so limiter behaviour is
-// still fully exercised within a file but never leaks across files or across runs.
-// Empty in production and development — real deployments must share buckets across requests,
-// which is the entire point of a rate limiter.
+// Under test each process gets its own Redis buckets so runs don't share 127.0.0.1 counters; empty in real deployments so buckets are shared.
 const KEY_NAMESPACE = config.isTest ? `test:${process.pid}:${crypto.randomBytes(4).toString("hex")}:` : "";
 
 type RateLimitConfig = {
@@ -28,18 +21,21 @@ type MemoryBucket = {
 
 const memoryBuckets = new Map<string, MemoryBucket>();
 
+// Default rate-limit key: the client IP, honouring x-forwarded-for.
 function getDefaultKey(req: Request): string {
   const forwardedFor = req.headers["x-forwarded-for"];
   const forwardedIp = typeof forwardedFor === "string" ? forwardedFor.split(",")[0]?.trim() : undefined;
   return forwardedIp ?? req.ip ?? "unknown";
 }
 
+// Sets the standard X-RateLimit-* response headers.
 function setRateLimitHeaders(res: Response, limit: number, remaining: number, resetAt: number): void {
   res.setHeader("X-RateLimit-Limit", String(limit));
   res.setHeader("X-RateLimit-Remaining", String(Math.max(remaining, 0)));
   res.setHeader("X-RateLimit-Reset", String(Math.ceil(resetAt / 1000)));
 }
 
+// Counts a hit in Redis for the key and returns the count and reset time.
 async function consumeRedis(key: string, windowMs: number, max: number) {
   const redis = getRedis();
   const count = await redis.incr(key);
@@ -56,6 +52,7 @@ async function consumeRedis(key: string, windowMs: number, max: number) {
   };
 }
 
+// In-memory fallback counter used when Redis isn't available.
 function consumeMemory(key: string, windowMs: number, max: number) {
   const now = Date.now();
   const existing = memoryBuckets.get(key);
@@ -77,6 +74,7 @@ function consumeMemory(key: string, windowMs: number, max: number) {
   };
 }
 
+// Builds an Express middleware that rate-limits by key and responds 429 once the window's max is exceeded.
 export function createRateLimiter({ windowMs, max, keyPrefix, keyGenerator }: RateLimitConfig) {
   return async (req: Request, res: Response, next: NextFunction): Promise<void> => {
     const key = `${KEY_NAMESPACE}${keyPrefix}:${keyGenerator?.(req) ?? getDefaultKey(req)}`;

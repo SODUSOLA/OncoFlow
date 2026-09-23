@@ -1,5 +1,4 @@
-// ONCOFLOW_NURSING_OFFICER_BUILD_GUIDE.md — shapes matching apps/api/src/modules/nursing and
-// the clinical-metrics module's /regimen-cycles endpoint.
+// Types matching the nursing module and the /regimen-cycles endpoint.
 
 export interface RegimenCycleRow {
   id: string;
@@ -26,6 +25,14 @@ export interface NursingCase {
   closedAt: string | null;
 }
 
+// GET /nursing-cases/mine's actual shape: the case joined to its patient's name and MRN, so a case card can
+// show who it's for instead of a bare id.
+export interface NursingCaseWithPatient extends NursingCase {
+  patientFirstName: string;
+  patientLastName: string;
+  patientUniqueId: string;
+}
+
 export interface NursingDocumentationSheet {
   id: string;
   nursingCaseId: string;
@@ -43,6 +50,18 @@ export interface NursingCaseReview {
   reviewedAt: string;
   decision: "REQUIREMENTS_INCOMPLETE" | "REQUIREMENTS_MET";
   reason: string | null;
+}
+
+// The GET /nursing-cases/:id shape: the case joined to its patient, plus its documentation sheet (once
+// submitted) and any QA reviews.
+export interface NursingCaseDetail extends NursingCase {
+  patientFirstName: string;
+  patientLastName: string;
+  patientUniqueId: string;
+  patientDob: string;
+  patientGender: string;
+  documentationSheet: NursingDocumentationSheet | null;
+  reviews: NursingCaseReview[];
 }
 
 export interface FileRecord {

@@ -13,6 +13,7 @@ export interface FileData {
   createdAt: Date;
 }
 
+// Domain entity for an uploaded file and its scan status.
 export class File {
   constructor(private data: FileData) {}
 
@@ -25,6 +26,7 @@ export class File {
   get fileHash() { return this.data.fileHash; }
   get createdAt() { return this.data.createdAt; }
 
+  // Serializes the file for API responses.
   toJSON() {
     return {
       id: this.data.id,

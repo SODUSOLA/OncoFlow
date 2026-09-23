@@ -6,10 +6,7 @@ import { Toggle } from "../../../components/ui/Toggle";
 import { api } from "../../../lib/api";
 import { useAuth } from "../../../lib/auth";
 
-// Phase 8 of ONCOFLOW_REGIONAL_ADMIN_BUILD_GUIDE.md ("Configuration"), scoped to what's
-// actually real on the `user` table (apps/api/src/modules/auth/schema.ts): email, facilityId,
-// mfaEnabled/mfaSecret. No name, photo, or per-user preferences columns exist for staff accounts
-// (only patients have those) — see per-field notes below for how each spec'd field is handled.
+// Settings limited to what the user table has (email, facility, MFA), since staff have no name, photo or preference columns.
 export default function SettingsPage() {
   const { user, roles } = useAuth();
   const roleLabel = roles[0]?.roleDescription || roles[0]?.roleName.replace(/_/g, " ") || "Regional Admin";
@@ -26,9 +23,7 @@ export default function SettingsPage() {
           <div className="flex size-16 shrink-0 items-center justify-center rounded-full bg-admin-card-alt text-admin-h4 font-semibold text-admin-text">
             {initials}
           </div>
-          {/* No photo-upload column/endpoint exists for staff accounts (only Patient has
-              profilePictureFileId) — disabled rather than a button that would silently do
-              nothing. */}
+          {/* Disabled because staff accounts have no profile photo column or endpoint. */}
           <Button variant="outline" size="sm" disabled title="Not available — staff accounts have no profile photo field yet" className="rounded-admin-xs border-admin-border text-admin-text-secondary">
             Update Photo
           </Button>
@@ -36,9 +31,7 @@ export default function SettingsPage() {
         <div className="mt-4 grid grid-cols-2 gap-4">
           <div>
             <label className="text-admin-caption text-admin-text-secondary">Full Name</label>
-            {/* Rendered as the spec'd input, but disabled: the `user` table has no name column
-                for staff, so there's nothing real to save an edit to. Pre-filled from the email
-                local part purely as a display convenience, not a stored value. */}
+            {/* Disabled because staff have no name column; pre-filled from the email local part for display only. */}
             <input
               value={displayName}
               disabled
@@ -64,10 +57,7 @@ export default function SettingsPage() {
           </div>
           <div>
             <label className="text-admin-caption text-admin-text-secondary">Clinical ID</label>
-            {/* Real, stable, always read-only per the acceptance criteria — this account's own
-                user id stands in for a purpose-built "Clinical ID" field, since no such column
-                exists on staff accounts (only Patient.uniquePatientId does, for a different
-                role entirely). */}
+            {/* Read-only; the user id stands in for a "Clinical ID" since staff accounts have no such column. */}
             <input
               value={user?.id.slice(0, 8).toUpperCase() ?? ""}
               disabled
@@ -120,6 +110,7 @@ export default function SettingsPage() {
   );
 }
 
+// Preference toggle row with its description.
 function ToggleRow({ label, description, checked }: { label: string; description: string; checked: boolean }) {
   return (
     <div className="flex items-center justify-between gap-4">
@@ -132,6 +123,7 @@ function ToggleRow({ label, description, checked }: { label: string; description
   );
 }
 
+// Card for enrolling and confirming MFA.
 function MfaCard() {
   const [step, setStep] = useState<"idle" | "enrolling" | "verifying">("idle");
   const [secret, setSecret] = useState<string | null>(null);
@@ -141,6 +133,7 @@ function MfaCard() {
   const [busy, setBusy] = useState(false);
   const [enabled, setEnabled] = useState(false);
 
+  // Starts MFA enrolment and shows the secret.
   async function startEnrolment() {
     setBusy(true);
     setError(null);
@@ -155,6 +148,7 @@ function MfaCard() {
     }
   }
 
+  // Confirms MFA by verifying the entered code.
   async function confirmCode() {
     setBusy(true);
     setError(null);
@@ -170,6 +164,7 @@ function MfaCard() {
     }
   }
 
+  // Copies the MFA secret to the clipboard.
   async function copySecret() {
     if (!secret) return;
     await navigator.clipboard.writeText(secret).catch(() => {});

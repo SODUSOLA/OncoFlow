@@ -18,9 +18,7 @@ const conversationIdParamSchema = z.object({
 
 const listCountdownCasesQuerySchema = z.object({
   patientId: z.string().uuid().optional(),
-  // Defaults to the narrow, day>0-only ACTIVE set every existing caller expects (see
-  // CountdownCaseRepository.findActive's comment) — the admin overview board opts into the
-  // wider ACTIVE+ESCALATED set explicitly with ?scope=overview rather than changing the default.
+  // Defaults to the narrow ACTIVE set existing callers expect; the admin board opts into ACTIVE+ESCALATED with ?scope=overview.
   scope: z.enum(["active", "overview"]).optional(),
 });
 
@@ -94,12 +92,10 @@ const sendResultsToQaSchema = z.object({
 
 const router = Router();
 
-// requireAuthenticated: ?patientId= is a self-service "my own countdown status" read (Patient
-// role); no patientId is the unchanged staff-wide listing, ownership-checked in the handler.
+// Authenticated because ?patientId= is a patient's own-status read; without it the staff-wide listing is permission-checked in the handler.
 router.get("/countdown-cases", requireAuthenticated(), validateQuery(listCountdownCasesQuerySchema), listCountdownCasesHandler);
 
-// F3.2: only a Virtual Medical Officer can complete a triage checklist — requireRole enforces
-// the specific role on top of requirePermission's generic resource:action grant.
+// F3.2: only a Virtual Medical Officer can complete a triage checklist, enforced by requireRole on top of the permission.
 router.post(
   "/triage-checklists",
   requirePermission("triageChecklist", "create"),
@@ -107,6 +103,7 @@ router.post(
   validateBody(completeTriageChecklistSchema),
   completeTriageChecklistHandler,
 );
+// Reads a conversation's triage checklist.
 router.get(
   "/triage-checklists/:conversationId",
   requirePermission("triageChecklist", "read"),
@@ -114,15 +111,14 @@ router.get(
   getTriageChecklistHandler,
 );
 
-// F3.3: no requireRole here — MO and Consulting Oncologist (and other consultant roles) can
-// all legitimately prescribe; the MO-specific triage requirement is conditional and lives in
-// PrescriptionService.assertTriageRequiredIfMO(), not a blanket route-level role restriction.
+// No requireRole: several roles can prescribe, and the MO-specific triage requirement is enforced in PrescriptionService.
 router.post(
   "/prescriptions",
   requirePermission("prescription", "create"),
   validateBody(createPrescriptionSchema),
   createPrescriptionHandler,
 );
+// Lists prescriptions.
 router.get(
   "/prescriptions",
   requirePermission("prescription", "read"),
@@ -130,32 +126,35 @@ router.get(
   listPrescriptionsHandler,
 );
 
+// Creates a lab request.
 router.post(
   "/lab-requests",
   requirePermission("labRequest", "create"),
   validateBody(createLabRequestSchema),
   createLabRequestHandler,
 );
-// requireAuthenticated: a patient listing their OWN lab requests (to know what to upload
-// against) is a right, not a grant — see listLabRequestsHandler's callerOwnsPatient check.
+// Patients may list their own lab requests (ownership check in the controller).
 router.get(
   "/lab-requests",
   requireAuthenticated(),
   validateQuery(listLabRequestsQuerySchema),
   listLabRequestsHandler,
 );
+// Reads one lab request.
 router.get(
   "/lab-requests/:id",
   requirePermission("labRequest", "read"),
   validateParams(labRequestIdParamSchema),
   getLabRequestHandler,
 );
+// Marks a lab request as uploaded.
 router.post(
   "/lab-requests/:id/mark-uploaded",
   requirePermission("labRequest", "update"),
   validateParams(labRequestIdParamSchema),
   markLabRequestUploadedHandler,
 );
+// Marks a lab request as reviewed.
 router.post(
   "/lab-requests/:id/mark-reviewed",
   requirePermission("labRequest", "update"),
@@ -163,22 +162,21 @@ router.post(
   markLabRequestReviewedHandler,
 );
 
-// requireAuthenticated: a patient uploading their OWN lab result is a right, not a grant —
-// see uploadLabResultHandler's callerOwnsPatient check.
+// Patients uploading their own lab result is a right; the ownership check is in the controller.
 router.post(
   "/lab-results",
   requireAuthenticated(),
   validateBody(uploadLabResultSchema),
   uploadLabResultHandler,
 );
-// requireAuthenticated, not requirePermission: a patient reading their OWN lab results is a
-// right, not a grant — the ownership-or-permission check lives in the controller (callerOwnsPatient).
+// Patients reading their own lab results is a right; the ownership-or-permission check is in the controller.
 router.get(
   "/lab-results",
   requireAuthenticated(),
   validateQuery(listLabResultsQuerySchema),
   listLabResultsHandler,
 );
+// Reads one lab result.
 router.get(
   "/lab-results/:id",
   requireAuthenticated(),
@@ -186,8 +184,7 @@ router.get(
   getLabResultHandler,
 );
 
-// F3.6: sending results to QA is what creates the ClinicalDecision row a QA officer then
-// acts on — gated on the same countdownCase permission since it's a countdown-case transition.
+// Sending results to QA creates the ClinicalDecision a QA officer acts on, gated on the countdownCase permission.
 router.post(
   "/countdown-cases/send-results-to-qa",
   requirePermission("countdownCase", "update"),
@@ -195,6 +192,7 @@ router.post(
   sendResultsToQaHandler,
 );
 
+// Reads one clinical decision.
 router.get(
   "/clinical-decisions/:id",
   requirePermission("clinicalDecision", "read"),
@@ -210,8 +208,7 @@ router.post(
   validateBody(recordQaRecommendationSchema),
   recordQaRecommendationHandler,
 );
-// Stage 2: State Clinical Director only — the sequencing guard itself lives in the entity,
-// this is just who's allowed to attempt it at all.
+// Stage 2 is State Clinical Director only; the sequencing guard itself lives in the entity.
 router.post(
   "/clinical-decisions/:id/final-decision",
   requirePermission("clinicalDecision", "update"),
@@ -224,8 +221,7 @@ router.post(
 const createClinicalNoteSchema = z.object({
   patientId: z.string().uuid(),
   note: z.string().trim().min(1).max(5000),
-  // Only ever sent by Phase 6's "Sync to EHR & Finalize" — every other caller (the sidebar's
-  // free-text "Add Clinical Note") omits both and gets the CONSULT_NOTE default.
+  // Only sent by "Sync to EHR & Finalize"; the plain Add Clinical Note action omits it and gets CONSULT_NOTE.
   recordType: z.enum(["CONSULT_NOTE", "POST_CALL_SUMMARY"]).optional(),
   sourceMeetingId: z.string().uuid().optional(),
 });
@@ -236,20 +232,21 @@ const meetingIdParamSchema = z.object({
   meetingId: z.string().uuid(),
 });
 
+// Creates a clinical note.
 router.post(
   "/clinical-notes",
   requirePermission("clinicalNote", "create"),
   validateBody(createClinicalNoteSchema),
   createClinicalNoteHandler,
 );
+// Lists clinical notes.
 router.get(
   "/clinical-notes",
   requirePermission("clinicalNote", "read"),
   validateQuery(listClinicalNotesQuerySchema),
   listClinicalNotesHandler,
 );
-// requirePermission("clinicalNote", "read") — same grant as the list route above; no separate
-// ownership path since only staff with that grant use the Post-call Summary screen at all.
+// Uses the same clinicalNote:read grant as the list route, since only staff use the Post-call Summary screen.
 router.get(
   "/clinical-notes/by-meeting/:meetingId",
   requirePermission("clinicalNote", "read"),

@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/Button";
 import { FieldWrapper, PasswordInput } from "@/components/ui/Field";
 import { api } from "@/lib/api";
 
+// Form that sets a new password from an emailed token.
 export function ResetPasswordForm() {
   const searchParams = useSearchParams();
   const token = searchParams.get("token");
@@ -17,6 +18,7 @@ export function ResetPasswordForm() {
   const [submitting, setSubmitting] = useState(false);
   const [done, setDone] = useState(false);
 
+  // Submits the new password.
   async function handleSubmit(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
     const nextErrors: typeof errors = {};

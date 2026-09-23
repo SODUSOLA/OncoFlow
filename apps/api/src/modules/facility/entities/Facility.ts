@@ -7,13 +7,13 @@ export interface FacilityData {
   name: string;
   region: string;
   address: string;
-  // Drizzle's `numeric` columns come back as strings (arbitrary precision, not safe to widen
-  // to `number` implicitly) — null when a facility hasn't been given coordinates yet.
+  // Drizzle returns numeric columns as strings; null when a facility has no coordinates yet.
   latitude: string | null;
   longitude: string | null;
   status: FacilityStatus;
 }
 
+// Domain entity for a facility.
 export class Facility {
   constructor(private data: FacilityData) {}
 
@@ -30,6 +30,7 @@ export class Facility {
     return this.data.status;
   }
 
+  // Serializes the facility for API responses.
   toJSON() {
     return { ...this.data };
   }

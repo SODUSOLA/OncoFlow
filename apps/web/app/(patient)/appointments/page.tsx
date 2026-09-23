@@ -18,10 +18,12 @@ const APPOINTMENT_TYPE_LABELS: Record<Appointment["appointmentType"], string> = 
 
 const WEEKDAY_HEADERS = ["S", "M", "T", "W", "T", "F", "S"];
 
+// Returns a year-month-day key for grouping appointments by day.
 function dateKey(d: Date) {
   return `${d.getFullYear()}-${d.getMonth()}-${d.getDate()}`;
 }
 
+// Appointments page with a calendar and the patient's appointment list.
 export default function AppointmentsPage() {
   const router = useRouter();
   const { patient, loading: patientLoading, notLinked } = useMyPatient();

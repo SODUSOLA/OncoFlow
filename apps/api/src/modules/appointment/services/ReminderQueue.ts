@@ -3,11 +3,7 @@ import { Queue } from "bullmq";
 import { Redis as IORedis } from "ioredis";
 import { config } from "../../../config.js";
 
-// ONCOFLOW_SCHEDULING_AND_VIDEO_LIFECYCLE.md §4 — "needs either a recurring worker... or a
-// delayed-job queue." BullMQ already runs in this process for email/virus-scan (lib/email-queue.ts,
-// modules/documents/queue.ts); its native `delay` option is exactly a delayed-job queue, so this
-// reuses that infra rather than adding cron/a new worker process. Same connection-tuning and
-// test-namespacing reasoning as lib/email-queue.ts.
+// Reminders reuse BullMQ's native delayed jobs instead of cron or a new worker; same connection tuning and test namespacing as lib/email-queue.ts.
 const connection = new IORedis(config.redisUrl, { maxRetriesPerRequest: null });
 
 export const REMINDER_QUEUE_NAME = config.isTest
@@ -35,10 +31,7 @@ function reminderJobId(appointmentId: string, offset: ReminderOffset): string {
   return `${appointmentId}_${offset}`;
 }
 
-// Schedules whichever of the 4 offsets are still in the future relative to now — an appointment
-// created 20 minutes out only gets its -15min and 0min reminders, not two reminders for moments
-// that have already passed. Deterministic per-appointment job ids make this safely re-callable
-// (e.g. if scheduling is retried) without double-booking reminders.
+// Queues only reminder offsets still in the future, with deterministic job ids so retries don't double-book.
 export async function scheduleReminders(appointmentId: string, scheduledAt: Date): Promise<void> {
   const now = Date.now();
   const offsets = (Object.keys(OFFSET_MINUTES) as ReminderOffset[]).filter((offset) => {
@@ -55,8 +48,7 @@ export async function scheduleReminders(appointmentId: string, scheduledAt: Date
   }));
 }
 
-// Cancelling an appointment shouldn't leave stale reminders queued — best-effort removal, same
-// tolerance the rest of this codebase gives non-critical side effects.
+// Best-effort removal of an appointment's queued reminders when it's cancelled.
 export async function cancelReminders(appointmentId: string): Promise<void> {
   await Promise.all((Object.keys(OFFSET_MINUTES) as ReminderOffset[]).map((offset) =>
     reminderQueue.remove(reminderJobId(appointmentId, offset)).catch(() => {}),

@@ -19,16 +19,14 @@
   --color-warning: #b8860b;
   --color-warning-bg: #fdf6e3;
 
-  /* Amber — distinct from --color-warning (olive-gold): used for countdown timers, urgent
-     priority tags, and pending-payment tiles per the patient app reference design. */
+  /* Amber, distinct from --color-warning: countdown timers, urgent tags and pending-payment tiles. */
   --color-amber: #e08a3c;
   --color-amber-bg: #fdf3e7;
   --color-amber-text: #a06a1c;
 
   --color-surface: #ffffff;
   --color-surface-muted: #fafafa;
-  /* Warm cream backdrop for the patient app screens only — white cards read as more elevated
-     against this than against the marketing site's cooler --color-surface-muted grey. */
+  /* Warm cream backdrop for patient screens, so white cards read as more elevated than on the marketing grey. */
   --color-patient-bg: #faf9f5;
 
   /* Fonts */

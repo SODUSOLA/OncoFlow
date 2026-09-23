@@ -4,13 +4,16 @@ import { userHasPermission } from "../../lib/rbac.js";
 import { nursingCaseService } from "./service.js";
 import { AppError } from "../../lib/errors.js";
 
+// Maps an error to its HTTP status, defaulting to 500.
 function errorStatus(err: unknown): number {
   return err instanceof AppError ? err.statusCode : 500;
 }
+// Extracts a client-safe message from an error.
 function errorMessage(err: unknown): string {
   return err instanceof Error ? err.message : "Internal server error";
 }
 
+// Starts a nursing case for a regimen cycle.
 export async function startCaseHandler(req: Request, res: Response) {
   try {
     const { patientId, regimenCycleId } = req.body;
@@ -22,9 +25,7 @@ export async function startCaseHandler(req: Request, res: Response) {
   }
 }
 
-// requireAuthenticated, not requirePermission — a Nursing Officer reading their OWN case is a
-// right, ownership-or-permission (nursingCase:update, for QA) is resolved here since the record
-// needs to be loaded first to know who started it.
+// The nurse reads their own case as a right; ownership-or-permission (nursingCase:update for QA) is resolved here once the record is loaded.
 export async function getCaseHandler(req: Request, res: Response) {
   try {
     const callerId = (req as AuthenticatedRequest).userId;
@@ -40,6 +41,7 @@ export async function getCaseHandler(req: Request, res: Response) {
   }
 }
 
+// Lists the caller's own nursing cases.
 export async function listMyCasesHandler(req: Request, res: Response) {
   try {
     const callerId = (req as AuthenticatedRequest).userId;
@@ -60,6 +62,7 @@ export async function listPendingReviewHandler(_req: Request, res: Response) {
   }
 }
 
+// Submits the documentation sheet for a case.
 export async function submitDocumentationSheetHandler(req: Request, res: Response) {
   try {
     const callerId = (req as AuthenticatedRequest).userId;
@@ -73,6 +76,7 @@ export async function submitDocumentationSheetHandler(req: Request, res: Respons
   }
 }
 
+// Records a security incident for a file flagged INFECTED.
 export async function reportSecurityIncidentHandler(req: Request, res: Response) {
   try {
     const callerId = (req as AuthenticatedRequest).userId;
@@ -95,6 +99,7 @@ export async function listSecurityIncidentsHandler(req: Request, res: Response) 
   }
 }
 
+// Records QA's review decision on a case.
 export async function reviewCaseHandler(req: Request, res: Response) {
   try {
     const reviewedBy = (req as AuthenticatedRequest).userId;

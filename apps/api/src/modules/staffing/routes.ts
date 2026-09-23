@@ -37,10 +37,15 @@ const eligibleNursesQuerySchema = z.object({
 
 const router = Router();
 
+// Weekly staffing grid for the caller's region.
 router.get("/staffing/week", requirePermission("staffing", "read"), validateQuery(weekQuerySchema), getWeekOverviewHandler);
+// The caller's own published assignments.
 router.get("/staffing/mine", requireAuthenticated(), validateQuery(myAssignmentsQuerySchema), getMyAssignmentsHandler);
+// Nurses eligible for assignment at a facility.
 router.get("/staffing/eligible-nurses", requirePermission("staffing", "read"), validateQuery(eligibleNursesQuerySchema), listEligibleNursesHandler);
+// Assigns a nurse to a facility and weekday.
 router.post("/staffing/assignments", requirePermission("staffing", "update"), validateBody(assignNurseSchema), assignNurseHandler);
+// Publishes a week's draft assignments.
 router.post("/staffing/publish", requirePermission("staffing", "update"), validateBody(publishSchema), publishWeekHandler);
 
 export { router as staffingRoutes };

@@ -9,6 +9,7 @@ import type { PublicInquiry, PublicInquiryMessage } from "@/lib/types";
 const BACKGROUND_POLL_MS = 20_000;
 const OPEN_POLL_MS = 6_000;
 
+// Floating chat widget for public inquiries.
 export function ChatWidget() {
   const [open, setOpen] = useState(false);
   const [stored, setStored] = useState<StoredInquiry | null>(() => loadStoredInquiry());
@@ -26,10 +27,10 @@ export function ChatWidget() {
 
   const threadEndRef = useRef<HTMLDivElement>(null);
 
-  // Background check for a new staff reply, so the bubble can show an unread dot even
-  // while the panel is closed — no push infra, so a light poll is the honest substitute.
+  // Polls in the background for a new staff reply so the bubble can show an unread dot, since there's no push infra.
   useEffect(() => {
     if (!stored || open) return;
+    // Checks the stored inquiry for a new staff message.
     const check = async () => {
       try {
         const res = await api.get<{ inquiry: PublicInquiry; messages: PublicInquiryMessage[] }>(
@@ -45,6 +46,7 @@ export function ChatWidget() {
     return () => clearInterval(interval);
   }, [stored, open]);
 
+  // Fetches the inquiry thread.
   const fetchThread = async (target: StoredInquiry) => {
     const res = await api.get<{ inquiry: PublicInquiry; messages: PublicInquiryMessage[] }>(
       `/public-inquiries/${target.inquiryId}/messages?token=${target.token}`,
@@ -57,6 +59,7 @@ export function ChatWidget() {
     setStored(updated);
   };
 
+  // Opens the chat panel.
   async function handleOpen() {
     setOpen(true);
     setError(null);
@@ -84,6 +87,7 @@ export function ChatWidget() {
     threadEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages]);
 
+  // Starts a new inquiry with the first message.
   async function startInquiry() {
     if (!name.trim() || !contact.trim() || !firstMessage.trim()) return;
     setSending(true);
@@ -110,6 +114,7 @@ export function ChatWidget() {
     }
   }
 
+  // Sends a follow-up message.
   async function sendFollowUp() {
     if (!stored || !draft.trim()) return;
     setSending(true);

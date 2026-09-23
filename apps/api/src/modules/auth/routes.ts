@@ -30,12 +30,7 @@ const authLoginSchema = z.object({
   ip: z.string().trim().min(1).max(128).optional(),
 });
 
-// Name/DOB/gender/phone/preferredFacilityId are optional here (a bare email+password
-// registration still works) but the real registration wizard always sends them now — they're
-// stored as a patient_registration_request row, and once the email is OTP-verified the same
-// row is what AuthService.verifyEmail's auto-registration reads to create the real `patient`
-// record immediately (request #5) — all four (name/dob/gender/facility) must be present for
-// that to fire, matching what registerPatient() itself requires.
+// Profile fields are optional, but when name, DOB, gender and facility are all sent they become the intake snapshot that drives auto-registration after email verification.
 const authRegisterSchema = authLoginSchema.extend({
   fullName: z.string().trim().min(1).max(255).optional(),
   dob: z.string().trim().min(1).max(32).optional(),
@@ -72,19 +67,14 @@ const authRateLimiter = createRateLimiter({
   },
 });
 
-// Keyed by IP alone (no email in the verify-email body) — tighter than before now that the
-// token is a 6-digit code (1M possibilities) rather than a 256-bit link, where the hash
-// comparison alone made guessing infeasible. This is now real defense, not just extra caution:
-// 8/15min per IP keeps bulk-guessing impractical while still covering a real user mistyping a
-// couple of digits and retrying.
+// Keyed by IP alone with a tight 8/15min budget, since the 6-digit code is only guarded by rate limiting.
 const verifyEmailRateLimiter = createRateLimiter({
   windowMs: 15 * 60 * 1000,
   max: 8,
   keyPrefix: "auth-verify-email",
 });
 
-// Keyed by the caller's own session (requireAuthenticated runs first), not IP — prevents a
-// single logged-in account from hammering Resend, without punishing other users on the same IP.
+// Keyed by the caller's session rather than IP, so one account can't hammer Resend without punishing others on its IP.
 const resendVerificationRateLimiter = createRateLimiter({
   windowMs: 15 * 60 * 1000,
   max: 3,
@@ -92,11 +82,7 @@ const resendVerificationRateLimiter = createRateLimiter({
   keyGenerator: (req) => (req as AuthenticatedRequest).userId,
 });
 
-// Keyed by the caller's own account (both MFA routes run requireAuthenticated first), not IP.
-// Per-account is the meaningful limit here: brute-forcing a 6-digit TOTP targets one specific
-// account, and an attacker rotates source IPs for free, so an IP bucket is the weaker control.
-// It also stops a whole clinic sharing one public IP from exhausting each other's budget —
-// a real deployment shape here, not a hypothetical. Same pattern as resendVerificationRateLimiter.
+// Keyed per account because TOTP brute-forcing targets one account and IP buckets are cheap to rotate or exhaust by shared clinic IPs.
 const mfaRateLimiter = createRateLimiter({
   windowMs: 15 * 60 * 1000,
   max: 5,
@@ -104,9 +90,7 @@ const mfaRateLimiter = createRateLimiter({
   keyGenerator: (req) => (req as AuthenticatedRequest).userId,
 });
 
-// Keyed by email like authRateLimiter — this is the one endpoint that runs a real DB lookup
-// and enqueues a real send off a bare, unauthenticated email address, so it's the likeliest
-// target for enumeration/spam abuse of anything added here.
+// Keyed by email because this unauthenticated endpoint does a real lookup and send, making it the likeliest enumeration or spam target.
 const forgotPasswordRateLimiter = createRateLimiter({
   windowMs: 15 * 60 * 1000,
   max: 5,
@@ -117,8 +101,7 @@ const forgotPasswordRateLimiter = createRateLimiter({
   },
 });
 
-// Keyed by IP alone, same reasoning as verifyEmailRateLimiter — no email in the body to key on,
-// and the 256-bit token is the real defense; this just slows brute-force guessing.
+// Keyed by IP alone (no email in the body); the 256-bit token is the real defense and this just slows guessing.
 const resetPasswordRateLimiter = createRateLimiter({
   windowMs: 15 * 60 * 1000,
   max: 20,
@@ -131,44 +114,27 @@ const router = Router();
 router.post("/auth/register", authRateLimiter, validateBody(authRegisterSchema), registerHandler);
 // public — same
 router.post("/auth/login", authRateLimiter, validateBody(authLoginSchema), loginHandler);
-// Logging yourself out shouldn't require a role-specific permission grant — any authenticated
-// account can revoke its own session. (This bug was masked in tests until request-context.ts's
-// TEST_USER_ID override was fixed to defer to a real session cookie when one is present.)
+// Logging out needs no role grant: any authenticated account can revoke its own session.
 router.post("/auth/logout", requireAuthenticated(), logoutHandler);
-// requireAuthenticated, not requirePermission("auth","update"): verifying your OWN second factor
-// is self-service, the same class as /auth/logout — not something that should need a role grant.
-// It previously required auth:update, which only SUPER_ADMIN implicitly has; that was harmless
-// while MFA went unenforced, but the moment MFA is actually enforced it locks every other role
-// out permanently (they can't reach the only route that would clear the MFA gate). The route is
-// also MFA-exempt in rbac.ts for the same deadlock reason.
-// Enrolment had a handler and a service method but no route at all, so no account could ever
-// turn MFA on — the whole second-factor path was unreachable in production. Same self-service
-// class as /auth/mfa/verify: requireAuthenticated only, and MFA-exempt in rbac.ts, because a
-// user who is *required* to enrol has by definition not passed an MFA check yet.
-// Rate-limited on the mfa bucket: each call mints a fresh secret, so it should not be free.
+// Self-service MFA enrolment: authenticated only, MFA-exempt, and rate-limited since each call mints a secret; a role grant would deadlock accounts required to enrol.
 router.post("/auth/mfa/enroll", requireAuthenticated(), mfaRateLimiter, enrollMfaHandler);
+// Verifies the caller's own TOTP; self-service and MFA-exempt.
 router.post("/auth/mfa/verify", requireAuthenticated(), mfaRateLimiter, validateBody(verifyMfaSchema), verifyMfaHandler);
-// public — the token itself (256-bit, hashed at rest) is the credential; no session required,
-// since the link may be opened on a different device than the one that registered.
+// Public because the hashed token is the credential and the link may open on another device.
 router.post("/auth/verify-email", verifyEmailRateLimiter, validateBody(verifyEmailSchema), verifyEmailHandler);
-// Self-service, same class as /auth/logout — resend for your own account only, never someone
-// else's (no email param accepted; the target is always the caller's own session).
+// Self-service: only ever resends for the caller's own session, never an arbitrary email.
 router.post("/auth/resend-verification", requireAuthenticated(), resendVerificationRateLimiter, resendVerificationHandler);
 // public — pre-authentication by definition, same as register/login
 router.post("/auth/forgot-password", forgotPasswordRateLimiter, validateBody(forgotPasswordSchema), forgotPasswordHandler);
 // public — the token itself is the credential, same reasoning as /auth/verify-email
 router.post("/auth/reset-password", resetPasswordRateLimiter, validateBody(resetPasswordSchema), resetPasswordHandler);
-// Always your own profile (auth.getProfile uses the session's own userId, never a route param)
-// — same "self-service, not a permission grant" pattern as GET /patients/me. Gating this behind
-// a blanket user:read permission meant any account without that grant (e.g. PATIENT, which per
-// seed/identity.ts intentionally gets none) got a 403 here forever, breaking session-recovery
-// checks (page reload, or any client that resolves "am I logged in" via this endpoint).
+// Always the caller's own profile, so it needs a session rather than a grant, or PATIENT accounts get 403s on session-recovery checks.
 router.get("/auth/profile", requireAuthenticated(), profileHandler);
+// Consultant picker for the New Consultation flow.
 router.get("/consultants", requirePermission("appointment", "create"), listConsultantsHandler);
-// Self-service session management — list/revoke your own active sessions, same class as
-// /auth/profile. Ownership of the target session is checked in the handler (revoking someone
-// else's session isn't a "read your own data" case requireAuthenticated alone can express).
+// Self-service session list; ownership of a target session is checked in the handler.
 router.get("/auth/sessions", requireAuthenticated(), listSessionsHandler);
+// Revokes one of the caller's own sessions.
 router.post("/auth/sessions/:id/revoke", requireAuthenticated(), validateParams(sessionIdParamSchema), revokeSessionHandler);
 
 export { router as authRoutes };

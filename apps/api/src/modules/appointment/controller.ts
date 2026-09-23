@@ -16,14 +16,13 @@ const transferSvc = new TransferRequestService();
 const calendarSvc = new CalendarService();
 const patientRepoForCalendar = new PatientRepository();
 
-// Patient role spec: "can join own scheduled video consults" — a patient needs to discover
-// and read their own appointments without a blanket appointment:read grant. Ownership-or-
-// permission, same pattern as patient/clinical/billing/documents controllers.
+// Lets a patient read their own appointments without a blanket appointment:read grant (ownership-or-permission).
 async function callerOwnsPatient(callerId: string, patientId: string): Promise<boolean> {
   const patientRow = await patientRepoForCalendar.findById(patientId);
   return !!patientRow?.userId && patientRow.userId === callerId;
 }
 
+// Creates a generic appointment; the weekly-structure check applies unless the caller holds appointment:override.
 export async function createAppointmentHandler(req: Request, res: Response) {
   try {
     const { patientId, oncologistId, facilityId, appointmentType, scheduledAt, override } = req.body;
@@ -31,9 +30,7 @@ export async function createAppointmentHandler(req: Request, res: Response) {
       res.status(400).json({ error: "patientId, facilityId, appointmentType, scheduledAt required" });
       return;
     }
-    // FR-20: requesting an override does nothing unless the caller actually holds the
-    // appointment:override permission — a role without it can send override:true all day
-    // and the weekly-structure check still applies.
+    // Requesting an override does nothing unless the caller actually holds appointment:override.
     const canOverride = Boolean(override) && ((req as AuthenticatedRequest).permissions ?? []).includes("appointment:override");
     const result = await apptSvc.createAppointment({
       patientId, oncologistId, facilityId, appointmentType, scheduledAt, overrideWeeklyStructure: canOverride,
@@ -46,11 +43,7 @@ export async function createAppointmentHandler(req: Request, res: Response) {
   }
 }
 
-// ONCOFLOW_SCHEDULING_AND_VIDEO_LIFECYCLE.md — Regional Admin's revived New Consultation
-// action. A distinct route from POST /appointments (which stays a generic, unopinionated
-// create): this one requires a named consultant, enforces their real availability server-side,
-// provisions the room at scheduling time, and fires the immediate notification + reminders —
-// the corrected end-to-end flow the doc describes, not just a row insert.
+// Regional Admin's scheduling flow: requires a named consultant, enforces their availability, provisions the room, and fires notifications and reminders.
 export async function scheduleConsultationHandler(req: Request, res: Response) {
   try {
     const { patientId, oncologistId, facilityId, appointmentType, scheduledAt, durationMinutes } = req.body;
@@ -67,6 +60,7 @@ export async function scheduleConsultationHandler(req: Request, res: Response) {
   }
 }
 
+// Returns one appointment, allowed for its patient or staff with appointment:read.
 export async function getAppointmentHandler(req: Request, res: Response) {
   try {
     const result = await apptSvc.getAppointment(String(req.params.id));
@@ -88,11 +82,11 @@ export async function getAppointmentHandler(req: Request, res: Response) {
   }
 }
 
+// Lists appointments by patient (ownership or permission) or by facility scope.
 export async function listAppointmentsHandler(req: Request, res: Response) {
   try {
     const patientId = typeof req.query.patientId === "string" ? req.query.patientId : undefined;
-    // `?facilityId` is deliberately not read here — resolveScopeOrDeny below reads it from the
-    // request and narrows it to what the caller may actually see.
+    // ?facilityId is left for resolveScopeOrDeny below, which narrows it to what the caller may see.
     const status = typeof req.query.status === "string" && appointmentStatusEnum.enumValues.includes(req.query.status as never)
       ? req.query.status
       : undefined;
@@ -110,9 +104,7 @@ export async function listAppointmentsHandler(req: Request, res: Response) {
       return;
     }
 
-    // The patientId path is already authorised by ownership or appointment:read above. The
-    // facility path takes an untrusted `?facilityId`, so it is narrowed to the caller's real
-    // scope instead of being used as the filter directly.
+    // The patientId path is already authorized above; the facility path narrows the untrusted ?facilityId to the caller's real scope.
     let results;
     if (patientId) {
       results = await apptSvc.listAppointments({ patientId, status });
@@ -129,6 +121,7 @@ export async function listAppointmentsHandler(req: Request, res: Response) {
   }
 }
 
+// Moves an appointment through its status lifecycle.
 export async function updateAppointmentStatusHandler(req: Request, res: Response) {
   try {
     const { status } = req.body;
@@ -145,9 +138,7 @@ export async function updateAppointmentStatusHandler(req: Request, res: Response
   }
 }
 
-// Staff-only (appointment:read) — the queue of today's PENDING-but-already-PAID appointments
-// awaiting same-day confirmation before the 2PM cutoff. No ownership concept: a patient has no
-// reason to see a facility-wide confirmation queue.
+// Staff-only queue of today's PAID-but-PENDING appointments awaiting confirmation before the 2PM cutoff.
 export async function listPendingConfirmationQueueHandler(req: Request, res: Response) {
   try {
     const scope = await resolveScopeOrDeny(req, res, "appointment");
@@ -161,6 +152,7 @@ export async function listPendingConfirmationQueueHandler(req: Request, res: Res
   }
 }
 
+// Adds a participant to an appointment.
 export async function addParticipantHandler(req: Request, res: Response) {
   try {
     const { userId, role } = req.body;
@@ -188,6 +180,7 @@ export async function addParticipantHandler(req: Request, res: Response) {
   }
 }
 
+// Deletes an appointment.
 export async function deleteAppointmentHandler(req: Request, res: Response) {
   try {
     const result = await apptRepo.softDelete(String(req.params.id));
@@ -201,9 +194,7 @@ export async function deleteAppointmentHandler(req: Request, res: Response) {
   }
 }
 
-// FR-24: one calendar-aggregation endpoint reused by every role — scope is resolved from
-// the caller's own identity here, never from a client-supplied query param, so no role can
-// widen its own view by just asking for a different facilityId/patientId.
+// One calendar endpoint for every role; scope comes from the caller's identity, never from a client-supplied facility or patient id.
 export async function getUnifiedCalendarHandler(req: Request, res: Response) {
   try {
     const authed = req as AuthenticatedRequest;
@@ -233,6 +224,7 @@ export async function getUnifiedCalendarHandler(req: Request, res: Response) {
   }
 }
 
+// Starts a transfer request for a patient between facilities.
 export async function initiateTransferHandler(req: Request, res: Response) {
   try {
     const { patientId, fromFacilityId, toFacilityId } = req.body;
@@ -244,6 +236,7 @@ export async function initiateTransferHandler(req: Request, res: Response) {
   }
 }
 
+// Lists transfer requests.
 export async function listTransfersHandler(req: Request, res: Response) {
   try {
     const region = typeof req.query.region === "string" ? req.query.region : undefined;

@@ -33,9 +33,7 @@ const listConversationsQuerySchema = z.object({
 });
 
 const postMessageSchema = z.object({
-  // No senderId: the sender is the authenticated caller. Accepting one here is what allowed
-  // messages to be attributed to another user. Left out of the schema entirely so a client
-  // still sending it fails loudly rather than having it silently ignored.
+  // No senderId: the sender is always the authenticated caller, and a client still sending one fails validation.
   type: z.enum(messageTypeEnum.enumValues),
   content: z.string().trim().min(1).max(4000),
 }).strict();
@@ -76,31 +74,32 @@ const transcriptionAssignmentIdParamSchema = z.object({
 
 const router = Router();
 
-// requireAuthenticated, not requirePermission, on the routes where a patient acting on their
-// own conversation/meeting is legitimate — the ownership-or-permission check lives in the
-// service layer (callerOwnsPatient), which needs the record loaded first to know if it's "own".
+// Authenticated only where a patient acting on their own record is legitimate; the ownership check is in the service.
 router.post("/conversations", requireAuthenticated(), validateBody(startConversationSchema), startConversationHandler);
-// Patient role spec: side-effect reports carry a real, per-report fee — this is the only
-// path a patient can use to start an MO_SIDE_EFFECT conversation (startConversation rejects
-// it for self-service callers). Ownership + payment are both checked inside the service.
+// The only path for a patient to start an MO_SIDE_EFFECT conversation, since it creates and pays the fee first.
 router.post("/conversations/side-effect-report", requireAuthenticated(), validateBody(startSideEffectReportSchema), startSideEffectReportHandler);
+// Lists the caller's conversations.
 router.get("/conversations", requireAuthenticated(), validateQuery(listConversationsQuerySchema), listConversationsHandler);
+// Reads one conversation.
 router.get("/conversations/:id", requireAuthenticated(), validateParams(conversationIdParamSchema), getConversationHandler);
-// requireAuthenticated: a patient closing their OWN report, or staff with conversation:update
-// closing one they're handling — the ownership-or-permission check lives in the service.
+// A patient closes their own report or staff with conversation:update close one they handle; checked in the service.
 router.post("/conversations/:id/close", requireAuthenticated(), validateParams(conversationIdParamSchema), closeConversationHandler);
+// Posts a message as the caller.
 router.post("/conversations/:id/messages", requireAuthenticated(), validateParams(conversationIdParamSchema), validateBody(postMessageSchema), postMessageHandler);
+// Lists a conversation's messages.
 router.get("/conversations/:id/messages", requireAuthenticated(), validateParams(conversationIdParamSchema), listMessagesHandler);
-// Ownership-or-permission (same as everything else on this conversation) — mutual rating, one
-// per rater, only once the conversation is CLOSED. Enforced in the service.
+// Mutual rating, one per rater and only once the conversation is CLOSED, enforced in the service.
 router.post("/conversations/:id/feedback", requireAuthenticated(), validateParams(conversationIdParamSchema), validateBody(submitFeedbackSchema), submitFeedbackHandler);
+// Lists a conversation's feedback.
 router.get("/conversations/:id/feedback", requireAuthenticated(), validateParams(conversationIdParamSchema), listFeedbackHandler);
 
+// Provisions a meeting room for an appointment.
 router.post("/meetings", requirePermission("meeting", "create"), validateBody(provisionMeetingSchema), provisionMeetingHandler);
+// Reads the meeting for an appointment.
 router.get("/meetings", requireAuthenticated(), validateQuery(meetingQuerySchema), getMeetingHandler);
-// requireAuthenticated, not requirePermission — ownership (patient-self or meeting:read) is
-// resolved inside the service, same pattern as GET /meetings above.
+// Ownership (patient-self or meeting:read) is resolved in the service.
 router.get("/meetings/:meetingId/presence", requireAuthenticated(), validateParams(meetingIdParamSchema), getMeetingPresenceHandler);
+// Issues a role-scoped Daily join token.
 router.post(
   "/meetings/:meetingId/token",
   requireAuthenticated(),
@@ -108,13 +107,11 @@ router.post(
   validateBody(z.object({ userName: z.string().trim().max(200).optional() })),
   issueMeetingTokenHandler,
 );
-// requireAuthenticated, not requirePermission — ownership (the appointment's own assigned
-// consultant) is resolved inside the service, same pattern as the sign-off route below.
+// Ownership by the appointment's assigned consultant is resolved in the service.
 router.post("/meetings/:meetingId/end", requireAuthenticated(), validateParams(meetingIdParamSchema), endMeetingHandler);
+// Lists a meeting's transcript.
 router.get("/meetings/:meetingId/transcript", requirePermission("transcript", "read"), validateParams(meetingIdParamSchema), listTranscriptHandler);
-// F3.11: editing transcript content is the Scribe's job specifically — requireRole enforces
-// the specific role on top of requirePermission's generic resource:action grant, same pattern
-// as F3.2's triage-checklist route.
+// F3.11: editing transcripts is the Scribe's job, so requireRole applies on top of the permission.
 router.patch(
   "/transcript/:id",
   requirePermission("transcript", "update"),
@@ -124,8 +121,7 @@ router.patch(
   editTranscriptEntryHandler,
 );
 
-// F3.11 stage 2: no requireRole — "the respective consultant" is an ownership check (the
-// appointment's own assigned oncologist) done in the service, not a role class.
+// F3.11 stage 2 is an ownership check (the assigned oncologist) in the service, not a role class.
 router.post(
   "/meetings/:meetingId/sign-off",
   requirePermission("meeting", "update"),
@@ -133,8 +129,11 @@ router.post(
   signOffTranscriptHandler,
 );
 
+// Scribe view of the shared transcription queue.
 router.get("/transcription-assignments/queue", requirePermission("transcriptionAssignment", "read"), requireRole("SCRIBE"), listTranscriptionQueueHandler);
+// Scribe's own assignments.
 router.get("/transcription-assignments/mine", requirePermission("transcriptionAssignment", "read"), requireRole("SCRIBE"), listMyTranscriptionAssignmentsHandler);
+// Claims an assignment.
 router.post(
   "/transcription-assignments/:id/claim",
   requirePermission("transcriptionAssignment", "claim"),
@@ -142,6 +141,7 @@ router.post(
   validateParams(transcriptionAssignmentIdParamSchema),
   claimTranscriptionAssignmentHandler,
 );
+// Releases an assignment.
 router.post(
   "/transcription-assignments/:id/release",
   requirePermission("transcriptionAssignment", "update"),
@@ -149,6 +149,7 @@ router.post(
   validateParams(transcriptionAssignmentIdParamSchema),
   releaseTranscriptionAssignmentHandler,
 );
+// Finalizes an assignment.
 router.post(
   "/transcription-assignments/:id/finalize",
   requirePermission("transcriptionAssignment", "update"),
@@ -157,10 +158,7 @@ router.post(
   finalizeTranscriptionAssignmentHandler,
 );
 
-// Daily.co calls these directly — no OncoFlow session cookie, so no requirePermission/requireRole
-// guard applies. Authenticity is verified inside the handler via requireVerifiedDailyWebhook()
-// (HMAC signature over the raw body), not by session-based RBAC.
-// public
+// Public because Daily calls these directly with no session; authenticity is verified by HMAC in the handler.
 router.post("/daily/webhooks/meeting-status", dailyMeetingStatusWebhookHandler);
 // public
 router.post("/daily/webhooks/transcription", dailyTranscriptionWebhookHandler);

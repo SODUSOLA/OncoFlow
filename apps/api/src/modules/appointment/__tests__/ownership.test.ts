@@ -16,9 +16,7 @@ let ownAppointmentId: string;
 let ownCookie: string;
 let otherCookie: string;
 
-// FR-20: VIRTUAL appointments can only be scheduled Mon/Wed/Fri (Africa/Lagos) — walk
-// forward from now to the next allowed weekday instead of a flat +1 hour offset, so this
-// suite is deterministic regardless of what day it happens to run on.
+// Walks forward to the next Mon/Wed/Fri (Africa/Lagos) slot, as VIRTUAL appointments require, so the suite is day-independent.
 function nextVirtualSlot(): string {
   const candidate = new Date(Date.now() + 60 * 60 * 1000);
   for (let i = 0; i < 8; i++) {
@@ -32,6 +30,7 @@ function nextVirtualSlot(): string {
   throw new Error("Could not find a Mon/Wed/Fri slot within a week");
 }
 
+// Creates a user and returns a valid session cookie for requests.
 async function createSessionCookie(): Promise<{ userId: string; cookie: string }> {
   const userId = crypto.randomUUID();
   await db.insert(user).values({

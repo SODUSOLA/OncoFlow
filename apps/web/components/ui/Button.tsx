@@ -43,6 +43,7 @@ export interface ButtonProps
   href?: string;
 }
 
+// Button with variant and size styles.
 export function Button({
   className,
   variant,

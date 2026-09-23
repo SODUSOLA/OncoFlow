@@ -23,12 +23,7 @@ export interface UseDailyCallResult {
   durationSec: number;
 }
 
-// Phase 5 — a thin wrapper around the real @daily-co/daily-js Call Object (not Prebuilt, per the
-// build guide's ADR Decision 1). Nothing here is simulated: join/leave, track state, and
-// participant presence all come straight from the daily-js call object's own events. Whether
-// this actually connects to anything depends on DAILY_API_KEY/DAILY_DOMAIN being configured on
-// the API (see .env.example) — without them, `status` settles on "error" with the real message
-// from Daily, which the Room UI surfaces honestly rather than pretending to be live.
+// Thin wrapper over the real daily-js Call Object; nothing is simulated, and without Daily configured the status settles on "error" with Daily's message.
 export function useDailyCall(roomUrl: string | null, token: string | null, userName: string): UseDailyCallResult {
   const callRef = useRef<ReturnType<typeof Daily.createCallObject> | null>(null);
   const [status, setStatus] = useState<DailyCallStatus>("idle");
@@ -47,6 +42,7 @@ export function useDailyCall(roomUrl: string | null, token: string | null, userN
     setStatus("joining");
     setError(null);
 
+    // Copies the call object's participants into React state.
     function syncParticipants() {
       const all = call.participants();
       const remotes: RemoteParticipantView[] = [];

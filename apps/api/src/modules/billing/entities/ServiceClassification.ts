@@ -8,6 +8,7 @@ export interface ServiceClassificationData {
   cappedNetworkFeeKobo: bigint;
 }
 
+// Domain entity for a billing service classification and its capped network fee.
 export class ServiceClassification {
   constructor(private data: ServiceClassificationData) {}
 
@@ -15,6 +16,7 @@ export class ServiceClassification {
   get name() { return this.data.name; }
   get cappedNetworkFeeKobo() { return this.data.cappedNetworkFeeKobo; }
 
+  // Serializes the classification for API responses.
   toJSON() {
     return { id: this.data.id, name: this.data.name, cappedNetworkFeeKobo: this.data.cappedNetworkFeeKobo.toString() };
   }
@@ -30,6 +32,7 @@ export interface TariffData {
   drugPriceKobo: bigint;
 }
 
+// Domain entity for a facility's fee tariff for one classification.
 export class Tariff {
   constructor(private data: TariffData) {}
 
@@ -37,10 +40,12 @@ export class Tariff {
   get facilityId() { return this.data.facilityId; }
   get classificationId() { return this.data.classificationId; }
 
+  // Sums the network, facility, professional and drug components in kobo.
   totalKobo(): bigint {
     return this.data.networkFeeKobo + this.data.facilityBedFeeKobo + this.data.professionalFeeKobo + this.data.drugPriceKobo;
   }
 
+  // Serializes the tariff for API responses.
   toJSON() {
     return {
       id: this.data.id,

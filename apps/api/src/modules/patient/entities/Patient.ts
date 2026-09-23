@@ -20,6 +20,7 @@ export interface PatientData {
   createdAt: Date;
 }
 
+// Domain entity for a patient with role-appropriate serializers.
 export class Patient {
   constructor(private data: PatientData) {}
 
@@ -33,10 +34,7 @@ export class Patient {
   get status() { return this.data.status; }
   get facilityId() { return this.data.facilityId; }
 
-  // FR-04 / Data Classification §8: phone is Restricted — never rendered to a staff-facing
-  // response, under any circumstance, regardless of that staff member's role or permissions.
-  // secondaryEmail follows the same rule (it's PII contact info the patient added themselves).
-  // profilePictureFileId isn't PII in the same sense, so it stays in the base view.
+  // Staff-facing view: phone and secondary email are Restricted PII and never rendered here, whatever the staff role (FR-04).
   toJSON() {
     return {
       id: this.data.id,
@@ -50,15 +48,13 @@ export class Patient {
       profilePictureFileId: this.data.profilePictureFileId,
       status: this.data.status,
       facilityId: this.data.facilityId,
-      // Null until a Regional Admin confirms the facility — not a gate on access (the record
-      // is usable immediately), just onboarding status the UI can surface.
+      // Null until a Regional Admin confirms the facility; onboarding status only, not an access gate.
       facilityConfirmedAt: this.data.facilityConfirmedAt,
       createdAt: this.data.createdAt,
     };
   }
 
-  // Only for the patient viewing their own record (PRD §7.1: "Own PII & Contact" = Own for
-  // Patient, None/masked for every staff role) — callers must verify identity before using this.
+  // View for the patient's own record only (PRD §7.1); callers must verify identity first.
   toOwnJSON() {
     return { ...this.toJSON(), phone: this.data.phone, secondaryEmail: this.data.secondaryEmail };
   }

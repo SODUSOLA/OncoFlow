@@ -38,10 +38,12 @@ const APPOINTMENT_TYPE_ICONS: Record<Appointment["appointmentType"], typeof Vide
   PROCEDURE: Activity,
 };
 
+// Formats a kobo string as a naira amount.
 function koboToNaira(kobo: string) {
   return `₦${(Number(kobo) / 100).toLocaleString("en-NG", { minimumFractionDigits: 2 })}`;
 }
 
+// Returns a time-of-day greeting.
 function getGreeting() {
   const hour = new Date().getHours();
   if (hour < 12) return "Good morning";
@@ -49,6 +51,7 @@ function getGreeting() {
   return "Good evening";
 }
 
+// Card for the patient's next appointment with a live countdown.
 function NextEventCard({ appointment }: { appointment: Appointment }) {
   const countdown = useCountdown(appointment.scheduledAt);
   const Icon = APPOINTMENT_TYPE_ICONS[appointment.appointmentType];
@@ -87,6 +90,7 @@ function NextEventCard({ appointment }: { appointment: Appointment }) {
   );
 }
 
+// Patient home dashboard.
 export default function HomePage() {
   const { patient, wallet, loading, error, notLinked } = useMyPatient();
   const [invoices, setInvoices] = useState<Invoice[]>([]);

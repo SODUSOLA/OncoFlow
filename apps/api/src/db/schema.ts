@@ -15,3 +15,4 @@ export * from "../modules/staffing/schema.js";
 export * from "../modules/clinical-metrics/schema.js";
 export * from "../modules/availability/schema.js";
 export * from "../modules/nursing/schema.js";
+export * from "../modules/drug-supply/schema.js";

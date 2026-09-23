@@ -11,6 +11,7 @@ export const metadata: Metadata = {
   description: "Reach the OncoFlow team for hospital inquiries, patient inquiries, or general support.",
 };
 
+// Contact page.
 export default function ContactPage() {
   return (
     <Section tone="muted" className="py-16 md:py-24">

@@ -9,8 +9,7 @@ export interface ConsultAlerts {
   warning: ConsultAlert[];
 }
 
-// The one hook every alert-consuming Consultant surface should use (Notification Center today;
-// a future top-bar indicator could reuse it too) instead of re-deriving this logic.
+// The one hook consultant surfaces use to read alerts instead of re-deriving them.
 export function useConsultantAlerts(): ConsultAlerts {
   const { user } = useAuth();
   const subscribe = useMemo(

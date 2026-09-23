@@ -6,6 +6,7 @@ interface AppShellProps {
   children: ReactNode;
 }
 
+// Page frame placing the sidebar, top bar and content.
 export function AppShell({ sidebar, topBar, children }: AppShellProps) {
   return (
     <div className="flex h-screen overflow-hidden bg-admin-canvas-bg font-public-sans">

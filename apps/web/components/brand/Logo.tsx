@@ -19,6 +19,7 @@ const FILL_CROSSFADE_S = 0.2;
 const FACET_FADE_S = 0.25;
 const WORDMARK_LIFT_S = MOTION_MS.slow / 1000;
 
+// ONCOFLOW logo, optionally icon-only or for dark backgrounds, respecting reduced motion.
 export function Logo({ className, iconOnly = false, onDark = false }: LogoProps) {
   const shouldReduceMotion = useReducedMotion();
   const inkColor = onDark ? "#ffffff" : "var(--color-primary)";
@@ -91,8 +92,7 @@ export function Logo({ className, iconOnly = false, onDark = false }: LogoProps)
               : { duration: WORDMARK_LIFT_S, ease: "easeOut", delay: RIBBON_DRAW_S }
           }
         >
-          {/* The registered company name, not the short product name — sourced from
-              siteConfig.legalName so the mark and the footer copyright cannot drift apart. */}
+          {/* Registered company name from siteConfig.legalName, so the mark and footer copyright can't drift apart. */}
           {siteConfig.legalName}
         </motion.span>
       )}

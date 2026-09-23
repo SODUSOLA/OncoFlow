@@ -1,98 +1,177 @@
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { TriangleAlert, CalendarClock, ChevronRight } from "lucide-react";
+import { TriangleAlert, CalendarClock, ChevronRight, Clock } from "lucide-react";
 import { api } from "../../../lib/api";
 import { useAuth } from "../../../lib/auth";
 import { Card } from "../../../components/ui/Card";
-// Shared pure utility, no regional-admin-specific coupling — see that file's own comment on why
-// one definition matters (SchedulingPage/NotificationCenterPage both depend on it too).
+// Shared pure utility with no regional-admin coupling, used by several pages.
 import { getIsoWeek } from "../../regional-admin/lib/isoWeek";
+import { cn } from "../../../lib/utils";
 import type { RegimenCycleRow } from "../lib/types";
 
+// Returns today's date as YYYY-MM-DD.
+function todayDateString(): string {
+  return new Date().toISOString().slice(0, 10);
+}
+
+// Returns tomorrow's date as YYYY-MM-DD.
 function tomorrowDateString(): string {
   const d = new Date();
   d.setDate(d.getDate() + 1);
   return d.toISOString().slice(0, 10);
 }
 
+// weekday here is 0=Mon..6=Sun (staffing/schema.ts's convention); Date#getDay is 0=Sun..6=Sat.
+function weekdayIndex(date: Date): number {
+  return (date.getDay() + 6) % 7;
+}
+
 interface Assignment { id: string; facilityId: string; facilityName: string; weekday: number }
 
+// Schedule tab: cycles due now (today's and any overdue) plus a look-ahead at tomorrow, and cross-support assignments.
 export default function SchedulePage() {
   const { user } = useAuth();
   const navigate = useNavigate();
-  const [cycles, setCycles] = useState<RegimenCycleRow[]>([]);
-  const [crossSupport, setCrossSupport] = useState<Assignment[]>([]);
+  const [due, setDue] = useState<RegimenCycleRow[]>([]);
+  const [tomorrow, setTomorrow] = useState<RegimenCycleRow[]>([]);
+  const [crossSupport, setCrossSupport] = useState<{ facilityName: string; label: string }[]>([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     if (!user?.facilityId) { setLoading(false); return; }
     let cancelled = false;
-    const tomorrow = tomorrowDateString();
-    const { isoYear, isoWeek } = getIsoWeek(new Date(`${tomorrow}T00:00:00`));
+    const todayDate = new Date();
+    const tomorrowDate = new Date(Date.now() + 86_400_000);
+    const todayWeek = getIsoWeek(todayDate);
+    const tomorrowWeek = getIsoWeek(tomorrowDate);
+
+    const fetchWeek = (isoYear: number, isoWeek: number) =>
+      api.get<{ assignments: Assignment[] }>(`/staffing/mine?isoYear=${isoYear}&isoWeek=${isoWeek}`).then((d) => d.assignments).catch(() => []);
 
     Promise.all([
-      api.get<{ cycles: RegimenCycleRow[] }>(`/regimen-cycles?facilityId=${user.facilityId}&date=${tomorrow}`).then((d) => d.cycles).catch(() => []),
-      api.get<{ assignments: Assignment[] }>(`/staffing/mine?isoYear=${isoYear}&isoWeek=${isoWeek}`).then((d) => d.assignments).catch(() => []),
-    ]).then(([cycleRows, assignments]) => {
+      api.get<{ cycles: RegimenCycleRow[] }>(`/regimen-cycles?facilityId=${user.facilityId}&date=${todayDateString()}&due=true`).then((d) => d.cycles).catch(() => []),
+      api.get<{ cycles: RegimenCycleRow[] }>(`/regimen-cycles?facilityId=${user.facilityId}&date=${tomorrowDateString()}`).then((d) => d.cycles).catch(() => []),
+      fetchWeek(todayWeek.isoYear, todayWeek.isoWeek),
+      todayWeek.isoYear === tomorrowWeek.isoYear && todayWeek.isoWeek === tomorrowWeek.isoWeek
+        ? Promise.resolve<Assignment[]>([])
+        : fetchWeek(tomorrowWeek.isoYear, tomorrowWeek.isoWeek),
+    ]).then(([dueCycles, tomorrowCycles, thisWeekAssignments, nextWeekAssignments]) => {
       if (cancelled) return;
-      setCycles(cycleRows);
-      // Cross-support: a published assignment at a facility other than my own.
-      setCrossSupport(assignments.filter((a) => a.facilityId !== user.facilityId));
+      setDue(dueCycles);
+      setTomorrow(tomorrowCycles);
+      const todayIdx = weekdayIndex(todayDate);
+      const tomorrowIdx = weekdayIndex(tomorrowDate);
+      const cross: { facilityName: string; label: string }[] = [];
+      for (const a of thisWeekAssignments) {
+        if (a.facilityId === user.facilityId) continue;
+        if (a.weekday === todayIdx) cross.push({ facilityName: a.facilityName, label: "today" });
+        if (a.weekday === tomorrowIdx) cross.push({ facilityName: a.facilityName, label: "tomorrow" });
+      }
+      for (const a of nextWeekAssignments) {
+        if (a.facilityId === user.facilityId) continue;
+        if (a.weekday === tomorrowIdx) cross.push({ facilityName: a.facilityName, label: "tomorrow" });
+      }
+      setCrossSupport(cross);
     }).finally(() => { if (!cancelled) setLoading(false); });
 
     return () => { cancelled = true; };
   }, [user?.facilityId]);
 
+  // Cycle rows are day-independent (SCHEDULED with a date); clicking always goes through the patient page,
+  // which is the one place that decides whether a case can actually be started for this patient right now.
+  function goToPatient(patientId: string) {
+    navigate(`/dashboard/onsite-nursing-officer/patients/${patientId}`);
+  }
+
   return (
     <div className="space-y-4">
-      <div>
-        <p className="text-admin-h4 text-admin-text">Tomorrow's Schedule</p>
-        <p className="text-admin-caption text-admin-text-secondary">{new Date(`${tomorrowDateString()}T00:00:00`).toLocaleDateString(undefined, { weekday: "long", month: "long", day: "numeric" })}</p>
-      </div>
+      <p className="text-admin-h4 text-admin-text">Schedule</p>
 
-      {crossSupport.length > 0 ? (
+      {loading ? null : crossSupport.length > 0 ? (
         <Card className="flex items-start gap-2.5 border-admin-warning/40 bg-admin-warning/10 p-3.5">
           <TriangleAlert className="mt-0.5 size-4 shrink-0 text-admin-warning" aria-hidden="true" />
           <div>
             <p className="text-admin-body-sm font-semibold text-admin-text">Cross-support assignment</p>
             <p className="text-admin-caption text-admin-text-secondary">
-              You're assigned to {crossSupport.map((a) => a.facilityName).join(", ")} tomorrow — not your home facility.
+              {crossSupport.map((a, i) => (
+                <span key={i}>{i > 0 && ", "}{a.facilityName} ({a.label})</span>
+              ))} — not your home facility.
             </p>
           </div>
         </Card>
       ) : (
         <Card className="flex items-center gap-2.5 border-admin-border bg-admin-card-alt p-3.5">
           <CalendarClock className="size-4 shrink-0 text-admin-text-secondary" aria-hidden="true" />
-          <p className="text-admin-caption text-admin-text-secondary">No cross-support assignments tomorrow.</p>
+          <p className="text-admin-caption text-admin-text-secondary">No cross-support assignments today or tomorrow.</p>
         </Card>
       )}
 
       <div>
         <p className="mb-2 text-admin-caption font-bold uppercase tracking-wide text-admin-text-secondary">
-          Scheduled Visitations ({cycles.length})
+          Due Now ({due.length})
         </p>
         {loading ? (
           <p className="text-admin-body-sm text-admin-text-secondary">Loading…</p>
-        ) : cycles.length === 0 ? (
-          <Card className="p-6 text-center text-admin-body-sm text-admin-text-secondary">Nothing scheduled for tomorrow.</Card>
+        ) : due.length === 0 ? (
+          <Card className="p-6 text-center text-admin-body-sm text-admin-text-secondary">Nothing due — no visitations today, and nothing left over.</Card>
         ) : (
           <div className="space-y-2">
-            {cycles.map((c) => (
+            {due.map((c) => {
+              const overdue = c.scheduledDate < todayDateString();
+              return (
+                <Card
+                  key={c.id}
+                  className="flex cursor-pointer items-center justify-between gap-3 border-admin-border p-3.5 hover:border-admin-sidebar-cta"
+                  onClick={() => goToPatient(c.patientId)}
+                >
+                  <div className="flex min-w-0 items-center gap-3">
+                    <div className="flex size-10 shrink-0 items-center justify-center rounded-full bg-admin-sidebar-cta text-admin-caption font-semibold text-white">
+                      {c.firstName[0]}{c.lastName[0]}
+                    </div>
+                    <div className="min-w-0">
+                      <p className="truncate text-admin-body-sm font-semibold text-admin-text">{c.firstName} {c.lastName}</p>
+                      <p className="text-admin-caption text-admin-text-secondary">{c.uniquePatientId} · Cycle {c.cycleNumber} · {c.drugName}</p>
+                    </div>
+                  </div>
+                  <div className="flex shrink-0 items-center gap-2">
+                    {overdue && (
+                      <span className="flex items-center gap-1 rounded-admin-lg bg-admin-danger/10 px-2 py-0.5 text-admin-micro font-semibold text-admin-danger">
+                        <Clock className="size-3" aria-hidden="true" /> Overdue
+                      </span>
+                    )}
+                    <ChevronRight className="size-4 text-admin-text-secondary" aria-hidden="true" />
+                  </div>
+                </Card>
+              );
+            })}
+          </div>
+        )}
+      </div>
+
+      <div>
+        <p className="mb-2 text-admin-caption font-bold uppercase tracking-wide text-admin-text-secondary">
+          Tomorrow ({tomorrow.length})
+        </p>
+        {loading ? null : tomorrow.length === 0 ? (
+          <Card className="p-4 text-center text-admin-body-sm text-admin-text-secondary">Nothing scheduled for tomorrow yet.</Card>
+        ) : (
+          <div className="space-y-2">
+            {tomorrow.map((c) => (
               <Card
                 key={c.id}
-                className="flex cursor-pointer items-center justify-between gap-3 border-admin-border p-3.5 hover:border-admin-sidebar-cta"
-                onClick={() => navigate(`/dashboard/onsite-nursing-officer/patients/${c.patientId}`)}
+                className={cn("flex cursor-pointer items-center justify-between gap-3 border-admin-border p-3 opacity-80 hover:border-admin-sidebar-cta hover:opacity-100")}
+                onClick={() => goToPatient(c.patientId)}
               >
                 <div className="flex min-w-0 items-center gap-3">
-                  <div className="flex size-10 shrink-0 items-center justify-center rounded-full bg-admin-sidebar-cta text-admin-caption font-semibold text-white">
+                  <div className="flex size-8 shrink-0 items-center justify-center rounded-full bg-admin-card-alt text-admin-micro font-semibold text-admin-text">
                     {c.firstName[0]}{c.lastName[0]}
                   </div>
                   <div className="min-w-0">
-                    <p className="truncate text-admin-body-sm font-semibold text-admin-text">{c.firstName} {c.lastName}</p>
-                    <p className="text-admin-caption text-admin-text-secondary">{c.uniquePatientId} · Cycle {c.cycleNumber} · {c.drugName}</p>
+                    <p className="truncate text-admin-caption font-semibold text-admin-text">{c.firstName} {c.lastName}</p>
+                    <p className="text-admin-micro text-admin-text-secondary">{c.uniquePatientId} · Cycle {c.cycleNumber} · {c.drugName}</p>
                   </div>
                 </div>
-                <ChevronRight className="size-4 shrink-0 text-admin-text-secondary" aria-hidden="true" />
+                <ChevronRight className="size-3.5 shrink-0 text-admin-text-secondary" aria-hidden="true" />
               </Card>
             ))}
           </div>

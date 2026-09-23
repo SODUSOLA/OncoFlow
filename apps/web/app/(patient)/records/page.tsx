@@ -15,6 +15,7 @@ const RESULT_STATUS_VARIANT: Record<LabResult["status"], "default" | "success" |
   REVIEWED: "success",
 };
 
+// Reads a file as a base64 string.
 function fileToBase64(file: File): Promise<string> {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
@@ -24,11 +25,13 @@ function fileToBase64(file: File): Promise<string> {
   });
 }
 
+// Upload card for one lab request.
 function UploadCard({ request, patientId, onDone }: { request: LabRequest; patientId: string; onDone: () => void }) {
   const [testDate, setTestDate] = useState("");
   const [uploading, setUploading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  // Uploads the chosen file against the lab request.
   async function handleFile(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
     if (!file) return;
@@ -91,6 +94,7 @@ function UploadCard({ request, patientId, onDone }: { request: LabRequest; patie
   );
 }
 
+// Records page with lab requests and results.
 export default function RecordsPage() {
   const { patient, loading: patientLoading, notLinked } = useMyPatient();
   const [requests, setRequests] = useState<LabRequest[]>([]);

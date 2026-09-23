@@ -136,10 +136,7 @@ export const medicalRecord = pgTable("medical_record", {
   createdBy: uuid("created_by").notNull().references(() => user.id),
   recordType: varchar("record_type", { length: 100 }).notNull(),
   summary: text("summary").notNull(),
-  // Nullable — only set for the Post-call Summary note Phase 6's "Sync to EHR & Finalize"
-  // creates. Lets that page (and the Notification Center's alert aggregator) ask "has this
-  // specific meeting's summary already been finalized" directly, rather than guessing from a
-  // timestamp heuristic against a patient who may have several same-day appointments.
+  // Set only for the Post-call Summary note, so "has this meeting's summary been finalized" is a direct lookup rather than a timestamp guess.
   sourceMeetingId: uuid("source_meeting_id").references(() => meeting.id),
   createdAt: timestamp("created_at").notNull().defaultNow(),
   updatedAt: timestamp("updated_at").notNull().defaultNow(),

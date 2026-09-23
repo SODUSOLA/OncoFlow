@@ -6,9 +6,7 @@ export const facility = pgTable("facility", {
   name: varchar("name", { length: 255 }).notNull(),
   region: varchar("region", { length: 100 }).notNull(),
   address: text("address").notNull(),
-  // Nullable — only the registration wizard's distance sort depends on these (client-side
-  // haversine, no backend endpoint needed); a facility missing coordinates just sorts last
-  // instead of crashing anything.
+  // Nullable: only the registration wizard's client-side distance sort uses them, and a facility without coordinates simply sorts last.
   latitude: numeric("latitude", { precision: 9, scale: 6 }),
   longitude: numeric("longitude", { precision: 9, scale: 6 }),
   status: facilityStatusEnum("status").notNull().default("ACTIVE"),

@@ -8,6 +8,7 @@ import { DashboardPreview } from "./DashboardPreview";
 /** First-paint entrance only — a short choreographed stagger, well under 300ms. */
 export function Hero() {
   const shouldReduceMotion = useReducedMotion();
+  // Builds the staggered entrance animation for the nth hero element, disabled under reduced motion.
   const stagger = (i: number) => ({
     initial: shouldReduceMotion ? false : { opacity: 0, y: 10 },
     animate: { opacity: 1, y: 0 },

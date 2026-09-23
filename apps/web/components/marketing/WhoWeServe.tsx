@@ -3,6 +3,7 @@ import { Card } from "@/components/ui/Card";
 import { Reveal } from "@/components/ui/Reveal";
 import { whoWeServe } from "@/lib/content/whoWeServe";
 
+// Who-we-serve section.
 export function WhoWeServe() {
   return (
     <Section tone="surface">

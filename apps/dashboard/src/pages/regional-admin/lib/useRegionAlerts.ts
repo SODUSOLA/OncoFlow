@@ -4,17 +4,13 @@ import { subscribeToAlerts, getAlertsSnapshot, type RegionAlert } from "./alerts
 
 export interface RegionAlerts {
   loading: boolean;
-  /** Every alert, already filtered to this admin's own region (countdown/staffing alerts carry
-   *  a facilityId and are dropped if it's outside facilityIdsInRegion; inventory/inquiry alerts
-   *  have no facility concept and pass through as-is). */
+  // Alerts filtered to the admin's region; facility-less inventory and inquiry alerts pass through.
   alerts: RegionAlert[];
   critical: RegionAlert[];
   warning: RegionAlert[];
 }
 
-// The one hook every alert-consuming surface should use — Notification Center, the top bar's
-// bell dot, and Scheduling's Critical Shortages card — instead of each re-deriving breach state.
-// See lib/alertsStore.ts for the shared fetch/subscription this wraps.
+// The one hook alert surfaces use instead of re-deriving breach state, wrapping the shared store.
 export function useRegionAlerts(): RegionAlerts {
   const { region, facilityIdsInRegion } = useRegionScope();
   const { alerts: rawAlerts, loading } = useSyncExternalStore(

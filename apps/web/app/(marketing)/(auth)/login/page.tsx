@@ -8,6 +8,7 @@ export const metadata: Metadata = {
   description: "Log in to your OncoFlow account.",
 };
 
+// Patient login page.
 export default function LoginPage() {
   return (
     <AuthCard

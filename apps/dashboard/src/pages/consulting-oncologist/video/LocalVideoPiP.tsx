@@ -1,9 +1,7 @@
 import { useEffect, useRef } from "react";
 import { VideoOff, Circle } from "lucide-react";
 
-// Floating self-view — rounded corners, recording-indicator badge only when actually recording
-// (no Daily recording integration exists yet, so `recording` is always false today; the prop
-// exists so wiring real recording state later doesn't require touching this component).
+// Floating self-view; recording is always false today since no recording integration exists, and the prop avoids touching this later.
 export function LocalVideoPiP({ videoTrack, recording = false }: { videoTrack: MediaStreamTrack | null; recording?: boolean }) {
   const videoRef = useRef<HTMLVideoElement>(null);
 

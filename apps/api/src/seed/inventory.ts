@@ -1,14 +1,15 @@
 import { db } from "../db/index.js";
 import { sql } from "drizzle-orm";
-import { facility, drug, inventory, reconciliationRecord } from "../db/schema.js";
+import { facility, drug, inventory, reconciliationRecord, regionalDrugStockLedgerEntry } from "../db/schema.js";
 
 const DRUGS = [
-  { name: "Cyclophosphamide", strength: "500mg", category: "Chemotherapy" },
-  { name: "Doxorubicin", strength: "50mg", category: "Chemotherapy" },
-  { name: "Ondansetron", strength: "8mg", category: "Antiemetic" },
-  { name: "Filgrastim", strength: "300mcg", category: "Supportive Care" },
+  { name: "Cyclophosphamide", strength: "500mg", category: "Chemotherapy", reorderThreshold: 20 },
+  { name: "Doxorubicin", strength: "50mg", category: "Chemotherapy", reorderThreshold: 20 },
+  { name: "Ondansetron", strength: "8mg", category: "Antiemetic", reorderThreshold: 10 },
+  { name: "Filgrastim", strength: "300mcg", category: "Supportive Care", reorderThreshold: 10 },
 ];
 
+// Seeds drugs and pilot-facility stock once.
 export async function seedInventory() {
   const existingDrugs = await db.select().from(drug).limit(1);
   if (existingDrugs.length > 0) {
@@ -28,9 +29,9 @@ export async function seedInventory() {
 
   for (const [i, d] of drugRows.entries()) {
     await db.insert(inventory).values({ facilityId: luth.id, drugId: d.id, quantity: 40 - i * 5 });
-    // Half the drugs also stock the regional pool, matching the two-ledger model's real shape.
+    // Half the drugs also stock the regional pool, as procurement entries in the regional ledger.
     if (i % 2 === 0) {
-      await db.insert(inventory).values({ facilityId: null, drugId: d.id, quantity: 100 });
+      await db.insert(regionalDrugStockLedgerEntry).values({ drugId: d.id, quantityDelta: 100, reason: "PROCUREMENT" });
     }
   }
   console.log(`Seeded stock at ${luth.name} and the regional pool`);

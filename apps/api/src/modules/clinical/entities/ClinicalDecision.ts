@@ -15,10 +15,7 @@ export interface ClinicalDecisionData {
   directorDecidedAt: Date | null;
 }
 
-// ADR-0012 two-stage sequential decision: stage 1 (qa_*) is a Quality Assurance Officer's
-// recommendation; stage 2 (final_decision / director_*) is a State Clinical Director's final
-// call, and can only be set once stage 1 is complete. This is the single most important
-// invariant in the clinical workflow — enforced here, not just documented.
+// ADR-0012 two-stage decision: a QA officer's recommendation first, then a Clinical Director's final call that is only possible once stage 1 is complete.
 export class ClinicalDecision {
   constructor(private data: ClinicalDecisionData) {}
 
@@ -33,6 +30,7 @@ export class ClinicalDecision {
   get directorId() { return this.data.directorId; }
   get directorDecidedAt() { return this.data.directorDecidedAt; }
 
+  // Records the QA officer's recommendation (stage 1), refusing a second one.
   recordQaRecommendation(recommendation: DecisionType, reason: string | null, qaUserId: string): ClinicalDecision {
     if (this.data.qaDecidedAt) {
       throw new Error("QA has already recorded a recommendation for this decision");
@@ -46,9 +44,7 @@ export class ClinicalDecision {
     });
   }
 
-  // The hard sequencing rule (build plan F3.6): final_decision can never be set while
-  // qa_decided_at IS NULL. No bypass, no override — Stage 2 literally has nothing to review
-  // without Stage 1.
+  // The hard sequencing rule: a final decision can never be set while qa_decided_at is null, with no override.
   recordFinalDecision(decision: DecisionType, reason: string | null, directorUserId: string): ClinicalDecision {
     if (!this.data.qaDecidedAt) {
       throw new Error("Cannot record a final decision before QA has recorded a recommendation");
@@ -65,6 +61,7 @@ export class ClinicalDecision {
     });
   }
 
+  // Serializes the decision for API responses.
   toJSON() {
     return {
       id: this.data.id,

@@ -1,7 +1,4 @@
-// Shared, not billing-scoped — future notification work (appointment confirmations, SLA
-// breaches) may also want email. Same per-service, call-time credential pattern as Monnify
-// (services/MonnifyService.ts) and R2 (documents/services/StorageService.ts): read env vars
-// inside the function, not through config.ts, throw a clear "not configured" error if unset.
+// Sends one email through Resend; shared rather than billing-scoped, and reads credentials at call time, throwing a clear error if unset.
 export async function sendEmail(to: string, subject: string, html: string): Promise<void> {
   const apiKey = process.env.RESEND_API_KEY ?? "";
   const from = process.env.RESEND_FROM_EMAIL ?? "";

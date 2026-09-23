@@ -4,6 +4,7 @@ export interface WalletData {
   balanceKobo: bigint;
 }
 
+// Domain entity for a patient's wallet.
 export class Wallet {
   constructor(private data: WalletData) {}
 
@@ -11,6 +12,7 @@ export class Wallet {
   get patientId() { return this.data.patientId; }
   get balanceKobo() { return this.data.balanceKobo; }
 
+  // Serializes the wallet, with the bigint balance as a string.
   toJSON() {
     return { id: this.data.id, patientId: this.data.patientId, balanceKobo: this.data.balanceKobo.toString() };
   }

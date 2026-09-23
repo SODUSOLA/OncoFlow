@@ -16,18 +16,12 @@ export const patient = pgTable("patient", {
   gender: varchar("gender", { length: 32 }).notNull(),
   phone: varchar("phone", { length: 32 }).notNull(),
   email: varchar("email", { length: 255 }).notNull(),
-  // Patient-self-editable, non-clinical fields (per the Patient role spec). No FK on
-  // profilePictureFileId — same loose-reference convention as patientTimeline.referenceId
-  // below, to avoid a circular schema import with the documents module (file.patientId
-  // already references patient.id the other way).
+  // Patient-self-editable non-clinical fields; profilePictureFileId has no FK to avoid a circular schema import with documents.
   secondaryEmail: varchar("secondary_email", { length: 255 }),
   profilePictureFileId: uuid("profile_picture_file_id"),
   status: patientStatusEnum("status").notNull().default("ACTIVE"),
   facilityId: uuid("facility_id").notNull().references(() => facility.id),
-  // Null from the moment the patient record is auto-created at email verification (see
-  // patientRegistrationRequest's own comment) until a Regional Admin reviews and confirms —
-  // or reassigns — the facility. Not a gate on app access (the patient record already exists
-  // and is usable); purely drives the admin queue and the confirmation email.
+  // Null until a Regional Admin confirms or reassigns the facility; it drives the admin queue and email, not app access.
   facilityConfirmedAt: timestamp("facility_confirmed_at"),
   createdAt: timestamp("created_at").notNull().defaultNow(),
   updatedAt: timestamp("updated_at").notNull().defaultNow(),
@@ -74,24 +68,11 @@ export const patientTimeline = pgTable("patient_timeline", {
   createdAt: timestamp("created_at").notNull().defaultNow(),
 });
 
-// Captures what a self-registering patient submits in the wizard (name/DOB/phone/preferred
-// facility) before any staff member has reviewed it — deliberately separate from `patient`,
-// which is the authoritative, staff-issued clinical record. A row here means "awaiting Regional
-// Admin approval". The real `patient` row is now created automatically the moment the patient
-// verifies their email (AuthService.verifyEmail -> PatientService.registerPatient), not by
-// Admin — this row survives that and instead now represents "pending facility confirmation":
-// Admin still reviews it, but to confirm/reassign the already-live patient's facility
-// (PATCH /patients/:id/confirm-facility), not to create the record. Deleted on confirmation,
-// same as it was previously deleted on approval — its absence for a given userId is still what
-// "already handled" means, no separate status column needed.
+// The self-reported submission, kept separate from the authoritative patient row; it now means "pending facility confirmation" and is deleted once handled.
 export const patientRegistrationRequest = pgTable("patient_registration_request", {
   id: uuid("id").primaryKey().defaultRandom(),
   userId: uuid("user_id").notNull().references(() => user.id),
-  // Snapshotted at registration time, not read live from `user` — avoids patient/controller.ts
-  // needing a cross-module read into auth/index.ts, which would create an import cycle with
-  // auth/service.ts's own cross-module write into patient/index.ts (.dependency-cruiser.js's
-  // no-circular rule). Email isn't editable today anyway, so "as submitted" and "current" can't
-  // actually diverge.
+  // Snapshotted email so patient/controller.ts needn't read auth, which would create an import cycle.
   email: varchar("email", { length: 255 }).notNull(),
   fullName: varchar("full_name", { length: 255 }).notNull(),
   dob: date("dob").notNull(),
@@ -106,9 +87,7 @@ export const patientRegistrationRequest = pgTable("patient_registration_request"
 export const wallet = pgTable("wallet", {
   id: uuid("id").primaryKey().defaultRandom(),
   patientId: uuid("patient_id").notNull().references(() => patient.id),
-  // No DB-level default: every insert site (PatientService, seed/patient.ts) sets this
-  // explicitly. A literal `0n` default here breaks drizzle-kit's snapshot diffing —
-  // JSON.stringify can't serialize a raw BigInt when building the migration snapshot.
+  // No DB default because a literal 0n breaks drizzle-kit snapshot diffing; every insert sets it explicitly.
   balanceKobo: bigint("balance_kobo", { mode: "bigint" }).notNull(),
   createdAt: timestamp("created_at").notNull().defaultNow(),
   updatedAt: timestamp("updated_at").notNull().defaultNow(),

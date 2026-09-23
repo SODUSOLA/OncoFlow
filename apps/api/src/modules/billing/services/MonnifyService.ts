@@ -5,6 +5,7 @@ const MONNIFY_API_KEY = process.env.MONNIFY_API_KEY ?? "";
 const MONNIFY_SECRET_KEY = process.env.MONNIFY_SECRET_KEY ?? "";
 const CONTRACT_CODE = process.env.MONNIFY_CONTRACT_CODE ?? "";
 
+// Fetches a Monnify access token using the API key and secret.
 async function getAccessToken(): Promise<string> {
   const creds = Buffer.from(`${MONNIFY_API_KEY}:${MONNIFY_SECRET_KEY}`).toString("base64");
   const res = await fetch(`${MONNIFY_BASE}/api/v1/auth/login`, {
@@ -16,6 +17,7 @@ async function getAccessToken(): Promise<string> {
   return body.responseBody.accessToken;
 }
 
+// Creates a Monnify reserved bank account for a patient's wallet funding.
 export async function createReservedAccount(patientId: string, email: string, name: string) {
   const token = await getAccessToken();
   const ref = `RA-${patientId}-${Date.now()}`;
@@ -37,6 +39,7 @@ export async function createReservedAccount(patientId: string, email: string, na
   return body.responseBody;
 }
 
+// Verifies a Monnify webhook's HMAC-SHA512 signature.
 export function verifyWebhookSignature(payload: string, signature: string): boolean {
   const hash = crypto.createHmac("sha512", MONNIFY_SECRET_KEY).update(payload).digest("hex");
   return hash === signature;

@@ -8,6 +8,7 @@ import { seedStaffing } from "./staffing.js";
 import { seedInventory } from "./inventory.js";
 import { seedClinicalMetrics } from "./clinicalMetrics.js";
 
+// Runs every seed script in dependency order.
 async function seed() {
   console.log("--- Seeding OncoFlow ---");
   await seedIdentity();

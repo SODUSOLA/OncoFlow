@@ -4,8 +4,7 @@ import { NotificationRepository } from "./repository.js";
 
 const notificationRepo = new NotificationRepository();
 
-// Always your own notifications (filtered by recipientId, never a route param) — same
-// self-service class as GET /auth/profile and GET /patients/me, no permission grant needed.
+// Always the caller's own notifications, filtered by recipientId, so no permission grant is needed.
 export async function listNotificationsHandler(req: Request, res: Response) {
   try {
     const recipientId = (req as AuthenticatedRequest).userId;

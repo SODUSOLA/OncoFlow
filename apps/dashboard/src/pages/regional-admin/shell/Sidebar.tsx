@@ -23,15 +23,7 @@ interface SidebarProps {
   onNewConsultation: () => void;
 }
 
-// Phase 1 of ONCOFLOW_REGIONAL_ADMIN_BUILD_GUIDE.md — a single reusable instance mounted once by
-// RegionalAdminLayout, not duplicated per screen. Every color/radius value below is one of the
-// locked `admin-*` design tokens (see ONCOFLOW_DESIGN_SYSTEM.md); none are hardcoded hex/px.
-//
-// "New Consultation" is revived here per ONCOFLOW_SCHEDULING_AND_VIDEO_LIFECYCLE.md — it was
-// dropped earlier for opening Clinical Chat (still correctly out of scope, RBAC-walled), but the
-// lifecycle doc reframes it as real appointment scheduling with a genuine backend
-// (POST /consultations), so it comes back pointed at that instead. Navy, not gold — gold is
-// reserved for the active-nav-item highlight (see Button.tsx's own note on this).
+// One sidebar instance using locked admin-* tokens; New Consultation is back as real scheduling (POST /consultations), navy rather than gold, which is reserved for the active nav item.
 export function Sidebar({
   navItems, comingSoonItems, notPermittedLabels, collapsed, onToggleCollapsed,
   userName, userSubtitle, initials, onSignOut, onNewConsultation,

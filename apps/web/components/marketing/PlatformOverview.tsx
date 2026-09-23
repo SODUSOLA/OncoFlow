@@ -20,6 +20,7 @@ const overview = [
   },
 ];
 
+// Platform overview section.
 export function PlatformOverview() {
   return (
     <Section tone="muted">

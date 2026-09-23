@@ -1,5 +1,6 @@
 import { cn } from "@/lib/utils";
 
+// Centered max-width page container.
 export function Container({
   className,
   children,

@@ -11,9 +11,11 @@ export interface PublicInquiryMessageData {
   createdAt: Date;
 }
 
+// Domain entity for one message in an inquiry thread.
 export class PublicInquiryMessage {
   constructor(private data: PublicInquiryMessageData) {}
 
+  // Serializes the message for API responses.
   toJSON() {
     return {
       id: this.data.id,

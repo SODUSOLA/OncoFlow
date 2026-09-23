@@ -2,9 +2,7 @@ import type { CountdownCase } from "../../../lib/types";
 
 export type CountdownCardStatus = "on-track" | "overdue-bloodwork" | "awaiting-consent" | "md-review-pending" | "infusion-ready" | "escalated";
 
-// Shared by CountdownPage (rendering) and RegionalAdminLayout / NotificationCenterPage (the
-// real SLA-breach signal surfaced in the bell dot and the Notification Center's Critical
-// column) — one definition so the three can't drift out of sync on what counts as a breach.
+// Shared by the Countdown page, layout bell and Notification Center so they agree on what counts as a breach.
 export function deriveCountdownStatus(c: CountdownCase): CountdownCardStatus {
   if (c.status === "ESCALATED") return "escalated";
   if (!c.labsUploadedAt) return "overdue-bloodwork";
@@ -14,6 +12,7 @@ export function deriveCountdownStatus(c: CountdownCase): CountdownCardStatus {
   return "on-track";
 }
 
+// True when the status is a breach (overdue bloodwork or escalated).
 export function isCountdownBreached(status: CountdownCardStatus): boolean {
   return status === "overdue-bloodwork" || status === "escalated";
 }

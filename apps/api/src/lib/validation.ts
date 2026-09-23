@@ -2,6 +2,7 @@ import type { NextFunction, Request, Response } from "express";
 import type { ZodIssue, ZodTypeAny } from "zod";
 import { ValidationError } from "./errors.js";
 
+// Converts Zod issues into the { path, message } shape returned to clients.
 function formatIssues(issues: ZodIssue[]) {
   return issues.map((issue) => ({
     path: issue.path.join("."),
@@ -9,6 +10,7 @@ function formatIssues(issues: ZodIssue[]) {
   }));
 }
 
+// Writes the validated value back onto req (query is a getter, so it needs special handling).
 function assignValidatedValue(req: Request, target: "body" | "query" | "params", value: unknown) {
   if (target === "body") {
     req.body = value;
@@ -23,6 +25,7 @@ function assignValidatedValue(req: Request, target: "body" | "query" | "params",
   req.params = value as Request["params"];
 }
 
+// Builds a middleware that validates one part of the request against a Zod schema.
 function validateTarget(schema: ZodTypeAny, target: "body" | "query" | "params") {
   return (req: Request, _res: Response, next: NextFunction): void => {
     const result = schema.safeParse(req[target]);
@@ -36,14 +39,17 @@ function validateTarget(schema: ZodTypeAny, target: "body" | "query" | "params")
   };
 }
 
+// Middleware validating the request body.
 export function validateBody(schema: ZodTypeAny) {
   return validateTarget(schema, "body");
 }
 
+// Middleware validating the query string.
 export function validateQuery(schema: ZodTypeAny) {
   return validateTarget(schema, "query");
 }
 
+// Middleware validating the route params.
 export function validateParams(schema: ZodTypeAny) {
   return validateTarget(schema, "params");
 }

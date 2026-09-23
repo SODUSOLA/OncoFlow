@@ -2,6 +2,7 @@ import { Section } from "@/components/ui/Section";
 import { Reveal } from "@/components/ui/Reveal";
 import { careCategories } from "@/lib/content/metrics";
 
+// Built-for-modern-care section.
 export function BuiltForModernCare() {
   return (
     <Section tone="surface" className="py-12 md:py-16">

@@ -2,6 +2,7 @@ import Link from "next/link";
 import { Logo } from "@/components/brand/Logo";
 import { Reveal } from "@/components/ui/Reveal";
 
+// Card frame shared by the auth pages.
 export function AuthCard({
   title,
   description,

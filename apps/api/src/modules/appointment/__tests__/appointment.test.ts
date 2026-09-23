@@ -31,6 +31,7 @@ beforeAll(async () => {
   testPatientId = patRows[0]!.id;
 });
 
+// Builds an Appointment domain object in the given status for unit tests.
 function makeAppt(status: "PENDING" | "CONFIRMED" | "CHECKED_IN" | "IN_PROGRESS" | "COMPLETED" | "CANCELLED" | "MISSED" = "PENDING") {
   return new Appointment({
     id: crypto.randomUUID(), patientId: testPatientId, oncologistId: null,
@@ -176,14 +177,7 @@ describe("AppointmentRepository — CRUD", () => {
 });
 
 describe("AppointmentService — status update with cutoff", () => {
-  // Scheduled relative to now, not on a fixed calendar date. This previously hardcoded
-  // 2026-08-20, which was in the future when written and silently became a permanent failure
-  // ("Scheduled date is in the past") once that day passed — a real defect in the test rather
-  // than a flake, since it fails on every run regardless of the hour.
-  //
-  // A future date exercises the allowed branch deterministically at any time of day. The 2PM
-  // boundary itself is covered directly, and without wall-clock dependence, by the
-  // canConfirmOnDay unit tests above, which inject `now`.
+  // Scheduled relative to now, since a hardcoded date became a permanent failure once it passed; the 2PM boundary is covered by the injected-now unit tests.
   it("confirms an appointment scheduled for a future day", async () => {
     const tomorrow = new Date(Date.now() + 24 * 60 * 60 * 1000);
     const row = await apptRepo.create({

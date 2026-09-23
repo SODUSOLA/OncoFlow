@@ -14,6 +14,7 @@ export interface CountdownCaseData {
   reminderSentAt: Date | null;
 }
 
+// Domain entity for the 7-day countdown case, enforcing its ordered milestones.
 export class CountdownCase {
   constructor(private data: CountdownCaseData) {}
 
@@ -27,11 +28,13 @@ export class CountdownCase {
   get paymentConfirmedAt() { return this.data.paymentConfirmedAt; }
   get reminderSentAt() { return this.data.reminderSentAt; }
 
+  // Records that labs were prompted, idempotently.
   labsPrompted(): CountdownCase {
     if (this.data.labsPromptedAt) return this;
     return new CountdownCase({ ...this.data, labsPromptedAt: new Date() });
   }
 
+  // Records that labs were uploaded, requiring the prompt first.
   labsUploaded(): CountdownCase {
     if (!this.data.labsPromptedAt) {
       throw new Error("Cannot upload labs before labs are prompted");
@@ -40,6 +43,7 @@ export class CountdownCase {
     return new CountdownCase({ ...this.data, labsUploadedAt: new Date() });
   }
 
+  // Records that results were sent to QA, requiring the upload first.
   resultsSentToQa(): CountdownCase {
     if (!this.data.labsUploadedAt) {
       throw new Error("Cannot send results to QA before labs are uploaded");
@@ -48,6 +52,7 @@ export class CountdownCase {
     return new CountdownCase({ ...this.data, resultsSentToQaAt: new Date() });
   }
 
+  // Records payment confirmation, requiring results to have been sent to QA.
   paymentConfirmed(): CountdownCase {
     if (!this.data.resultsSentToQaAt) {
       throw new Error("Cannot confirm payment before results are sent to QA");
@@ -55,6 +60,7 @@ export class CountdownCase {
     return new CountdownCase({ ...this.data, paymentConfirmedAt: new Date(), status: "CLEARED" });
   }
 
+  // Decrements the countdown day, never below zero.
   decrementDay(): CountdownCase {
     if (this.data.currentDay <= 0) return this;
     const nextDay = this.data.currentDay - 1;
@@ -62,14 +68,17 @@ export class CountdownCase {
     return new CountdownCase({ ...this.data, currentDay: nextDay, status: nextStatus });
   }
 
+  // Marks the case as declined.
   decline(): CountdownCase {
     return new CountdownCase({ ...this.data, status: "DECLINED" });
   }
 
+  // Stamps that a reminder was sent.
   markReminded(): CountdownCase {
     return new CountdownCase({ ...this.data, reminderSentAt: new Date() });
   }
 
+  // Serializes the case for API responses.
   toJSON() {
     return {
       id: this.data.id,

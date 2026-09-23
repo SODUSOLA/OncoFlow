@@ -1,12 +1,4 @@
-/**
- * Extracted from the ONCOFLOW LIMITED brand mark (CorelDRAW export).
- * Only the artwork paths are kept — the original file's wordmark used an
- * embedded SVG <font> (format(svg)) which no modern browser renders, so the
- * wordmark is rebuilt as real text in Logo.tsx instead.
- *
- * Coordinates are in the source file's original space; RIBBON_VIEWBOX below
- * is a tight crop computed from this path's bounding box (~[1660,2722]-[2216,3944]).
- */
+// Ribbon artwork paths from the brand mark; the wordmark is rebuilt as text in Logo.tsx, and the viewBox is a tight crop of the path's bounds.
 
 export const RIBBON_VIEWBOX = "1618 2680 640 1306";
 

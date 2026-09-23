@@ -1,10 +1,6 @@
 import type { MetadataRoute } from "next";
 
-// start_url: "/home" is what makes "installed to home screen -> opens straight into the app"
-// work on Android/Chrome — the (patient) route group's layout already does a server-side
-// session check (lib/session.ts) and bounces to /login if there's no valid session, so this
-// single entry point correctly lands a logged-in patient in the app and a logged-out one at
-// login, without the manifest needing to know which.
+// start_url /home lands installed users in the app, since the patient layout's session check redirects logged-out users to login.
 export default function manifest(): MetadataRoute.Manifest {
   return {
     name: "OncoFlow — Patient Portal",

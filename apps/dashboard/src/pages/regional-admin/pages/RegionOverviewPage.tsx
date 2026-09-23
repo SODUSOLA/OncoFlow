@@ -6,10 +6,12 @@ import { Card } from "../../../components/ui/Card";
 import { Button } from "../../../components/ui/Button";
 import { useRegionScope } from "../lib/useRegionScope";
 
+// Formats kobo as a naira string.
 function koboToNaira(k: number) {
   return `₦${(k / 100).toLocaleString("en-NG", { minimumFractionDigits: 0 })}`;
 }
 
+// Formats a timestamp as relative time.
 function timeAgo(iso: string): string {
   const mins = Math.max(0, Math.round((Date.now() - new Date(iso).getTime()) / 60000));
   if (mins < 60) return `${mins}m`;
@@ -18,8 +20,7 @@ function timeAgo(iso: string): string {
   return `${Math.round(hrs / 24)}d`;
 }
 
-// Same operational-status heuristic used on the Countdown page — kept local rather than shared
-// since the two pages surface different slices of the same field set for different purposes.
+// Same status heuristic as the Countdown page, kept local since the pages surface different slices for different purposes.
 function blockedOn(c: CountdownCase): string {
   if (!c.labsUploadedAt) return "Bloodwork appointment";
   if (!c.resultsSentToQaAt) return "Clinician sign-off";
@@ -29,6 +30,7 @@ function blockedOn(c: CountdownCase): string {
 
 interface StockOverview { variancesOpen: number }
 
+// Region overview dashboard.
 export default function RegionOverviewPage() {
   const { region, facilities, facilitiesInRegion, facilityIdsInRegion } = useRegionScope();
   const [cases, setCases] = useState<CountdownCase[]>([]);

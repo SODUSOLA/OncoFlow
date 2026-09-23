@@ -3,6 +3,7 @@ import type { AuthenticatedRequest } from "../../lib/rbac.js";
 import { userHasPermission } from "../../lib/rbac.js";
 import { availabilityService } from "./service.js";
 
+// Maps a service error message to an HTTP status.
 function errorStatus(message: string): number {
   if (message === "Availability block not found") return 404;
   if (message.startsWith("You can only")) return 403;
@@ -10,6 +11,7 @@ function errorStatus(message: string): number {
   return 500;
 }
 
+// Adds an availability block for the calling consultant.
 export async function addAvailabilityHandler(req: Request, res: Response) {
   try {
     const consultantId = (req as AuthenticatedRequest).userId;
@@ -22,9 +24,7 @@ export async function addAvailabilityHandler(req: Request, res: Response) {
   }
 }
 
-// consultantId is a query param, not always the caller — Regional Admin's New Consultation
-// scheduler needs to read a DIFFERENT consultant's availability, which is exactly why this
-// route is requireAuthenticated (not an ownership-only self-read) — see routes.ts.
+// consultantId may be another consultant's, since Regional Admin's scheduler reads other consultants' availability.
 export async function listAvailabilityHandler(req: Request, res: Response) {
   try {
     const callerId = (req as AuthenticatedRequest).userId;
@@ -41,6 +41,7 @@ export async function listAvailabilityHandler(req: Request, res: Response) {
   }
 }
 
+// Removes one of the caller's availability blocks.
 export async function removeAvailabilityHandler(req: Request, res: Response) {
   try {
     const callerId = (req as AuthenticatedRequest).userId;

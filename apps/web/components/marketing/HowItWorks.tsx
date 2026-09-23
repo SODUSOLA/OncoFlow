@@ -2,10 +2,7 @@ import { Section, SectionHeading } from "@/components/ui/Section";
 import { Reveal } from "@/components/ui/Reveal";
 import { journeySteps } from "@/lib/content/journey";
 
-/**
- * Static timeline for this build. An interactive, click/hover-driven version
- * (one step highlighted at a time) is a noted future enhancement, not built here.
- */
+// A static timeline for now; an interactive step-by-step version is a future enhancement.
 export function HowItWorks() {
   return (
     <Section tone="surface">

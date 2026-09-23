@@ -13,17 +13,7 @@ import { auditLog } from "../../modules/audit/schema.js";
 import { SESSION_COOKIE_NAME } from "../session-cookie.js";
 import { seedIdentity } from "../../seed/identity.js";
 
-// Regression cover for two authorization gaps found during the post-handoff audit, both of
-// which were demonstrated exploitable against the running app before the fix:
-//
-//  1. MFA was enforced only inside requireAuthenticated(), so the 32 routes gated purely by
-//     requirePermission/requireRole skipped it entirely — for every role, not just SUPER_ADMIN.
-//  2. Controllers filtered on a client-supplied ?facilityId with no check that the caller
-//     belonged to it, so one hospital's staff could read another's patients by changing an id,
-//     and ?facilityId=all returned every patient on the platform.
-//
-// These assert behaviour at the HTTP boundary rather than unit-testing the middleware, because
-// the bug in (1) was precisely that the middleware was correct but not applied everywhere.
+// Regression tests for two audit findings: MFA skipped on permission-only routes, and client-supplied ?facilityId not being checked against the caller's facility.
 
 const app = createApp();
 
@@ -45,6 +35,7 @@ const createdAppointments: string[] = [];
 
 type RoleName = (typeof role.name.enumValues)[number];
 
+// Inserts a throwaway staff user (optionally MFA-enabled) with the given role for a test.
 async function createUser(opts: {
   roleName?: RoleName;
   mfaEnabled: boolean;
@@ -57,8 +48,7 @@ async function createUser(opts: {
     email: `authz-${id}@test.local`,
     passwordHash: "test",
     mfaEnabled: opts.mfaEnabled,
-    // A real base32 secret so the row is shaped like a genuinely enrolled user; these tests
-    // never submit a valid TOTP, they only exercise the gate.
+    // A real base32 secret so the row looks enrolled; tests only exercise the MFA gate and never submit a TOTP.
     mfaSecret: opts.mfaEnabled ? "JBSWY3DPEHPK3PXP" : null,
     facilityId: opts.facilityId ?? null,
   });
@@ -80,6 +70,7 @@ async function createUser(opts: {
   return { id, cookie: `${SESSION_COOKIE_NAME}=${sessionId}` };
 }
 
+// Inserts a test facility in the given region and returns its id.
 async function createFacility(name: string, region: string): Promise<string> {
   const id = crypto.randomUUID();
   await db.insert(facility).values({ id, name, region, address: "test", status: "ACTIVE" });
@@ -87,6 +78,7 @@ async function createFacility(name: string, region: string): Promise<string> {
   return id;
 }
 
+// Inserts a test patient in the given facility and returns its id.
 async function createPatient(facilityId: string, firstName: string): Promise<string> {
   const id = crypto.randomUUID();
   await db.insert(patient).values({
@@ -99,6 +91,7 @@ async function createPatient(facilityId: string, firstName: string): Promise<str
   return id;
 }
 
+// Inserts a test invoice for the patient and returns its id.
 async function createInvoice(facilityId: string, patientId: string): Promise<string> {
   const id = crypto.randomUUID();
   await db.insert(invoice).values({
@@ -109,6 +102,7 @@ async function createInvoice(facilityId: string, patientId: string): Promise<str
   return id;
 }
 
+// Inserts a test appointment for the patient at the facility.
 async function createAppointment(facilityId: string, patientId: string): Promise<void> {
   const id = crypto.randomUUID();
   await db.insert(appointment).values({
@@ -127,8 +121,7 @@ beforeAll(async () => {
   const cara = await createPatient(hospitalAPeer, "AuthzCara");
   const bob = await createPatient(hospitalB, "AuthzBob");
 
-  // serviceClassification.name is an enum with a fixed, seeded set — reuse whatever is there
-  // rather than inventing one, and only create (and later clean up) if the table is empty.
+  // Reuses the seeded serviceClassification row, creating (and later cleaning up) one only if the table is empty.
   const existingClassification = await db.select().from(serviceClassification).limit(1);
   if (existingClassification[0]) {
     classificationId = existingClassification[0].id;
@@ -156,11 +149,7 @@ afterAll(async () => {
   }
   for (const id of createdPatients) await db.delete(patient).where(eq(patient.id, id));
   for (const id of createdSessions) await db.delete(session).where(eq(session.id, id));
-  // Audit rows must go first: these tests deliberately trigger denials, and rbac.ts records
-  // each one with actor_id referencing the user, so deleting the user violates that FK. The
-  // deletes below used to swallow every error with .catch(() => {}), which turned that failure
-  // into a silent leak — one run per suite, accumulating MFA-enabled accounts in the dev
-  // database. Left unswallowed now so a future leak fails loudly instead of quietly growing.
+  // Deletes audit rows first because denials reference the user by FK; errors are left unswallowed so a leak fails loudly.
   if (createdUsers.length > 0) {
     await db.delete(auditLog).where(inArray(auditLog.actorId, createdUsers));
   }
@@ -198,10 +187,7 @@ describe("MFA enforcement across every route gate", () => {
     expect(res.status).toBe(200);
   });
 
-  // Deadlock guard: /auth/mfa/verify is the only way to clear the MFA gate, so it must stay
-  // reachable while unverified. It must also not require a role grant — it previously demanded
-  // auth:update, which no role but SUPER_ADMIN has, meaning enabling MFA on any other account
-  // would have locked it out permanently once enforcement was switched on.
+  // Guards a deadlock: /auth/mfa/verify must stay reachable while MFA is unverified and must not require a role grant.
   it("keeps POST /auth/mfa/verify reachable while MFA is unverified", async () => {
     const caller = await createUser({ roleName: "REGIONAL_ADMIN", mfaEnabled: true, facilityId: hospitalA });
     const res = await request(app)
@@ -244,10 +230,7 @@ describe("facility isolation on ?facilityId", () => {
     expect(JSON.stringify(res.body)).toContain("AuthzBob");
   });
 
-  // Authorization and filtering are separate concerns: an unrestricted caller is *allowed* to
-  // see every facility, but asking for one specific facility must still narrow the results.
-  // A first cut of the scope logic dropped the requested id for unrestricted callers, silently
-  // returning every patient on the platform to a filtered request.
+  // Narrowing by an explicit ?facilityId must still work for unrestricted callers, who are only allowed (not forced) to see everything.
   it("still honours an explicit ?facilityId as a filter for unrestricted callers", async () => {
     const caller = await createUser({ roleName: "SUPER_ADMIN", mfaEnabled: false });
     const res = await request(app).get(`/patients?facilityId=${hospitalB}`).set("Cookie", caller.cookie);
@@ -260,9 +243,7 @@ describe("facility isolation on ?facilityId", () => {
   });
 });
 
-// The same untrusted-?facilityId hole existed on every other list endpoint that accepts one.
-// Patient search was fixed first; these cover the rest (billing, appointments, tariffs,
-// staffing), which all now route through the shared resolveScopeOrDeny helper.
+// The same untrusted-?facilityId hole existed on every list endpoint, so these cover the rest via resolveScopeOrDeny.
 describe("facility isolation on the remaining ?facilityId endpoints", () => {
   it("403s on invoices for a facility outside the caller's region", async () => {
     const caller = await createUser({ roleName: "REGIONAL_ADMIN", mfaEnabled: false, facilityId: hospitalA });
@@ -288,9 +269,7 @@ describe("facility isolation on the remaining ?facilityId endpoints", () => {
     expect(res.status).toBe(403);
   });
 
-  // /appointments takes no "all" sentinel (its query schema only accepts a uuid), so the
-  // list-everything request is simply omitting facilityId — which is precisely the case that
-  // used to return every appointment on the platform to any caller with appointment:read.
+  // An appointments query with no facilityId must be limited to the caller's own region.
   it("scopes a facility-less appointment query to the caller's own region", async () => {
     const caller = await createUser({ roleName: "REGIONAL_ADMIN", mfaEnabled: false, facilityId: hospitalA });
     const res = await request(app).get("/appointments?status=PENDING").set("Cookie", caller.cookie);

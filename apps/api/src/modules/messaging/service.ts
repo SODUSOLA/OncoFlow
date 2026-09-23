@@ -44,23 +44,16 @@ const classificationRepo = new ServiceClassificationRepository();
 const paymentSvc = new PaymentService();
 const messagingJobService = new MessagingJobService();
 
-// F3.11 §5 — proposed default, not FR-pinned. A global constant for MVP; per-scribe override
-// is a reasonable later enhancement, not worth building now (no evidence yet of scribes
-// actually having different throughput).
+// Proposed global backlog cap of 5 per scribe (F3.11 §5); a per-scribe override isn't warranted yet.
 const TRANSCRIPTION_BACKLOG_CAP = 5;
 
-// Ownership-or-permission checks (Patient role spec: "can message assigned Admin/MO channels
-// ... cannot view any other patient's data, under any circumstance") — a patient participating
-// in their own conversation doesn't need a blanket conversation:*/message:* grant; anyone else
-// does.
+// Ownership-or-permission: patients need no blanket grant for their own conversations, and can't see anyone else's.
 async function callerOwnsPatient(callerId: string, patientId: string): Promise<boolean> {
   const patientRow = await patientRepo.findById(patientId);
   return !!patientRow?.userId && patientRow.userId === callerId;
 }
 
-// Attaches each conversation's most recent message so a list view can show a preview without
-// opening the thread. Non-TEXT messages carry a file id in `content`, never something a UI
-// should print, so the shape flags the type and lets the client render its own label.
+// Attaches each conversation's latest message for list previews; non-TEXT messages are flagged by type since their content is a file id.
 async function withLastMessage(rows: Awaited<ReturnType<ConversationRepository["findByPatient"]>>) {
   const latest = await messageRepo.findLatestByConversations(rows.map((r) => r.id));
   const byConversation = new Map(latest.map((m) => [m.conversationId, m]));
@@ -76,16 +69,14 @@ async function withLastMessage(rows: Awaited<ReturnType<ConversationRepository["
   });
 }
 
+// Business logic for conversations and messages.
 export class MessagingService {
   async startConversation(
     data: { patientId: string; conversationType: ConversationType; assignedTo?: string },
     callerId: string,
   ) {
     const isSelf = await callerOwnsPatient(callerId, data.patientId);
-    // A patient reporting their own side effect carries a real fee (paid upfront, per report)
-    // — that path only exists through startSideEffectReport, which creates+pays the invoice
-    // before the conversation exists. Staff opening one on a patient's behalf (e.g. logging a
-    // call) still goes through the free permission-gated path below; only self-service is priced.
+    // Self-service side-effect reports carry a fee and only start through startSideEffectReport; staff opening one on a patient's behalf stay free.
     if (isSelf && data.conversationType === "MO_SIDE_EFFECT") {
       throw new ForbiddenError("Reporting a side effect requires paying the report fee first");
     }
@@ -97,6 +88,7 @@ export class MessagingService {
     return new Conversation(row).toJSON();
   }
 
+  // Creates the conversation row with its SLA deadline and participants.
   private async createConversationRecord(patientId: string, conversationType: ConversationType, assignedTo?: string) {
     const now = new Date();
     const row = await conversationRepo.create({
@@ -108,10 +100,7 @@ export class MessagingService {
       assignedTo: assignedTo ?? null,
     });
 
-    // participant.user_id references User, not Patient — a patient only gets a participant
-    // row if they have a linked user account (patient.user_id is nullable; not every patient
-    // record has self-service login set up yet). conversation.patient_id already establishes
-    // the patient side unambiguously either way.
+    // A patient only gets a participant row if they have a linked user account, since patient.user_id is nullable.
     const patientRow = await patientRepo.findById(patientId);
     if (patientRow?.userId) {
       await participantRepo.create({ conversationId: row.id, userId: patientRow.userId });
@@ -123,21 +112,14 @@ export class MessagingService {
     return row;
   }
 
-  // Patient role spec: side-effect reports carry a real, per-report fee paid upfront. Creates
-  // a fresh SIDE_EFFECT_REPORT invoice, sends it, and attempts payment from the patient's
-  // wallet in the same request — the conversation (and first message) only get created once
-  // that payment actually succeeds. On insufficient balance, returns the unpaid (SENT) invoice
-  // instead of throwing, so the caller can render the same Insufficient Balance state the
-  // Wallet page already uses, with real numbers.
+  // Creates, sends and wallet-pays a side-effect invoice before creating the conversation, returning the unpaid invoice on insufficient balance.
   async startSideEffectReport(patientId: string, message: string, callerId: string) {
     const isSelf = await callerOwnsPatient(callerId, patientId);
     if (!isSelf) {
       throw new ForbiddenError("You can only report a side effect for your own patient record");
     }
 
-    // Server-side backstop for the same rule the frontend enforces: an OPEN report is still
-    // live (follow-ups there are free) — a CLOSED one means the encounter is over and a new
-    // report, with a new fee, is what's actually being started.
+    // Backstop for the frontend rule: an OPEN report is still live and follow-ups are free, while a CLOSED one means a new report and fee.
     const existingOpen = (await conversationRepo.findByPatient(patientId))
       .find((c) => c.conversationType === "MO_SIDE_EFFECT" && c.status === "OPEN");
     if (existingOpen) {
@@ -180,6 +162,7 @@ export class MessagingService {
     };
   }
 
+  // Returns a conversation for its patient or permitted staff.
   async getConversation(id: string, callerId: string) {
     const row = await conversationRepo.findById(id);
     if (!row) throw new NotFoundError("Conversation not found");
@@ -191,14 +174,14 @@ export class MessagingService {
     return new Conversation(row).toJSON();
   }
 
+  // Lists a patient's conversations and marks the other party's messages delivered.
   async listByPatient(patientId: string, callerId: string) {
     const isSelf = await callerOwnsPatient(callerId, patientId);
     if (!isSelf && !(await userHasPermission(callerId, "conversation", "read"))) {
       throw new ForbiddenError("Forbidden");
     }
     const rows = await conversationRepo.findByPatient(patientId);
-    // WhatsApp-style "delivered": the caller's client just fetched this list, so the other
-    // party's messages in each of these conversations have now reached them.
+    // WhatsApp-style delivered: the caller fetched this list, so the other party's messages have reached them.
     const patientRow = await patientRepo.findById(patientId);
     for (const row of rows) {
       await messageRepo.markDeliveredForViewer(row.id, patientRow?.userId ?? null, isSelf);
@@ -206,8 +189,7 @@ export class MessagingService {
     return withLastMessage(rows);
   }
 
-  // Staff-only path (a patient never has a conversation "assigned" to them) — no ownership
-  // branch, just the permission.
+  // Staff-only path with no ownership branch, just the permission.
   async listByAssignee(assignedTo: string, callerId: string) {
     if (!(await userHasPermission(callerId, "conversation", "read"))) {
       throw new ForbiddenError("Forbidden");
@@ -220,13 +202,7 @@ export class MessagingService {
     return withLastMessage(rows);
   }
 
-  // Stamps first_response_at exactly once, only for a real (non-SYSTEM) message, and only
-  // the first one — everything downstream (SLA breach sweep) reads that single stamp.
-  // senderId is deliberately NOT part of `data`: it is always the authenticated caller.
-  // It used to be taken from the request body while only the *caller* was authorized against
-  // the conversation, so any participant could post a message attributed to someone else —
-  // a patient could store clinical advice under their doctor's name, and both the patient and
-  // staff would see it rendered as having come from that doctor.
+  // Posts a message; senderId is never taken from the request, since accepting it allowed impersonating a doctor, and the first real message stamps first_response_at.
   async postMessage(
     data: { conversationId: string; type: MessageType; content: string },
     callerId: string,
@@ -253,16 +229,14 @@ export class MessagingService {
 
     if (messageEntity.countsAsFirstResponse && !conversationRow.firstResponseAt) {
       const existingRealMessage = await messageRepo.findFirstRealMessage(data.conversationId);
-      // Only stamp when THIS message is the first real one — a later real message in the
-      // same conversation must not re-stamp or overwrite the original first_response_at.
+      // Only stamps when this is the first real message, so a later one never overwrites first_response_at.
       if (existingRealMessage && existingRealMessage.id === messageRow.id) {
         await conversationRepo.update(data.conversationId, { firstResponseAt: messageRow.createdAt });
       }
     }
 
     const json = messageEntity.toJSON();
-    // Only emits once a real Socket.IO server exists (attachSocketServer, index.ts) — never
-    // attached in the test process, so this is a no-op there, not a thrown error.
+    // Emits only when a Socket.IO server is attached, so it is a no-op in tests.
     if (isIoAttached()) {
       getIo().to(`conversation:${data.conversationId}`).emit("message:new", json);
     }
@@ -270,6 +244,7 @@ export class MessagingService {
     return json;
   }
 
+  // Lists a conversation's messages, marking the other party's read.
   async listMessages(conversationId: string, callerId: string) {
     const conversationRow = await conversationRepo.findById(conversationId);
     if (!conversationRow) throw new NotFoundError("Conversation not found");
@@ -279,14 +254,12 @@ export class MessagingService {
       throw new ForbiddenError("Forbidden");
     }
 
-    // Lazy sweep, same "side effect of a read" precedent as markReadForViewer right below —
-    // no scheduler/queue needed, any thread view is enough to catch every overdue conversation.
+    // Lazy SLA sweep as a side effect of a read, needing no scheduler.
     await messagingJobService.sweepSlaBreaches().catch((err) => {
       console.error("SLA breach sweep failed:", err);
     });
 
-    // WhatsApp-style "read": opening this specific thread is the read signal — mark the
-    // other party's messages read before returning, so this same response reflects it.
+    // WhatsApp-style read: opening the thread marks the other party's messages read before responding.
     const patientRow = await patientRepo.findById(conversationRow.patientId);
     await messageRepo.markReadForViewer(conversationId, patientRow?.userId ?? null, isSelf);
 
@@ -294,10 +267,7 @@ export class MessagingService {
     return rows.map((r) => new Message(r).toJSON());
   }
 
-  // Either side can end a side-effect report: the patient (it's their own record) or staff
-  // with conversation:update (typically the Virtual Medical Officer who handled it). Once
-  // closed, postMessage rejects further replies and startSideEffectReport treats it as no
-  // longer "open" — reopening isn't a thing; a new report is its own new invoice.
+  // Either the patient or staff with conversation:update can close a report; closed reports reject replies and can't be reopened.
   async closeConversation(id: string, callerId: string) {
     const row = await conversationRepo.findById(id);
     if (!row) throw new NotFoundError("Conversation not found");
@@ -312,9 +282,7 @@ export class MessagingService {
     return new Conversation(saved!).toJSON();
   }
 
-  // Mutual rating, submittable by either side once the encounter is over — rating an ongoing
-  // conversation is premature, and each rater gets exactly one say (the unique index on
-  // (conversationId, raterId) backs this up at the DB layer too).
+  // Mutual rating, once per rater and only after the encounter is over, backed by a unique index.
   async submitFeedback(conversationId: string, rating: number, review: string | undefined, callerId: string) {
     const row = await conversationRepo.findById(conversationId);
     if (!row) throw new NotFoundError("Conversation not found");
@@ -341,8 +309,7 @@ export class MessagingService {
       review: review ?? null,
     });
 
-    // Notify the other party — whoever didn't just submit this feedback. Best-effort, same
-    // tolerance as every other notification hook in this codebase.
+    // Notifies the other party, best-effort like every other notification hook.
     const recipientId = isSelf ? row.assignedTo : (await patientRepo.findById(row.patientId))?.userId;
     if (recipientId) {
       await notificationService.create({ recipientId, type: "CONVERSATION_FEEDBACK" }).catch((err) => {
@@ -353,6 +320,7 @@ export class MessagingService {
     return new ConversationFeedback(feedbackRow).toJSON();
   }
 
+  // Lists a conversation's feedback.
   async listFeedback(conversationId: string, callerId: string) {
     const row = await conversationRepo.findById(conversationId);
     if (!row) throw new NotFoundError("Conversation not found");
@@ -367,15 +335,9 @@ export class MessagingService {
   }
 }
 
-// F3.11 (docs/build-plan/13-scribe-role-definition.md) — the shared transcription queue a
-// Scribe claims work from, plus the finalization step that closes the "no downstream
-// consumer" gap: completing an assignment IS finalizing the meeting's transcript, one action,
-// not two steps a caller could get out of sync.
+// The shared scribe transcription queue; completing an assignment is also finalizing the meeting's transcript, in one action.
 export class TranscriptionAssignmentService {
-  // Triggered when a Meeting transitions to ENDED (see MeetingService.syncStatus below) —
-  // "meeting ended, transcript ready for review." UNIQUE(meeting_id) plus Meeting's own
-  // SCHEDULED/IN_PROGRESS -> ENDED (reachable exactly once) transition guard together make a
-  // duplicate assignment for the same meeting structurally impossible, not just unlikely.
+  // Queues a transcript for review when a meeting ENDS; UNIQUE(meeting_id) plus the one-time ENDED transition prevent duplicates.
   async queueForMeeting(meetingId: string) {
     const now = new Date();
     const row = await transcriptionAssignmentRepo.create({
@@ -388,16 +350,19 @@ export class TranscriptionAssignmentService {
     return new TranscriptionAssignment(row).toJSON();
   }
 
+  // Lists the unclaimed queue.
   async listQueue() {
     const rows = await transcriptionAssignmentRepo.findQueue();
     return rows.map((r) => new TranscriptionAssignment(r).toJSON());
   }
 
+  // Lists a scribe's assignments.
   async listMine(scribeId: string) {
     const rows = await transcriptionAssignmentRepo.findByScribe(scribeId);
     return rows.map((r) => new TranscriptionAssignment(r).toJSON());
   }
 
+  // Claims an assignment for a scribe, enforcing the backlog cap.
   async claim(id: string, scribeId: string) {
     const row = await transcriptionAssignmentRepo.findById(id);
     if (!row) throw new NotFoundError("Transcription assignment not found");
@@ -414,6 +379,7 @@ export class TranscriptionAssignmentService {
     return new TranscriptionAssignment(saved!).toJSON();
   }
 
+  // Releases an assignment back to the queue.
   async release(id: string, scribeId: string) {
     const row = await transcriptionAssignmentRepo.findById(id);
     if (!row) throw new NotFoundError("Transcription assignment not found");
@@ -428,11 +394,7 @@ export class TranscriptionAssignmentService {
     return new TranscriptionAssignment(saved!).toJSON();
   }
 
-  // F3.11 §4 — completes the assignment AND sets Meeting.transcriptFinalizedAt/By in one call,
-  // since the doc treats them as the same real-world event, not two steps.
-  // Stage 1 of 2 (see Meeting.recordTranscriptCorrection/signOffTranscript) — this is the
-  // Scribe's own work being finalized, NOT the transcript becoming trusted/citable. That's a
-  // separate consultant sign-off action (MeetingService.signOffTranscript, below).
+  // Completes the assignment and records the Scribe's stage 1 correction on the meeting in one call; it doesn't make the transcript citable.
   async finalize(id: string, scribeId: string) {
     const row = await transcriptionAssignmentRepo.findById(id);
     if (!row) throw new NotFoundError("Transcription assignment not found");
@@ -454,12 +416,7 @@ export class TranscriptionAssignmentService {
       transcriptCorrectedBy: corrected.transcriptCorrectedBy,
     });
 
-    // This is where a TranscriptReadyForSignOff event would notify the respective consultant
-    // (the appointment's assigned oncologist — resolved via meetingRow.appointmentId) that
-    // their sign-off is needed. src/modules/notification is still an empty scaffold (schema
-    // only, no service/repository wired up yet) — same "no queue infra wired up yet" situation
-    // already true of CountdownJobService/MessagingJobService, so this is a documented pending
-    // hook, not a silently dropped requirement.
+    // Placeholder for notifying the assigned consultant that sign-off is needed; the notification module has no queue wiring yet.
 
     return new TranscriptionAssignment(saved!).toJSON();
   }
@@ -467,30 +424,16 @@ export class TranscriptionAssignmentService {
 
 const transcriptionAssignmentSvc = new TranscriptionAssignmentService();
 
-// F3.7 — Daily.co room provisioning + webhook-driven status/transcript sync. Signature
-// verification (DailyService.verifyDailyWebhookSignature) must run in the controller before
-// either webhook handler here is ever called — these methods assume the request is already
-// authenticated as genuinely from Daily.co, they don't re-verify it themselves.
+// Daily room provisioning and webhook-driven status sync; webhook signatures must be verified in the controller before these run.
 export class MeetingService {
-  // Two concurrent callers for the same appointment (React StrictMode's double-mount in dev,
-  // a genuine double-click, or two tabs) both pass the findByAppointment check above before
-  // either has inserted a row, then race on Daily's own room-name collision (a plain 400, not
-  // a distinguishable "already exists" code) and the DB's own unique appointment_id constraint.
-  // Rather than surfacing a false failure to whichever request loses the race, both failure
-  // points re-check our own row and hand back the winner's meeting — this endpoint is meant to
-  // be safely retryable, not a true create-or-conflict.
-  // opts is set by the scheduling-time caller (appointment module's /consultations
-  // orchestration) so the room's Daily-side expiry can be computed from the real appointment
-  // window; omitted by the legacy lazy-provisioning path, which has no scheduled end to compute
-  // it from.
+  // Idempotent under races: concurrent callers re-check and return the winner's meeting; opts sets Daily's expiry when scheduling-time provisioning knows the window.
   async provisionRoom(appointmentId: string, opts?: { scheduledAt: Date; durationMinutes: number }) {
     const existing = await meetingRepo.findByAppointment(appointmentId);
     if (existing) {
       throw new ConflictError("A meeting already exists for this appointment");
     }
 
-    // 30-minute grace buffer past the appointment's own end, per the lifecycle doc §3 — enough
-    // slack for a call that runs long without leaving the room joinable indefinitely.
+    // 30-minute grace past the appointment's end, so a long call doesn't leave the room joinable forever.
     const GRACE_MINUTES = 30;
     const expDate = opts ? new Date(opts.scheduledAt.getTime() + (opts.durationMinutes + GRACE_MINUTES) * 60_000) : undefined;
     const exp = expDate ? Math.floor(expDate.getTime() / 1000) : undefined;
@@ -521,9 +464,7 @@ export class MeetingService {
     }
   }
 
-  // Lets a patient join their own scheduled video consult without a blanket meeting:read
-  // grant — ownership is resolved via the appointment's patientId, since Meeting itself has
-  // no patientId (it only knows appointmentId).
+  // Lets a patient join their own consult without meeting:read; ownership is resolved via the appointment's patientId.
   async getByAppointment(appointmentId: string, callerId: string) {
     const appointmentRow = await appointmentRepo.findById(appointmentId);
     if (!appointmentRow) throw new NotFoundError("Appointment not found");
@@ -537,9 +478,7 @@ export class MeetingService {
     return row ? new Meeting(row).toJSON() : null;
   }
 
-  // Same ownership rule as getByAppointment (patient-self or a meeting:read grant) — this is
-  // what lets Phase 4's Pre-call Briefing honestly know "has the patient's client actually
-  // connected yet" instead of a clinician manually clicking through to the Room.
+  // Same ownership rule, letting the Pre-call Briefing know whether the patient has actually connected.
   async getPresence(meetingId: string, callerId: string) {
     const meetingRow = await meetingRepo.findById(meetingId);
     if (!meetingRow) throw new NotFoundError("Meeting not found");
@@ -553,17 +492,7 @@ export class MeetingService {
     return getDailyRoomPresence(meetingRow.roomId);
   }
 
-  // Decision 2 — role-scoped join tokens. isOwner is the appointment's own assigned oncologist
-  // (or SUPER_ADMIN, same break-glass precedent as signOffTranscript); everyone else who's
-  // allowed to join at all gets a plain participant token.
-  //
-  // ONCOFLOW_SCHEDULING_AND_VIDEO_LIFECYCLE.md §3: "must check participant membership, not just
-  // role-permission" — a token is consequential (it's literally a room join credential), so this
-  // deliberately does NOT fall back to a broad meeting:read grant the way getPresence/
-  // getByAppointment still do for read-only visibility. Membership is either the fixed
-  // oncologist/patient roles already on the appointment, or an explicit appointment_participant
-  // row (Admin's New Consultation flow adds one per invited participant at scheduling time) —
-  // this is what makes "only admin-selected participants can join" actually true.
+  // Issues a role-scoped join token; requires appointment membership (oncologist, patient or invited participant), not a broad meeting:read grant.
   async issueToken(meetingId: string, callerId: string, callerName: string) {
     const meetingRow = await meetingRepo.findById(meetingId);
     if (!meetingRow) throw new NotFoundError("Meeting not found");
@@ -587,12 +516,7 @@ export class MeetingService {
     return { token, roomId: meetingRow.roomId, roomUrl: getDailyRoomUrl(meetingRow.roomId), isOwner: isSuperAdmin || isOncologist };
   }
 
-  // The clinician's own "End Call" action (Phase 5) — a second, client-driven path to ENDED
-  // alongside the webhook one below. Relying on the webhook alone means a dev environment with
-  // no public URL for Daily to call back to (or a genuinely dropped webhook in prod) never
-  // records endedAt, which would silently make Phase 6's post-consult SLA clock inert. Whoever
-  // ends the call is an authoritative-enough signal on its own; idempotent if the webhook (or a
-  // second click) already got there first.
+  // Clinician-driven End Call as a second path to ENDED, so a missing webhook can't leave endedAt unset; idempotent.
   async endCall(meetingId: string, callerId: string) {
     const meetingRow = await meetingRepo.findById(meetingId);
     if (!meetingRow) throw new NotFoundError("Meeting not found");
@@ -613,13 +537,7 @@ export class MeetingService {
     return new Meeting(saved!).toJSON();
   }
 
-  // §5 — Daily's recording webhook. Payload field names here are the best-effort read of
-  // Daily's own recording-webhook docs, same caveat as verifyDailyWebhookSignature's own
-  // comment: unverified against a real delivery (recording is gated behind
-  // DAILY_ENABLE_RECORDING, off by default, and no recording has actually run in this
-  // environment yet) — confirm exact field names against a real webhook before relying on this
-  // in production. Upserts by dailyRecordingId so a "started" event followed by a
-  // "ready-to-download" event for the same recording updates one row, not two.
+  // Upserts Daily's recording webhook by recording id; field names are unverified against a real delivery, so confirm them before production.
   async recordRecordingEvent(data: {
     recordingId: string; roomName: string; status: "processing" | "ready" | "failed" | "cancelled";
     downloadUrl?: string; durationSeconds?: number;
@@ -642,9 +560,7 @@ export class MeetingService {
     });
   }
 
-  // Driven by Daily.co's meeting-status webhook — maps its event types to our own
-  // SCHEDULED/IN_PROGRESS/ENDED status via the entity's own transition guard. Daily.co
-  // identifies the meeting by room id in the webhook payload, not our own meeting.id.
+  // Maps Daily's status webhook to our meeting status via the entity's transition guard, looking up by room id.
   async syncStatus(roomId: string, targetStatus: MeetingStatus) {
     const row = await meetingRepo.findByRoomId(roomId);
     if (!row) throw new NotFoundError("Meeting not found for this room");
@@ -673,15 +589,13 @@ export class MeetingService {
     return new Transcript(row).toJSON();
   }
 
+  // Lists a meeting's transcript entries.
   async listTranscript(meetingId: string) {
     const rows = await transcriptRepo.findByMeeting(meetingId);
     return rows.map((r) => new Transcript(r).toJSON());
   }
 
-  // F3.11 — corrections are the Scribe's job, scoped to meetings they've actually claimed
-  // from the queue ("own claims only" is a hard rule per the role definition, not incidental
-  // scoping) — the one place in this module where a correction IS an in-place edit, not a new
-  // row. SUPER_ADMIN bypasses the claim check, same break-glass precedent as requireRole().
+  // Scribes may edit only meetings they've claimed (SUPER_ADMIN bypasses); the one place a correction is an in-place edit.
   async editTranscriptEntry(id: string, content: string, editedBy: string) {
     const row = await transcriptRepo.findById(id);
     if (!row) throw new NotFoundError("Transcript entry not found");
@@ -702,11 +616,7 @@ export class MeetingService {
     return new Transcript(saved!).toJSON();
   }
 
-  // Stage 2 of 2 — the respective consultant reviewing and signing off on a Scribe-corrected
-  // transcript. "Respective consultant" means the appointment's own assigned oncologist, not
-  // any consultant generally — enforced here (an ownership check), not in the entity, which
-  // only knows the state-machine ordering rule (can't sign off before stage 1). SUPER_ADMIN
-  // bypasses ownership, same break-glass precedent as editTranscriptEntry above.
+  // Stage 2: the appointment's assigned oncologist signs off (an ownership check here; the entity only enforces stage ordering).
   async signOffTranscript(meetingId: string, consultantId: string) {
     const meetingRow = await meetingRepo.findById(meetingId);
     if (!meetingRow) throw new NotFoundError("Meeting not found");

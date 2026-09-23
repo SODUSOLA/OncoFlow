@@ -8,11 +8,13 @@ const COMPONENT_LABELS: Record<string, string> = {
   DRUG_COST: "Medication & Consumables",
 };
 
+// Formats a kobo amount string as naira.
 function koboToNaira(kobo: string): string {
   const naira = Number(kobo) / 100;
   return `₦${naira.toLocaleString("en-NG", { minimumFractionDigits: 2 })}`;
 }
 
+// Emails the patient a receipt for a paid invoice.
 export async function sendInvoiceReceipt(
   patientEmail: string,
   invoice: ReturnType<Invoice["toJSON"]>,

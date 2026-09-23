@@ -2,6 +2,7 @@ import { Section, SectionHeading } from "@/components/ui/Section";
 import { Reveal } from "@/components/ui/Reveal";
 import { challenges } from "@/lib/content/challenges";
 
+// Healthcare challenges section.
 export function HealthcareChallenges() {
   return (
     <Section tone="muted">

@@ -9,11 +9,9 @@ const requirementRepo = new ShiftRequirementRepository();
 const assignmentRepo = new ShiftAssignmentRepository();
 const facilityRepo = new FacilityRepository();
 
+// Business logic for weekly nurse staffing.
 export class StaffingService {
-  // The whole facility x weekday grid for a region + ISO week, in one call — requirements
-  // (standing policy) joined against this specific week's actual assignments. Frontend derives
-  // shortage/utilization stats from this rather than the backend precomputing them, same
-  // approach as the Dashboard page's countdown-case stats.
+  // Facility × weekday grid for a region and ISO week, joining standing requirements to that week's assignments; the frontend derives shortages from it.
   async getWeekOverview(region: string | undefined, isoYear: number, isoWeek: number) {
     const allFacilities = await facilityRepo.findAll();
     const facilities = region ? allFacilities.filter((f) => f.region === region) : allFacilities;
@@ -44,22 +42,19 @@ export class StaffingService {
     }));
   }
 
+  // Creates a draft assignment for a nurse.
   async assign(data: { facilityId: string; weekday: number; isoYear: number; isoWeek: number; userId: string; assignedBy: string }) {
     return assignmentRepo.create({ id: crypto.randomUUID(), ...data, assignedAt: new Date() });
   }
 
+  // Publishes the week's drafts for the region's facilities.
   async publishWeek(region: string | undefined, isoYear: number, isoWeek: number) {
     const allFacilities = await facilityRepo.findAll();
     const facilities = region ? allFacilities.filter((f) => f.region === region) : allFacilities;
     return assignmentRepo.publishWeek(facilities.map((f) => f.id), isoYear, isoWeek);
   }
 
-  // Eligible assignees for the "Assign Nurse" picker — Onsite Nursing Officers, optionally
-  // narrowed to one facility (user.facilityId, populated for facility-scoped staff per
-  // auth/schema.ts's own comment on that column).
-  // `facilityIds` is the authorization-narrowed set from lib/facility-scope.ts. Undefined means
-  // unrestricted (SUPER_ADMIN / national roles); an empty array means nothing in scope, which
-  // inArray renders as a false predicate — correctly returning no nurses rather than all of them.
+  // Onsite Nursing Officers for the Assign Nurse picker; facilityIds undefined means unrestricted and an empty array means nothing in scope.
   async findEligibleNurses(facilityIds?: string[]) {
     return db
       .select({ id: user.id, email: user.email })
@@ -73,9 +68,7 @@ export class StaffingService {
       );
   }
 
-  // Nursing Officer Schedule tab's cross-support banner — the caller's own published
-  // assignments for a week, with each row's facility name attached so a facility different from
-  // the caller's own reads as a real cross-support flag, not just an opaque id.
+  // The caller's own published assignments with facility names, so cross-support at another facility is obvious.
   async getMyAssignments(userId: string, isoYear: number, isoWeek: number) {
     const rows = await assignmentRepo.findForUserWeek(userId, isoYear, isoWeek);
     const facilities = await facilityRepo.findAll();

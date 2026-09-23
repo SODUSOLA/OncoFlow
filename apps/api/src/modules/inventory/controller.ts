@@ -4,6 +4,7 @@ import { InventoryService } from "./service.js";
 
 const inventorySvc = new InventoryService();
 
+// Lists all drugs.
 export async function listDrugsHandler(_req: Request, res: Response) {
   try {
     const drugs = await inventorySvc.listDrugs();
@@ -13,6 +14,7 @@ export async function listDrugsHandler(_req: Request, res: Response) {
   }
 }
 
+// Returns stock and open variances for the caller's scope.
 export async function getInventoryOverviewHandler(req: Request, res: Response) {
   try {
     const region = typeof req.query.region === "string" ? req.query.region : undefined;
@@ -23,6 +25,7 @@ export async function getInventoryOverviewHandler(req: Request, res: Response) {
   }
 }
 
+// Records a stock movement (in, out or adjustment).
 export async function recordMovementHandler(req: Request, res: Response) {
   try {
     const { facilityId, drugId, quantity, movementType } = req.body;
@@ -37,6 +40,7 @@ export async function recordMovementHandler(req: Request, res: Response) {
   }
 }
 
+// Resolves a reconciliation variance.
 export async function resolveVarianceHandler(req: Request, res: Response) {
   try {
     const { id } = req.params;

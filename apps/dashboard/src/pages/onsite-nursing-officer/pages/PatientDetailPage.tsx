@@ -1,15 +1,30 @@
 import { useEffect, useState } from "react";
 import { useParams, useNavigate } from "react-router-dom";
-import { ChevronLeft, Phone, Plus } from "lucide-react";
+import { ChevronLeft, Phone, Plus, FileCheck2, Clock3, CheckCircle2, ChevronRight } from "lucide-react";
 import { api } from "../../../lib/api";
+import { useAuth } from "../../../lib/auth";
 import type { Patient } from "../../../lib/types";
 import { Card } from "../../../components/ui/Card";
 import { Button } from "../../../components/ui/Button";
+import { cn } from "../../../lib/utils";
+import type { NursingCase, RegimenCycleRow } from "../lib/types";
 
+const STATUS_LABEL: Record<NursingCase["status"], string> = {
+  STARTED: "In Progress", PENDING_QA_REVIEW: "Pending QA Review", CLOSED: "Closed",
+};
+const STATUS_ICON: Record<NursingCase["status"], typeof Clock3> = {
+  STARTED: Clock3, PENDING_QA_REVIEW: FileCheck2, CLOSED: CheckCircle2,
+};
+const STATUS_COLOR: Record<NursingCase["status"], string> = {
+  STARTED: "text-admin-warning", PENDING_QA_REVIEW: "text-admin-sidebar-cta", CLOSED: "text-admin-success",
+};
+
+// Button that places a masked call to the patient.
 function CallButton({ patientId }: { patientId: string }) {
   const [calling, setCalling] = useState(false);
   const [result, setResult] = useState<string | null>(null);
 
+  // Places the call through the API.
   async function call() {
     setCalling(true);
     setResult(null);
@@ -33,24 +48,42 @@ function CallButton({ patientId }: { patientId: string }) {
   );
 }
 
+// Patient detail page: the single place that decides whether a case can be started, continued, or neither, for this patient.
 export default function PatientDetailPage() {
   const { patientId } = useParams<{ patientId: string }>();
   const navigate = useNavigate();
+  const { user } = useAuth();
   const [patient, setPatient] = useState<Patient | null>(null);
+  const [dueCycle, setDueCycle] = useState<RegimenCycleRow | null>(null);
+  const [cases, setCases] = useState<NursingCase[]>([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     if (!patientId) return;
-    api.get<{ patient: Patient }>(`/patients/${patientId}`)
-      .then((d) => setPatient(d.patient))
-      .catch(() => {})
-      .finally(() => setLoading(false));
-  }, [patientId]);
+    let cancelled = false;
+    const today = new Date().toISOString().slice(0, 10);
+    Promise.all([
+      api.get<{ patient: Patient }>(`/patients/${patientId}`).then((d) => d.patient).catch(() => null),
+      api.get<{ cases: NursingCase[] }>("/nursing-cases/mine").then((d) => d.cases.filter((c) => c.patientId === patientId)).catch(() => []),
+      user?.facilityId
+        ? api.get<{ cycles: RegimenCycleRow[] }>(`/regimen-cycles?facilityId=${user.facilityId}&date=${today}&due=true`)
+            .then((d) => d.cycles.find((c) => c.patientId === patientId) ?? null)
+            .catch(() => null)
+        : Promise.resolve(null),
+    ]).then(([patientRow, caseRows, cycle]) => {
+      if (cancelled) return;
+      setPatient(patientRow);
+      setCases(caseRows.sort((a, b) => b.startedAt.localeCompare(a.startedAt)));
+      setDueCycle(cycle);
+    }).finally(() => { if (!cancelled) setLoading(false); });
+    return () => { cancelled = true; };
+  }, [patientId, user?.facilityId]);
 
   if (loading) return <p className="text-admin-body-sm text-admin-text-secondary">Loading…</p>;
   if (!patient) return <p className="text-admin-body-sm text-admin-danger">Patient not found.</p>;
 
   const age = Math.floor((Date.now() - new Date(patient.dob).getTime()) / (365.25 * 24 * 3600 * 1000));
+  const openCase = cases.find((c) => c.status !== "CLOSED") ?? null;
 
   return (
     <div className="space-y-4">
@@ -74,12 +107,56 @@ export default function PatientDetailPage() {
         <CallButton patientId={patient.id} />
       </Card>
 
-      <Button
-        onClick={() => navigate("/dashboard/onsite-nursing-officer/new-case", { state: { patientId: patient.id } })}
-        className="w-full rounded-admin-xs bg-admin-sidebar-cta hover:bg-admin-sidebar-cta/90"
-      >
-        <Plus className="size-4" aria-hidden="true" /> Start Case for This Patient
-      </Button>
+      {openCase ? (
+        <Button
+          onClick={() => navigate(`/dashboard/onsite-nursing-officer/cases/${openCase.id}`)}
+          className="w-full rounded-admin-xs bg-admin-sidebar-cta hover:bg-admin-sidebar-cta/90"
+        >
+          <FileCheck2 className="size-4" aria-hidden="true" /> Continue Open Case
+        </Button>
+      ) : dueCycle ? (
+        <Button
+          onClick={() => navigate("/dashboard/onsite-nursing-officer/new-case", { state: { cycle: dueCycle } })}
+          className="w-full rounded-admin-xs bg-admin-sidebar-cta hover:bg-admin-sidebar-cta/90"
+        >
+          <Plus className="size-4" aria-hidden="true" /> Start Case for This Patient
+        </Button>
+      ) : (
+        <Card className="border-admin-border bg-admin-card-alt p-3.5 text-center text-admin-body-sm text-admin-text-secondary">
+          No visitation currently due for this patient — nothing to start yet.
+        </Card>
+      )}
+
+      {cases.length > 0 && (
+        <div>
+          <p className="mb-2 text-admin-caption font-bold uppercase tracking-wide text-admin-text-secondary">
+            Cases With This Patient ({cases.length})
+          </p>
+          <div className="space-y-1.5">
+            {cases.map((c) => {
+              const Icon = STATUS_ICON[c.status];
+              return (
+                <Card
+                  key={c.id}
+                  className="flex cursor-pointer items-center justify-between gap-3 border-admin-border p-3"
+                  onClick={() => navigate(`/dashboard/onsite-nursing-officer/cases/${c.id}`)}
+                >
+                  <div className="min-w-0">
+                    <p className="text-admin-caption font-semibold text-admin-text">Case {c.id.slice(0, 8).toUpperCase()}</p>
+                    <p className="text-admin-micro text-admin-text-secondary">{new Date(c.startedAt).toLocaleDateString()}</p>
+                  </div>
+                  <div className="flex shrink-0 items-center gap-2">
+                    <span className={cn("flex items-center gap-1 text-admin-micro font-semibold", STATUS_COLOR[c.status])}>
+                      <Icon className="size-3.5" aria-hidden="true" /> {STATUS_LABEL[c.status]}
+                    </span>
+                    <ChevronRight className="size-3.5 text-admin-text-secondary" aria-hidden="true" />
+                  </div>
+                </Card>
+              );
+            })}
+          </div>
+        </div>
+      )}
     </div>
   );
 }

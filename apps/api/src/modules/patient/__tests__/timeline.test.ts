@@ -5,6 +5,7 @@ import { db } from "../../../db/index.js";
 import { patient } from "../schema.js";
 import { facility } from "../../facility/schema.js";
 
+// Inserts a facility and patient for the timeline tests.
 async function createTestPatient() {
   const facRows = await db.insert(facility).values({
     id: crypto.randomUUID(),

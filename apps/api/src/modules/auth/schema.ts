@@ -13,16 +13,12 @@ export const user = pgTable("user", {
   email: varchar("email", { length: 255 }).notNull(),
   passwordHash: text("password_hash").notNull(),
   status: userStatusEnum("status").notNull().default("ACTIVE"),
-  // Nullable: patients, Super Admin, and the two national-level roles aren't tied to one facility.
-  // Populated for facility-scoped staff (QA officers, oncologists, nurses, regional admins) so
-  // requirePermissionScoped() (src/lib/rbac.ts) can compare against a resource's facility_id.
+  // Nullable for users not tied to one facility (patients, Super Admin, national roles); set for facility-scoped staff so requirePermissionScoped can compare.
   facilityId: uuid("facility_id").references(() => facility.id),
   lastLogin: timestamp("last_login"),
   mfaEnabled: boolean("mfa_enabled").notNull().default(false),
   mfaSecret: varchar("mfa_secret", { length: 256 }),
-  // Null until the /auth/verify-email link is clicked. Doesn't gate login (auto-login on
-  // register would otherwise strand a user whose verification email is delayed/lost) — it's
-  // tracked so the app can prompt for it, not enforced as an access control.
+  // Null until the email is verified; tracked to prompt the user, not enforced at login.
   emailVerifiedAt: timestamp("email_verified_at"),
   createdAt: timestamp("created_at").notNull().defaultNow(),
   updatedAt: timestamp("updated_at").notNull().defaultNow(),
@@ -85,9 +81,7 @@ export const session = pgTable("session", {
 export const emailVerificationToken = pgTable("email_verification_token", {
   id: uuid("id").primaryKey().defaultRandom(),
   userId: uuid("user_id").notNull().references(() => user.id),
-  // sha256 hex digest of the raw token that's mailed to the patient — only the hash is ever
-  // stored, same reasoning as a password hash: the email itself is a less-trusted channel
-  // (forwarding, inbox scanners, shared devices) than this database.
+  // Only the sha256 hash of the mailed token is stored, since email is a less-trusted channel than this database.
   tokenHash: varchar("token_hash", { length: 64 }).notNull(),
   expiresAt: timestamp("expires_at").notNull(),
   consumedAt: timestamp("consumed_at"),
@@ -100,8 +94,7 @@ export const emailVerificationToken = pgTable("email_verification_token", {
 export const passwordResetToken = pgTable("password_reset_token", {
   id: uuid("id").primaryKey().defaultRandom(),
   userId: uuid("user_id").notNull().references(() => user.id),
-  // Same reasoning as emailVerificationToken.tokenHash — only the sha256 hash of the mailed
-  // token is ever stored.
+  // Only the sha256 hash of the mailed token is stored, like emailVerificationToken.
   tokenHash: varchar("token_hash", { length: 64 }).notNull(),
   expiresAt: timestamp("expires_at").notNull(),
   consumedAt: timestamp("consumed_at"),

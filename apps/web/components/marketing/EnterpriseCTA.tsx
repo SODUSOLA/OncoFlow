@@ -2,6 +2,7 @@ import { Button } from "@/components/ui/Button";
 import { Reveal } from "@/components/ui/Reveal";
 import { Section } from "@/components/ui/Section";
 
+// Enterprise call-to-action section.
 export function EnterpriseCTA() {
   return (
     <Section tone="primary">

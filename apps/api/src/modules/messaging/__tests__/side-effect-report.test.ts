@@ -23,6 +23,7 @@ let brokePatientId: string;
 let brokeCookie: string;
 let otherCookie: string;
 
+// Creates a user and returns a valid session cookie for requests.
 async function createSessionCookie(): Promise<{ userId: string; cookie: string }> {
   const userId = crypto.randomUUID();
   await db.insert(user).values({ id: userId, email: `ser-${crypto.randomUUID()}@test.com`, passwordHash: "test" });
@@ -34,6 +35,7 @@ async function createSessionCookie(): Promise<{ userId: string; cookie: string }
   return { userId, cookie: `${SESSION_COOKIE_NAME}=${sessionId}` };
 }
 
+// Creates a patient with a wallet holding the given balance.
 async function createPatientWithWallet(userId: string, balanceKobo: bigint) {
   const rows = await db.insert(patient).values({
     id: crypto.randomUUID(), uniquePatientId: "SER-" + crypto.randomUUID().slice(0, 8).toUpperCase(),
@@ -61,8 +63,7 @@ beforeAll(async () => {
     });
   }
 
-  // Fee is time-of-day dynamic (side-effect-pricing.test.ts covers the day/night boundaries
-  // themselves) — this suite just needs "the amount the endpoint should charge right now".
+  // The fee depends on time of day, so this computes the amount the endpoint should charge right now.
   feeKobo = sideEffectReportFeeKobo();
 
   const funded = await createSessionCookie();

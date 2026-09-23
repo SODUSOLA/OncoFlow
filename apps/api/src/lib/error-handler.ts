@@ -3,11 +3,7 @@ import { ZodError } from "zod";
 import { AppError } from "./errors.js";
 import type { ErrorCode } from "./errors.js";
 
-// body-parser rejects a malformed or oversized body by throwing an error that carries a `type`
-// discriminator and an HTTP status, but is a plain Error rather than an AppError. Without this
-// map every one of them fell through to the generic 500 branch below, so a request that was
-// merely too large was reported as "Internal server error" with no indication of the real cause
-// — which is exactly how the 100kb default body limit stayed hidden behind a 500 on file upload.
+// Maps body-parser failure types to real statuses; they're plain Errors, so they used to surface as a misleading 500.
 const BODY_PARSER_ERRORS: Record<string, { status: number; code: ErrorCode; message: string }> = {
   "entity.too.large": {
     status: 413, code: "PAYLOAD_TOO_LARGE", message: "Request body is too large",
@@ -26,17 +22,20 @@ const BODY_PARSER_ERRORS: Record<string, { status: number; code: ErrorCode; mess
   },
 };
 
+// Returns the mapped status/code for a body-parser error, or undefined if the error isn't one.
 function bodyParserFailure(err: unknown) {
   if (typeof err !== "object" || err === null || !("type" in err)) return undefined;
   const { type } = err as { type?: unknown };
   return typeof type === "string" ? BODY_PARSER_ERRORS[type] : undefined;
 }
 
+// Reads the request id set by the request-context middleware, if present.
 function getRequestId(req: Request): string | undefined {
   const contextReq = req as Request & { requestId?: string };
   return contextReq.requestId ?? (typeof req.headers["x-request-id"] === "string" ? req.headers["x-request-id"] : undefined);
 }
 
+// Express error middleware: converts AppErrors, body-parser errors and unknown errors into a consistent JSON response.
 export function errorHandler(err: unknown, req: Request, res: Response, _next: NextFunction): void {
   const requestId = getRequestId(req);
 
@@ -82,6 +81,7 @@ export function errorHandler(err: unknown, req: Request, res: Response, _next: N
   });
 }
 
+// Responds 404 with the standard error shape for unmatched routes.
 export function notFoundHandler(req: Request, res: Response): void {
   const requestId = getRequestId(req);
   res.status(404).json({

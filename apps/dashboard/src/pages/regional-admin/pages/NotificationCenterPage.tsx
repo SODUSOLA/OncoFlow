@@ -8,14 +8,7 @@ import { cn } from "../../../lib/utils";
 import { useRegionAlerts } from "../lib/useRegionAlerts";
 import type { RegionAlert } from "../lib/alertsStore";
 
-// Phase 7 of ONCOFLOW_REGIONAL_ADMIN_BUILD_GUIDE.md — a pure renderer over the shared alert
-// aggregator (lib/alertsStore.ts / useRegionAlerts). Per that phase's acceptance criteria, this
-// page must NOT compute its own alerts: no breach/conflict detection lives here, only grouping
-// (critical vs warning) and capping what's drawn.
-//
-// Rendering every alert as its own card doesn't scale — this dev database alone produces 200+
-// countdown/inquiry breaches. A column of scroll-forever cards isn't what the mockup shows
-// either (it shows two per column). Cap what's drawn; say plainly when there's more.
+// A pure renderer over the shared alert aggregator that computes no alerts itself; cards are capped since the dev data has 200+ alerts.
 const MAX_CARDS = 6;
 const MAX_LOG_ITEMS = 8;
 
@@ -29,11 +22,7 @@ interface ActivityEvent {
   actorEmail: string | null;
 }
 
-// GET /audit/activity — region-scoped to this admin's own facility-scoped staff (apps/api's
-// facility-scope.js resolves that server-side; there's no client-side filtering to get wrong
-// here). Real events only: logins, logouts, and access-denials are the only things this system
-// actually records to the audit log today (see apps/api/src/modules/audit) — no fabricated
-// "invoice generated"/"schedule published" entries standing in for events that aren't written.
+// Region-scoped audit feed showing only events the system really records (logins, logouts and access denials).
 function useActivityFeed(limit: number) {
   const [events, setEvents] = useState<ActivityEvent[]>([]);
   const [loading, setLoading] = useState(true);
@@ -50,6 +39,7 @@ function useActivityFeed(limit: number) {
   return { events, loading };
 }
 
+// Builds the display label for an activity event.
 function activityLabel(e: ActivityEvent): string {
   const who = e.actorEmail?.split("@")[0] ?? "Unknown user";
   switch (e.action) {
@@ -60,6 +50,7 @@ function activityLabel(e: ActivityEvent): string {
   }
 }
 
+// Returns the icon for an activity action.
 function activityIconFor(action: string) {
   if (action === "LOGIN") return LogIn;
   if (action === "LOGOUT") return LogOut;
@@ -67,6 +58,7 @@ function activityIconFor(action: string) {
   return ActivityIcon;
 }
 
+// Notification center with critical, pending and system log columns.
 export default function NotificationCenterPage() {
   const navigate = useNavigate();
   const { critical, warning, loading } = useRegionAlerts();
@@ -118,6 +110,7 @@ export default function NotificationCenterPage() {
   );
 }
 
+// Link showing how many more alerts exist.
 function MoreLink({ count, onClick }: { count: number; onClick: () => void }) {
   return (
     <button
@@ -129,6 +122,7 @@ function MoreLink({ count, onClick }: { count: number; onClick: () => void }) {
   );
 }
 
+// One column of the notification center.
 function NotificationColumn({
   title, count, dotColor, loading, empty, children,
 }: {
@@ -157,8 +151,7 @@ function NotificationColumn({
   );
 }
 
-// One card renders any RegionAlert generically — Notification Center never needs a per-source
-// branch here, which is exactly the point: the aggregator already decided severity/badge/copy.
+// Renders any RegionAlert generically, since the aggregator already decided severity, badge and copy.
 function AlertCard({ alert, onAction }: { alert: RegionAlert; onAction: () => void }) {
   const critical = alert.severity === "critical";
   const toneClasses = critical ? "border-l-4 border-l-admin-danger" : "border-l-4 border-l-admin-warning";
@@ -187,8 +180,7 @@ function AlertCard({ alert, onAction }: { alert: RegionAlert; onAction: () => vo
   );
 }
 
-// Chronological, no action — this column is read-only by design (Phase 7's own component
-// inventory: "icon + label + timestamp, no action").
+// Read-only chronological log entry with icon, label and time.
 function SystemLogItem({ event }: { event: ActivityEvent }) {
   const Icon = activityIconFor(event.action);
   const denied = event.result === "DENIED";

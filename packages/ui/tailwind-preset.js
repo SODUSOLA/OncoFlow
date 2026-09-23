@@ -15,8 +15,7 @@ module.exports = {
           800: "#166534",
           900: "#14532d",
         },
-        // OncoFlow's canonical clinical brand identity, per the OncoFlow Design System v2.0 spec
-        // and the ONCOFLOW LIMITED logo — distinct from the dashboard's placeholder `brand` green.
+        // OncoFlow's canonical brand palette from Design System v2.0 and the logo, distinct from the dashboard's placeholder `brand` green.
         ink: {
           DEFAULT: "#173A5E",
           600: "#0F2A46",
@@ -24,15 +23,7 @@ module.exports = {
         gold: {
           DEFAULT: "#E9B21A",
         },
-        // The locked design system's own palette ("Palette A" in ONCOFLOW_DESIGN_SYSTEM.md),
-        // pulled directly from Figma. Kept separate from `ink`/`gold` above rather than
-        // repointing them, since those are the app-wide brand tokens already used on Login and
-        // the Patient views — this palette is specific to the screens re-specced against that
-        // doc. Originally scoped to Regional Admin (hence the `admin` name), now shared as-is
-        // by Consulting Oncologist too — same Palette A, same values, per the design system's
-        // "Consulting Oncologist persona — token reconciliation" section. Not renamed to avoid
-        // a disruptive find/replace across every already-shipped Regional Admin page; treat
-        // `admin-*` as "the locked design system's tokens," not "admin-only."
+        // The locked design system's Palette A, kept separate from ink/gold and now shared by Regional Admin and Consulting Oncologist; read `admin-*` as "locked tokens", not "admin-only".
         admin: {
           "sidebar-cta": "#002147",
           gold: "#FED65B",
@@ -50,8 +41,7 @@ module.exports = {
           "canvas-bg": "#F8F9FA",
           card: "#FFFFFF",
           "card-alt": "#F4F3F7",
-          // Added for Consulting Oncologist: patient-ID-badge accent and the dim label color
-          // used on dark, video-room-only surfaces (the Video Consult Room's bottom HUD bar).
+          // Added for Consulting Oncologist: the patient-ID badge accent and dim label color on the dark video-room HUD.
           "info-bg": "#D6E3FF",
           "info-text": "#001B3D",
           "dark-label": "#708AB5",

@@ -20,23 +20,22 @@ afterAll(async () => {
   }
 });
 
-// /auth/verify-email is IP-rate-limited (8/15min — tight on purpose now that the token is a
-// 6-digit code, see auth/routes.ts). Every request here would otherwise share 127.0.0.1 and
-// trip it partway through the file, so each call gets its own X-Forwarded-For — the header the
-// limiter actually keys on (lib/rate-limit.ts getDefaultKey). Keeps the limiter exercised
-// rather than disabled in test env.
+// Each request gets its own X-Forwarded-For so the tight verify-email IP limiter is exercised rather than tripped by a shared 127.0.0.1.
 let fakeIpCounter = 0;
+// Returns a unique fake client IP for the next request.
 function nextFakeIp(): string {
   fakeIpCounter += 1;
   return `198.51.100.${fakeIpCounter % 254}`;
 }
 
+// Extracts the session cookie from a response.
 function sessionCookieFrom(res: { headers: { "set-cookie"?: string[] } }): string {
   const cookies = res.headers["set-cookie"] ?? [];
   const cookieStr = cookies.find((c) => c.startsWith("oncoflow_session="));
   return cookieStr!.split(";")[0]!;
 }
 
+// Registers a user and captures the raw verification token from the mocked email send.
 async function registerAndCaptureToken(): Promise<{ userId: string; email: string; rawToken: string; sessionCookie: string }> {
   const { sendVerificationEmail } = await import("../services/VerificationEmailService.js");
 
@@ -47,16 +46,7 @@ async function registerAndCaptureToken(): Promise<{ userId: string; email: strin
   const userId: string = registerRes.body.user.id;
   createdUserIds.push(userId);
 
-  // The verification email is fire-and-forget (issueAndSendVerificationEmail isn't awaited by
-  // register), so we have to wait for its side effect. Deliberately not asserting a call
-  // *count* (e.g. toHaveBeenCalledTimes) — this mock is shared module-wide across every test
-  // in this file, and another test's own fire-and-forget send can still be settling when this
-  // one starts. Finding the call for *this* email is what's actually being asserted, and is
-  // robust to that overlap.
-  //
-  // Polled rather than slept against a fixed 50ms: the suite runs one worker per core and
-  // saturates the CPU, so a fixed delay raced the send and failed intermittently — the send
-  // had simply not landed yet. Polling waits only as long as it actually needs to.
+  // Polls for the fire-and-forget email send and matches on this email rather than a call count, since the mock is shared and CPU load makes fixed delays flaky.
   const call = await waitFor(() =>
     vi.mocked(sendVerificationEmail).mock.calls.find(([to]) => to === email));
   expect(call).toBeDefined();
@@ -96,8 +86,7 @@ describe("email verification — registration", () => {
   });
 
   it("register still returns 201 even though the mocked email send is stubbed out", async () => {
-    // Real-world equivalent: RESEND_API_KEY unset — sendVerificationEmail throws internally,
-    // but registration itself must be unaffected (see PaymentService's identical tolerance).
+    // Registration must succeed even when sending the email fails (e.g. RESEND_API_KEY unset).
     const email = `verify-fail-${Date.now()}@example.com`;
     const { sendVerificationEmail } = await import("../services/VerificationEmailService.js");
     vi.mocked(sendVerificationEmail).mockRejectedValueOnce(new Error("Resend not configured"));
@@ -140,11 +129,7 @@ describe("email verification — verify-email", () => {
 });
 
 describe("email verification — resend", () => {
-  // A bare request with no session cookie authenticates in this test environment as the
-  // suite-wide TEST_USER_ID fallback (src/test/setup.ts, request-context.ts) — genuinely
-  // testing the unauthenticated-401 path needs the isolated test-app setup request-context.
-  // test.ts uses, not this shared createApp(). requireAuthenticated() itself is already
-  // covered there; not re-tested here.
+  // A bare request authenticates as the suite-wide TEST_USER_ID, so the unauthenticated 401 path is covered in request-context.test.ts instead.
 
   it("issues a new token that invalidates the previous one", async () => {
     const { userId, email, sessionCookie } = await registerAndCaptureToken();

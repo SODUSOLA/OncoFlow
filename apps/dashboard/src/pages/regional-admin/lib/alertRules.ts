@@ -1,31 +1,26 @@
-// Shared classification thresholds — the single source of truth for "what counts as a breach
-// or conflict," per ONCOFLOW_REGIONAL_ADMIN_BUILD_GUIDE.md's cross-cutting rule for Phases
-// 2/3/5/6/7: every alert-producing surface must agree on these, not invent its own threshold.
+// Single source of truth for what counts as a breach or conflict, so every alert surface agrees on the thresholds.
 export { deriveCountdownStatus, isCountdownBreached, type CountdownCardStatus } from "./countdownStatus";
 
-// An open public inquiry counts as breached once its last unanswered visitor message has sat
-// this many minutes without a staff reply. Used identically by the Inquiry Chat Inbox's own
-// per-thread countdown and the shared alert aggregator's inquiry alerts.
+// An open inquiry is breached once its last visitor message has gone this many minutes unanswered.
 export const SLA_MINUTES = 5;
-// The design system's "SLA countdown/badge" component (item 5) has 3 states, not 2 — normal,
-// warning (~5min, i.e. approaching breach), breached. This is where "approaching" starts.
+// Where the "approaching breach" warning state starts, the middle of the design system's three SLA states.
 export const SLA_WARNING_MINUTES = 4;
 
 export type SlaState = "normal" | "warning" | "breached";
 
+// Classifies a wait time as normal, warning or breached.
 export function classifyInquirySla(minutesSinceLastVisitorMessage: number): SlaState {
   if (minutesSinceLastVisitorMessage >= SLA_MINUTES) return "breached";
   if (minutesSinceLastVisitorMessage >= SLA_WARNING_MINUTES) return "warning";
   return "normal";
 }
 
+// True when the wait time has breached the SLA.
 export function isInquiryBreached(minutesSinceLastVisitorMessage: number): boolean {
   return classifyInquirySla(minutesSinceLastVisitorMessage) === "breached";
 }
 
-// Staffing conflicts render as CRITICAL (not a lesser "warning") — both Scheduling's own
-// "Critical Shortages" card and the Notification Center mockup place scheduling conflicts in
-// the red/Critical column, not the amber/Pending one.
+// Staffing conflicts render as Critical, matching both the Scheduling card and the Notification Center mockup.
 export function isStaffingConflict(day: { assigned: unknown[]; requiredCount: number }): boolean {
   return day.assigned.length < day.requiredCount;
 }

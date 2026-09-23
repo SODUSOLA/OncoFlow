@@ -22,9 +22,7 @@ for (const mod of readdirSync(modulesDir)) {
     const line = lines[i];
     if (!ROUTE_START.test(line)) continue;
 
-    // A route registration is one statement — collect only its own lines, stopping at the
-    // closing `);`, so a later, unrelated route's requirePermission() can't count as coverage
-    // for this one (the previous line+2-lookahead version had exactly that false-negative).
+    // Collects only this route registration's own lines (up to the closing `);`) so another route's requirePermission() can't count as coverage.
     let statement = "";
     let j = i;
     while (j < lines.length) {

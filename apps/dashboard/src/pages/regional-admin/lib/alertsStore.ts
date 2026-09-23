@@ -4,25 +4,19 @@ import { getIsoWeek } from "./isoWeek";
 import { deriveCountdownStatus, isCountdownBreached, classifyInquirySla, isStaffingConflict, WEEKDAY_NAMES } from "./alertRules";
 
 export type AlertSeverity = "critical" | "warning";
-export type AlertSource = "countdown" | "staffing" | "inventory" | "inquiry" | "security";
+export type AlertSource = "countdown" | "staffing" | "inventory" | "inquiry" | "security" | "drug";
 
 export interface RegionAlert {
   id: string;
   source: AlertSource;
   severity: AlertSeverity;
-  /** Short tag rendered on the card, e.g. "SLA BREACHED" / "CONFLICT" — fixed at creation so
-   *  every consumer (Notification Center, the Scheduling page) shows the identical label rather
-   *  than each re-deriving it from `source`. */
+  // Short tag fixed at creation so every consumer shows the identical label instead of re-deriving it.
   badge: string;
   title: string;
   detail: string;
   actionLabel: string;
   actionTo: string;
-  /** Present for countdown/staffing alerts so callers can filter by their own region scope
-   *  (facilityIdsInRegion) without this store depending on useRegionScope/useAuth — same
-   *  cycle-avoidance reasoning as facilityStore.ts. Inventory (already region-filtered
-   *  server-side by the `region` load param) and inquiries (not facility-scoped at all in this
-   *  system) omit it. */
+  // Present for countdown and staffing alerts so callers can filter by region without this store depending on useAuth, avoiding an import cycle.
   facilityId?: string;
 }
 
@@ -31,10 +25,7 @@ interface AlertsState {
   loading: boolean;
 }
 
-// The single real aggregator behind ONCOFLOW_REGIONAL_ADMIN_BUILD_GUIDE.md's cross-cutting rule:
-// Notification Center, the top bar's bell dot, and Scheduling's Critical Shortages card all read
-// from this one fetch rather than each re-deriving breach/conflict state. A shared subscription
-// (same pattern as facilityStore.ts) means three mounted consumers cost one fetch, not three.
+// The single alert aggregator behind the Notification Center, the bell dot and Critical Shortages; one shared subscription costs one fetch.
 let state: AlertsState = { alerts: [], loading: true };
 let inFlight: Promise<void> | null = null;
 let loadedForRegion: string | null | undefined = undefined;
@@ -42,19 +33,18 @@ const subscribers = new Set<() => void>();
 const REFRESH_MS = 60_000;
 let refreshTimer: ReturnType<typeof setInterval> | null = null;
 
-// Fetching every open inquiry's message thread to check its SLA is an N+1 — this dev database
-// alone has 200+ open inquiries. Bounding to the oldest-updated-first window is both cheaper and
-// strictly more correct: an inquiry updated seconds ago cannot be breaching a 5-minute SLA yet.
+// Caps the inquiries checked at the oldest-updated window to avoid an N+1 over hundreds of open inquiries.
 const INQUIRY_CHECK_LIMIT = 25;
 
+// Publishes new alert state to every subscriber.
 function publish(next: AlertsState): void {
   state = next;
   for (const notify of subscribers) notify();
 }
 
-async function fetchAlerts(region: string | null): Promise<RegionAlert[]> {
+// SLA-breached and escalated countdown cases.
+async function countdownAlerts(): Promise<RegionAlert[]> {
   const alerts: RegionAlert[] = [];
-
   const [cases, patients] = await Promise.all([
     api.get<{ cases: CountdownCase[] }>("/countdown-cases?scope=overview").then((d) => d.cases).catch(() => []),
     api.get<{ patients: Patient[] }>("/patients?facilityId=all").then((d) => d.patients).catch(() => []),
@@ -77,6 +67,12 @@ async function fetchAlerts(region: string | null): Promise<RegionAlert[]> {
     });
   }
 
+  return alerts;
+}
+
+// Days in the current ISO week that are short of their required nurse count.
+async function staffingAlerts(region: string | null): Promise<RegionAlert[]> {
+  const alerts: RegionAlert[] = [];
   const { isoYear, isoWeek } = getIsoWeek(new Date());
   const staffingQ = new URLSearchParams({ isoYear: String(isoYear), isoWeek: String(isoWeek) });
   if (region) staffingQ.set("region", region);
@@ -103,6 +99,12 @@ async function fetchAlerts(region: string | null): Promise<RegionAlert[]> {
     }
   }
 
+  return alerts;
+}
+
+// Open facility-level reconciliation variances.
+async function inventoryAlerts(region: string | null): Promise<RegionAlert[]> {
+  const alerts: RegionAlert[] = [];
   const variancesOpen = await api
     .get<{ variancesOpen: number }>(`/inventory/overview${region ? `?region=${encodeURIComponent(region)}` : ""}`)
     .then((d) => d.variancesOpen)
@@ -120,10 +122,12 @@ async function fetchAlerts(region: string | null): Promise<RegionAlert[]> {
     });
   }
 
-  // ONCOFLOW_NURSING_OFFICER_BUILD_GUIDE.md Finding 3 — a rejected (INFECTED-flagged) upload
-  // feeds this same aggregator as a new source, not a new notification system. Bounded to
-  // recent incidents only (the endpoint already caps at 50 by default) — this is a rare event,
-  // not something that needs its own pagination here.
+  return alerts;
+}
+
+// Uploads rejected by the virus scan, bounded to recent incidents since they are rare.
+async function securityAlerts(): Promise<RegionAlert[]> {
+  const alerts: RegionAlert[] = [];
   const incidents = await api
     .get<{ incidents: { id: string; incidentReference: string; fileScanResult: string; createdAt: string }[] }>("/security-incidents")
     .then((d) => d.incidents)
@@ -141,6 +145,11 @@ async function fetchAlerts(region: string | null): Promise<RegionAlert[]> {
     });
   }
 
+  return alerts;
+}
+
+// Open inquiries approaching or past their SLA, checked over the oldest-updated window only.
+async function inquiryAlerts(): Promise<RegionAlert[]> {
   const openInquiries = await api
     .get<{ inquiries: { id: string; name: string; status: "OPEN" | "CLOSED"; updatedAt: string }[] }>("/admin/inquiries?status=OPEN")
     .then((d) => d.inquiries)
@@ -148,7 +157,7 @@ async function fetchAlerts(region: string | null): Promise<RegionAlert[]> {
   const oldestInquiries = [...openInquiries]
     .sort((a, b) => new Date(a.updatedAt).getTime() - new Date(b.updatedAt).getTime())
     .slice(0, INQUIRY_CHECK_LIMIT);
-  const inquiryAlerts = await Promise.all(
+  const inquiryResults = await Promise.all(
     oldestInquiries.map(async (inq) => {
       const msgs = await api
         .get<{ messages: PublicInquiryMessage[] }>(`/admin/inquiries/${inq.id}/messages`)
@@ -174,11 +183,56 @@ async function fetchAlerts(region: string | null): Promise<RegionAlert[]> {
       return alert;
     }),
   );
-  alerts.push(...inquiryAlerts.filter((a): a is RegionAlert => a !== null));
-
-  return alerts;
+  return inquiryResults.filter((a): a is RegionAlert => a !== null);
 }
 
+interface DrugAlertsResponse {
+  lowStock: { scope: "REGIONAL" | "NURSING_OFFICER"; drugId: string; drugName: string; drugStrength: string; quantity: number; reorderThreshold: number; officerId?: string; officerEmail?: string }[];
+  losses: { id: string; officerEmail: string; drugName: string; quantityLost: number; reason: string; reportedAt: string }[];
+  variances: { id: string; scope: "REGIONAL" | "NURSING_OFFICER"; officerEmail: string | null; drugName: string; variance: number; periodEnd: string }[];
+}
+
+// Low stock, recent drug losses and unresolved count variances, all computed server-side by GET /drug-alerts.
+async function drugAlerts(): Promise<RegionAlert[]> {
+  const data = await api.get<DrugAlertsResponse>("/drug-alerts").catch(() => null);
+  if (!data) return [];
+  const to = "/dashboard/regional-admin/inventory";
+  const low: RegionAlert[] = data.lowStock.map((l) => ({
+    id: `drug-low-${l.scope}-${l.officerId ?? "regional"}-${l.drugId}`,
+    source: "drug", severity: l.quantity <= 0 ? "critical" : "warning", badge: "LOW STOCK",
+    title: `${l.drugName} ${l.drugStrength}`,
+    detail: `${l.scope === "REGIONAL" ? "Regional stock" : l.officerEmail} is at ${l.quantity} (reorder at ${l.reorderThreshold}).`,
+    actionLabel: "View Stock", actionTo: to,
+  }));
+  const losses: RegionAlert[] = data.losses.map((l) => ({
+    id: `drug-loss-${l.id}`,
+    source: "drug", severity: "warning", badge: "DRUG LOSS",
+    title: `${l.quantityLost} × ${l.drugName} lost`,
+    detail: `${l.officerEmail} reported ${l.reason.toLowerCase()}, ${new Date(l.reportedAt).toLocaleString()}.`,
+    actionLabel: "View Losses", actionTo: to,
+  }));
+  const variances: RegionAlert[] = data.variances.map((v) => ({
+    id: `drug-variance-${v.id}`,
+    source: "drug", severity: "warning", badge: "STOCK VARIANCE",
+    title: `${v.drugName} count off by ${v.variance > 0 ? "+" : ""}${v.variance}`,
+    detail: `${v.scope === "REGIONAL" ? "Regional stock" : v.officerEmail}, counted for ${v.periodEnd}.`,
+    actionLabel: "Review Count", actionTo: to,
+  }));
+  return [...low, ...losses, ...variances];
+}
+
+// Every alert source, each returning its own alerts; adding a source means adding one entry here, not new branches below.
+const ALERT_SOURCES: ((region: string | null) => Promise<RegionAlert[]>)[] = [
+  countdownAlerts, staffingAlerts, inventoryAlerts, securityAlerts, drugAlerts, inquiryAlerts,
+];
+
+// Runs every source in parallel and merges the results; a failing source contributes nothing rather than hiding the rest.
+async function fetchAlerts(region: string | null): Promise<RegionAlert[]> {
+  const results = await Promise.all(ALERT_SOURCES.map((source) => source(region).catch(() => [] as RegionAlert[])));
+  return results.flat();
+}
+
+// Loads alerts for a region, sharing an in-flight request.
 function load(region: string | null): Promise<void> {
   if (inFlight && loadedForRegion === region) return inFlight;
   loadedForRegion = region;
@@ -189,6 +243,7 @@ function load(region: string | null): Promise<void> {
   return inFlight;
 }
 
+// Subscribes to alert changes and starts loading and refreshing on first use.
 export function subscribeToAlerts(region: string | null, onStoreChange: () => void): () => void {
   subscribers.add(onStoreChange);
   if (loadedForRegion === undefined || loadedForRegion !== region) void load(region);
@@ -204,6 +259,7 @@ export function subscribeToAlerts(region: string | null, onStoreChange: () => vo
   };
 }
 
+// Returns the current alert state.
 export function getAlertsSnapshot(): AlertsState {
   return state;
 }

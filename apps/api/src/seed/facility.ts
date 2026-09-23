@@ -2,8 +2,7 @@ import { db } from "../db/index.js";
 import crypto from "node:crypto";
 import { facility, department } from "../db/schema.js";
 
-// Coordinates are the real-world locations of each hospital — used by the registration
-// wizard's client-side haversine distance sort (request #2), not just display data.
+// Real-world coordinates used by the registration wizard's client-side distance sort.
 const FACILITIES = [
   {
     name: "Lagos University Teaching Hospital Oncology Centre",
@@ -55,6 +54,7 @@ const DEPARTMENTS = [
   "Administration",
 ];
 
+// Seeds the demo facilities once.
 export async function seedFacilities() {
   const existing = await db.select().from(facility).limit(1);
   if (existing.length > 0) {
@@ -86,8 +86,7 @@ export async function seedFacilities() {
   console.log(`Seeded ${FACILITIES.length} facilities with ${DEPARTMENTS.length} departments each`);
 }
 
-// Run directly: npx tsx src/seed/facility.ts — guarded so importing this from seed/index.ts
-// doesn't also trigger a second, racing invocation (see identity.ts's own comment on this).
+// Guarded so importing this from seed/index.ts doesn't trigger a second racing run.
 if (import.meta.url === `file://${process.argv[1]}`) {
   seedFacilities().catch(console.error);
 }

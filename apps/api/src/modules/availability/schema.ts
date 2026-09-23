@@ -1,10 +1,7 @@
 import { pgTable, uuid, date, time, timestamp, index } from "drizzle-orm/pg-core";
 import { user } from "../auth/schema.js";
 
-// ONCOFLOW_SCHEDULING_AND_VIDEO_LIFECYCLE.md §1 — the literal source of truth Regional Admin's
-// New Consultation scheduler reads from. No separate "default days" concept: whatever's
-// currently in this table for a future date IS the default, and it simply changes when the
-// consultant edits it — no versioning/history needed for a first build.
+// Consultant availability is the single source of truth for the New Consultation scheduler; there is no separate default, only what's currently in this table.
 export const consultantAvailability = pgTable("consultant_availability", {
   id: uuid("id").primaryKey().defaultRandom(),
   consultantId: uuid("consultant_id").notNull().references(() => user.id),

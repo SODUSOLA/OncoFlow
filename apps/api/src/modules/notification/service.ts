@@ -1,9 +1,7 @@
 import { NotificationRepository } from "./repository.js";
 import { getIo, isIoAttached } from "../../lib/socket.js";
 
-// Plain strings (matches the notification.type varchar column, no DB enum) — one member per
-// real domain event that creates a notification today. Extend this list as more events wire
-// in; it's documentation of what actually fires, not a DB constraint.
+// Plain strings matching the varchar column: one member per domain event that creates a notification today.
 export type NotificationType =
   | "INVOICE_PAID"
   | "APPOINTMENT_CONFIRMED"
@@ -17,7 +15,9 @@ export type NotificationType =
 
 const notificationRepo = new NotificationRepository();
 
+// Business logic for creating and delivering notifications.
 export class NotificationService {
+  // Creates a notification and pushes it live over Socket.IO when available.
   async create(data: { recipientId: string; type: NotificationType }) {
     const row = await notificationRepo.create({
       id: crypto.randomUUID(),
@@ -26,9 +26,7 @@ export class NotificationService {
       status: "PENDING",
     });
 
-    // Only when a real Socket.IO server exists (never in the test process) — this is what
-    // finally closes the "status stays PENDING forever" gap this module had before real-time
-    // existed: pushed live, then immediately marked SENT since delivery just happened.
+    // Pushed only when a Socket.IO server exists, then marked SENT since delivery just happened.
     if (isIoAttached()) {
       getIo().to(`user:${data.recipientId}`).emit("notification:new", row);
       const sent = await notificationRepo.markSent(row.id);

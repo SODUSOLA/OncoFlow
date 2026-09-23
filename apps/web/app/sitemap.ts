@@ -18,6 +18,7 @@ const routes = [
   "/forgot-password",
 ];
 
+// Generates the sitemap from the marketing routes.
 export default function sitemap(): MetadataRoute.Sitemap {
   return routes.map((route) => ({
     url: `${baseUrl}${route}`,

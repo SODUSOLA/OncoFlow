@@ -1,8 +1,6 @@
 const BASE_URL = "/api";
 
-// Most callers just read err.message, same as before — this only adds an escape hatch for the
-// rare case where the error response carries structured data a caller actually needs (e.g. the
-// unpaid invoice returned alongside a 402 "Insufficient wallet balance").
+// Adds an escape hatch for structured error data, such as the unpaid invoice returned with a 402.
 export class ApiError extends Error {
   constructor(message: string, public readonly body: unknown) {
     super(message);
@@ -10,6 +8,7 @@ export class ApiError extends Error {
   }
 }
 
+// Sends a JSON request to the API and throws an ApiError on failure.
 async function request<T>(path: string, options?: RequestInit): Promise<T> {
   const res = await fetch(`${BASE_URL}${path}`, {
     credentials: "include",

@@ -2,9 +2,7 @@ import type { transcriptionAssignmentStatusEnum } from "../../../db/enums.js";
 
 type TranscriptionAssignmentStatus = (typeof transcriptionAssignmentStatusEnum.enumValues)[number];
 
-// F3.11 §5 — proposed default, not FR-pinned like the Messaging SLA (FR-31 pins 2/5 minutes).
-// Transcript correction is reference-quality work with no patient waiting on it in the moment,
-// so same-day-but-not-instant is proportionate. Flagged for confirmation, not a fixed spec.
+// Proposed 24-hour default SLA (not FR-pinned), since transcript correction has no patient waiting on it.
 const SLA_WINDOW_MS = 24 * 60 * 60 * 1000;
 
 const VALID_TRANSITIONS: Record<TranscriptionAssignmentStatus, TranscriptionAssignmentStatus[]> = {
@@ -28,6 +26,7 @@ export interface TranscriptionAssignmentData {
   slaBreached: boolean;
 }
 
+// Domain entity for a scribe's assignment to correct a transcript.
 export class TranscriptionAssignment {
   constructor(private data: TranscriptionAssignmentData) {}
 
@@ -41,34 +40,37 @@ export class TranscriptionAssignment {
   get slaDeadline() { return this.data.slaDeadline; }
   get slaBreached() { return this.data.slaBreached; }
 
+  // Computes the assignment SLA deadline from a start time.
   static slaDeadlineFor(from: Date): Date {
     return new Date(from.getTime() + SLA_WINDOW_MS);
   }
 
+  // Throws if the target status isn't a legal transition from the current one.
   private assertTransition(target: TranscriptionAssignmentStatus): void {
     if (!VALID_TRANSITIONS[this.data.status].includes(target)) {
       throw new Error(`Cannot transition from ${this.data.status} to ${target}`);
     }
   }
 
-  // Backlog cap (§5, proposed default: 5 concurrent CLAIMED/IN_PROGRESS) is a count enforced
-  // by the service layer against the whole table, not something a single assignment can know
-  // about itself — this only guards the state-machine legality of this one transition.
+  // Guards only this transition's legality; the backlog cap of 5 is a table-wide count enforced by the service.
   claim(scribeId: string, now: Date): TranscriptionAssignment {
     this.assertTransition("CLAIMED");
     return new TranscriptionAssignment({ ...this.data, status: "CLAIMED", scribeId, claimedAt: now });
   }
 
+  // Returns a copy released back to the queue.
   release(): TranscriptionAssignment {
     this.assertTransition("RELEASED");
     return new TranscriptionAssignment({ ...this.data, status: "RELEASED", scribeId: null, claimedAt: null });
   }
 
+  // Returns a copy marked completed.
   complete(now: Date): TranscriptionAssignment {
     this.assertTransition("COMPLETED");
     return new TranscriptionAssignment({ ...this.data, status: "COMPLETED", completedAt: now });
   }
 
+  // Marks the SLA as breached if the deadline passed while incomplete.
   checkBreach(now: Date): TranscriptionAssignment {
     if (this.data.slaBreached || this.data.completedAt || !this.data.slaDeadline) return this;
     if (now > this.data.slaDeadline) {
@@ -77,6 +79,7 @@ export class TranscriptionAssignment {
     return this;
   }
 
+  // Serializes the assignment for API responses.
   toJSON() {
     return {
       id: this.data.id,

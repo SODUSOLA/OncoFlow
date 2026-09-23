@@ -38,12 +38,14 @@ const CLASSIFICATION_LABELS: Record<ServiceClassification["name"], string> = {
   SIDE_EFFECT_REPORT: "Side Effect Report",
 };
 
+// Formats a kobo string as a naira amount.
 function koboToNaira(kobo: string) {
   return `₦${(Number(kobo) / 100).toLocaleString("en-NG", { minimumFractionDigits: 2 })}`;
 }
 
 type View = "list" | "insufficient" | "unsuccessful" | "verified";
 
+// Wallet page with balance, invoices and payment.
 export default function WalletPage() {
   const { patient, wallet, loading: patientLoading, notLinked, reload } = useMyPatient();
   const [invoices, setInvoices] = useState<Invoice[]>([]);
@@ -81,11 +83,13 @@ export default function WalletPage() {
     })();
   }, [loadInvoices]);
 
+  // Returns the classification name for an id.
   function classificationName(classificationId: string) {
     const found = classifications.find((c) => c.id === classificationId);
     return found ? CLASSIFICATION_LABELS[found.name] : "Invoice";
   }
 
+  // Pays an invoice from the wallet.
   async function handlePay(invoice: Invoice) {
     setActiveInvoice(invoice);
     setPaying(true);
@@ -109,10 +113,12 @@ export default function WalletPage() {
     }
   }
 
+  // Retries the last failed payment.
   async function retryPayment() {
     if (activeInvoice) await handlePay(activeInvoice);
   }
 
+  // Returns to the wallet list view.
   function backToWallet() {
     setView("list");
     setActiveInvoice(null);
@@ -280,8 +286,7 @@ export default function WalletPage() {
           </Button>
         </div>
 
-        {/* The ledger was reachable only from the home screen, so anyone who navigated straight
-            to Wallet — the obvious place to look for it — had no way through. */}
+        {/* Link to the ledger, which was previously reachable only from the home screen. */}
         <Link
           href="/wallet/transactions"
           className="mt-3.5 flex items-center justify-between border-t border-neutral-200 pt-3.5 text-sm font-semibold text-primary"

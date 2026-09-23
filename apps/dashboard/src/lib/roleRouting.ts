@@ -1,10 +1,4 @@
-// Maps a role_name (apps/api/src/db/enums.ts roleNameEnum) to its dashboard path slug
-// (apps/dashboard/src/App.tsx's roles array). All four CONSULTING_* specialties share one
-// view, per the earlier product decision that consultant roles differ only in display/matching,
-// not access — same reasoning as the backend's shared permission grant for them.
-// PATIENT is deliberately absent. This is the staff console; a patient account has no page
-// here, and mapping it to one is what let a patient session walk straight in — see
-// hasStaffAccess() below.
+// Maps each role to its dashboard path; consultant specialties share one view, and PATIENT is absent so a patient session can't enter the staff console.
 const ROLE_TO_PATH: Record<string, string> = {
   REGIONAL_ADMIN: "regional-admin",
   VIRTUAL_MEDICAL_OFFICER: "virtual-medical-officer",
@@ -17,11 +11,10 @@ const ROLE_TO_PATH: Record<string, string> = {
   ONSITE_NURSING_OFFICER: "onsite-nursing-officer",
   STATE_DIRECTOR_OF_NURSING_SERVICES: "state-director-of-nursing-services",
   SUPER_ADMIN: "super-admin",
-  // NATIONAL_CLINICAL_DIRECTOR, NATIONAL_DIRECTOR_OF_NURSING_SERVICES, and SCRIBE have no
-  // dashboard page yet — dashboardPathForRoles() returns null for a user with only these,
-  // and the caller shows a "no dashboard yet" state instead of routing into a 404.
+  // These roles have no dashboard yet, so callers show a "no dashboard yet" state instead of a 404.
 };
 
+// Returns the dashboard path for the user's first role that has one, or null.
 export function dashboardPathForRoles(roleNames: string[]): string | null {
   for (const name of roleNames) {
     const path = ROLE_TO_PATH[name];
@@ -30,18 +23,10 @@ export function dashboardPathForRoles(roleNames: string[]): string | null {
   return null;
 }
 
-// Whether an account may enter the staff console at all — a separate question from which page
-// it lands on. dashboardPathForRoles() returns null both for a staff role with no page built
-// yet (NATIONAL_*, SCRIBE) and for an account with no staff standing whatsoever; the first
-// should see "no dashboard yet", the second should never get past the login screen.
-//
-// Written as an exclusion rather than a list of staff roles so that a role added to
-// roleNameEnum later counts as staff by default, instead of silently being denied access.
-// Same shape, and the same reasoning, as MFA_OPTIONAL_ROLES in the API's lib/mfa-policy.ts.
+// Non-staff exclusion list, written as an exclusion so newly added roles count as staff by default (like the API's MFA_OPTIONAL_ROLES).
 const NON_STAFF_ROLES = new Set(["PATIENT"]);
 
-// An account with no roles at all is not staff: it cannot reach anything here, and admitting it
-// into the shell only produces a chrome-without-data screen.
+// An account with no roles isn't staff, since admitting it only shows an empty shell.
 export function hasStaffAccess(roleNames: string[]): boolean {
   return roleNames.some((name) => !NON_STAFF_ROLES.has(name));
 }

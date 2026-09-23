@@ -15,6 +15,7 @@ import {
 } from "@/lib/useMyPatient";
 import type { Patient } from "@/lib/types";
 
+// Reads a file as a base64 string.
 function fileToBase64(file: File): Promise<string> {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
@@ -24,9 +25,7 @@ function fileToBase64(file: File): Promise<string> {
   });
 }
 
-// Non-clinical, self-editable fields only — the backend enforces the same restriction
-// server-side (SELF_EDITABLE_FIELDS in patient/controller.ts); this mirrors it so the UI
-// doesn't show inputs for fields a patient's own edit can never actually change.
+// Only non-clinical, self-editable fields, mirroring the backend's SELF_EDITABLE_FIELDS restriction.
 export default function ProfilePage() {
   const { patient, facility, addresses, emergencyContacts, loading, notLinked, reload } = useMyPatient();
 
@@ -55,6 +54,7 @@ export default function ProfilePage() {
   );
 }
 
+// Profile card with view and edit modes.
 function ProfileForm({
   patient, facility, addresses, emergencyContacts, onUpdated,
 }: {
@@ -66,17 +66,15 @@ function ProfileForm({
 }) {
   const [phone, setPhone] = useState(patient.phone ?? "");
   const [secondaryEmail, setSecondaryEmail] = useState(patient.secondaryEmail ?? "");
-  // Contact details are read-only until Edit is pressed. Rendering live inputs by default made
-  // the card look like a form waiting to be filled in, and put a patient one stray keystroke
-  // away from changing the number their care team uses to reach them.
+  // Read-only until Edit is pressed, so the card doesn't look like a form waiting to be filled and a stray keystroke can't change the contact number.
   const [editing, setEditing] = useState(false);
   const [saving, setSaving] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [result, setResult] = useState<string | null>(null);
-  // Falls back to initials if the photo 404s/403s (e.g. flagged infected and blocked) or the
-  // browser otherwise can't load it — a broken-image icon is worse than no photo at all.
+  // Falls back to initials if the photo fails (e.g. blocked as infected), since a broken image is worse than none.
   const [pictureFailed, setPictureFailed] = useState(false);
 
+  // Saves the edited contact details.
   async function handleSave() {
     setSaving(true);
     setResult(null);
@@ -92,6 +90,7 @@ function ProfileForm({
     }
   }
 
+  // Uploads a new profile picture.
   async function handlePictureUpload(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
     if (!file) return;
@@ -130,12 +129,7 @@ function ProfileForm({
       <Card className="flex flex-col items-center gap-2 text-center">
         <label className="group relative flex size-20 cursor-pointer items-center justify-center overflow-hidden rounded-full bg-primary text-2xl font-bold text-accent">
           {patient.profilePictureFileId && !pictureFailed ? (
-            // Same-origin path through the Next.js rewrite (next.config.ts), so the session
-            // cookie rides along automatically — no need to fetch and blob it in JS. The API
-            // route checks ownership/permission and the infected-file flag on every request
-            // before redirecting to a short-TTL signed R2 URL; onError here just means "that
-            // check failed or the file isn't there," so fall back to initials rather than a
-            // broken-image icon.
+            // Same-origin path through the Next rewrite carries the cookie; the API re-checks access on each request, and onError falls back to initials.
             <img
               src={`/api/files/${patient.profilePictureFileId}/content`}
               alt={`${patient.firstName} ${patient.lastName}`}
@@ -212,8 +206,7 @@ function ProfileForm({
                 variant="outline"
                 className="flex-1"
                 onClick={() => {
-                  // Discard edits rather than leaving them staged — reopening Edit should show
-                  // what is actually saved, not what was abandoned last time.
+                  // Discards abandoned edits so reopening Edit shows what is actually saved.
                   setPhone(patient.phone ?? "");
                   setSecondaryEmail(patient.secondaryEmail ?? "");
                   setEditing(false);
@@ -256,9 +249,7 @@ function ProfileForm({
               <p className="text-xs text-neutral-500">Region</p>
               <p className="text-sm text-neutral-900">{facility.region}</p>
             </div>
-            {/* facilityConfirmedAt is null until a Regional Admin confirms the choice made at
-                registration — the record is fully usable meanwhile, so this is status, not a
-                warning. */}
+            {/* Shows onboarding status (facilityConfirmedAt is null until Admin confirms); the record is usable meanwhile, so it isn't a warning. */}
             <div>
               <p className="text-xs text-neutral-500">Status</p>
               <p className="text-sm text-neutral-900">

@@ -8,20 +8,24 @@ import { api } from "@/lib/api";
 import { useMyPatient } from "@/lib/useMyPatient";
 import type { WalletTransaction } from "@/lib/types";
 
+// Formats a kobo string as a naira amount.
 function koboToNaira(kobo: string) {
   const value = Number(kobo) / 100;
   return `₦${value.toLocaleString("en-NG", { minimumFractionDigits: 2 })}`;
 }
 
+// Returns a year-month key for grouping.
 function monthKey(iso: string) {
   const d = new Date(iso);
   return `${d.getFullYear()}-${d.getMonth()}`;
 }
 
+// Returns a short month and year label.
 function monthLabel(iso: string) {
   return new Date(iso).toLocaleDateString("en-US", { month: "short", year: "numeric" });
 }
 
+// Transaction history page grouped by month.
 export default function TransactionHistoryPage() {
   const router = useRouter();
   const { patient, loading: patientLoading, notLinked } = useMyPatient();

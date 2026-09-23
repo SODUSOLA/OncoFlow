@@ -5,12 +5,7 @@ export const roleNameEnum = pgEnum("role_name", [
   "PATIENT",
   "REGIONAL_ADMIN",
   "VIRTUAL_MEDICAL_OFFICER",
-  // Consultant specialties (PRD v3 §18.1's "Consultation" classification: Oncologist,
-  // Surgeon, Psycho-Oncologist, Nutritionist) — one shared frontend view for all of them
-  // (apps/dashboard's consultant page), but distinct roles here so a logged-in consultant's
-  // actual specialty is visible on their own page and can be used for scheduling/matching.
-  // All four carry identical permissions (RBAC seed grants the set once, to every CONSULTING_*
-  // role) — this is a display/matching distinction, not an access-control one.
+  // Consultant specialties share one frontend view and identical permissions; the distinct roles are for display and scheduling/matching only.
   "CONSULTING_ONCOLOGIST",
   "CONSULTING_SURGEON",
   "CONSULTING_NUTRITIONIST",
@@ -21,9 +16,7 @@ export const roleNameEnum = pgEnum("role_name", [
   "NATIONAL_CLINICAL_DIRECTOR",
   "STATE_DIRECTOR_OF_NURSING_SERVICES",
   "NATIONAL_DIRECTOR_OF_NURSING_SERVICES",
-  // F3.11 (docs/build-plan/13-scribe-role-definition.md): a real, independently-assignable
-  // role rather than a tag on an existing one — editing Transcript content is distinct
-  // authority that shouldn't be conflated with any clinical role's own permission set.
+  // SCRIBE is its own assignable role because editing transcript content is separate authority from any clinical role.
   "SCRIBE",
   "SUPER_ADMIN",
 ]);
@@ -60,8 +53,7 @@ export const transcriptionAssignmentStatusEnum = pgEnum("transcription_assignmen
 
 export const serviceClassificationNameEnum = pgEnum("service_classification_name", [
   "SUBSCRIPTION", "CONSULTATION", "DRUG_ADMINISTRATION", "CHEMOTHERAPY", "GENERAL_ADMISSION", "PROCEDURE",
-  // A self-reported side-effect chat with a Virtual Medical Officer — its own fee, distinct
-  // from a general CONSULTATION (per-report, paid upfront before the conversation is created).
+  // Side-effect report chat with a Virtual Medical Officer, billed per report and paid upfront before the conversation is created.
   "SIDE_EFFECT_REPORT",
 ]);
 export const invoiceStatusEnum = pgEnum("invoice_status", ["DRAFT", "SENT", "PAID", "VOID", "OVERDUE"]);
@@ -94,56 +86,34 @@ export const auditActionEnum = pgEnum("audit_action", [
 ]);
 export const auditResultEnum = pgEnum("audit_result", ["ALLOWED", "DENIED"]);
 
-// Public-inquiry chat widget (marketing site) — deliberately separate from conversation/message
-// (messaging module), which both require a real patientId/senderId. A site visitor asking a
-// question has neither yet: they may not be registered at all, or may be a registered patient
-// who just hasn't logged in. Staff can later link an inquiry to a patient record once identified.
+// Marketing-site inquiry status; kept separate from conversation/message because a visitor has no patientId or senderId yet.
 export const publicInquiryStatusEnum = pgEnum("public_inquiry_status", ["OPEN", "CLOSED"]);
 export const publicInquiryMessageSenderTypeEnum = pgEnum("public_inquiry_message_sender_type", ["VISITOR", "STAFF"]);
 
-// Mutual post-conversation rating — the patient rates the care they received, staff (typically
-// the Virtual Medical Officer) rates the encounter from their side. Two independent rows per
-// conversation (one per rater), not a single shared record — each side's rating/review stands
-// on its own regardless of what the other one said.
+// Which side left a post-conversation rating; the patient and staff each get their own independent row per conversation.
 export const conversationFeedbackRaterRoleEnum = pgEnum("conversation_feedback_rater_role", ["PATIENT", "STAFF"]);
 
 // ONCOFLOW_PATIENT_DATA_MODELS.md §1 — treatment protocol and its individual cycles.
 export const regimenStatusEnum = pgEnum("regimen_status", ["ACTIVE", "COMPLETED", "DISCONTINUED", "PAUSED"]);
 export const regimenCycleStatusEnum = pgEnum("regimen_cycle_status", ["SCHEDULED", "COMPLETED", "DELAYED", "SKIPPED"]);
 
-// ONCOFLOW_PATIENT_DATA_MODELS.md §2 — one row per reading, one reading per vital type (not a
-// wide table with a column per vital), so every surface that shows vitals queries one source.
+// Vital types: one row per reading rather than a column per vital, so every surface queries one source.
 export const vitalTypeEnum = pgEnum("vital_type", [
   "WEIGHT_KG", "BLOOD_PRESSURE_SYSTOLIC", "BLOOD_PRESSURE_DIASTOLIC",
   "HEART_RATE_BPM", "TEMPERATURE_C", "SPO2_PERCENT",
 ]);
 export const vitalSourceEnum = pgEnum("vital_source", ["MANUAL_ENTRY", "VIDEO_CONSULT", "DEVICE_SYNC"]);
 
-// ONCOFLOW_LAB_AND_METRICS_WORKFLOW.md Track 1 — biometric snapshot computed (and stored, as a
-// deliberate point-in-time exception) once per cycle by the Nursing Officer.
-// Distinct from patient.gender (a self-reported text field, potentially non-binary) — CrCl's
-// formula needs a specific binary clinical input (the 0.85 female multiplier), not an identity
-// field, so this is scoped to the calculation, not a general demographic column.
+// Biological sex used only for the CrCl calculation's 0.85 female multiplier, distinct from the self-reported patient.gender.
 export const biologicalSexEnum = pgEnum("biological_sex", ["MALE", "FEMALE"]);
 export const bmiClassificationEnum = pgEnum("bmi_classification", ["UNDERWEIGHT", "NORMAL", "OVERWEIGHT", "OBESE"]);
 export const crclTierEnum = pgEnum("crcl_tier", [
   "NORMAL", "MILD_IMPAIRMENT", "MODERATE_3A", "MODERATE_SEVERE_3B", "SEVERE",
 ]);
-// KDIGO CKD staging for eGFR — deliberately NOT the same boundaries as crclTierEnum above (CrCl
-// tiers came from the original source doc: 50-59/30-49; true KDIGO is 45-59/30-44). Two
-// separate calculations per the resolved doc, not one relabeled as the other.
+// KDIGO eGFR stages, whose boundaries intentionally differ from the CrCl tiers above.
 export const egfrStageEnum = pgEnum("egfr_stage", ["G1", "G2", "G3A", "G3B", "G4", "G5"]);
 
-// ONCOFLOW_LAB_AND_METRICS_WORKFLOW.md Track 2 — patient-uploaded lab document, reviewed
-// through an Admin (date-check only) → QA Officer (clinical) → Clinical Director (universal)
-// chain. Distinct from the pre-existing labRequest/labResult/clinicalDecision tables further up
-// this file: those model a staff-ORDERED lab request being fulfilled, and are effectively
-// unreachable today (neither QUALITY_ASSURANCE_OFFICER nor STATE_CLINICAL_DIRECTOR has ever
-// been granted a permission in seed/identity.ts, and the only frontend surface that touches
-// this area — Regional Admin's 7-Day Countdown — reads just a plain countdownCase timestamp,
-// never labResult/clinicalDecision content directly). Left in place rather than dropped (no
-// destructive migration), but new work builds on this model per the doc's explicit "Supersedes
-// Section 3" instruction.
+// Workflow states for patient-uploaded lab documents (Admin → QA Officer → Clinical Director), which supersede the older staff-ordered labRequest tables.
 export const labDocumentWorkflowStatusEnum = pgEnum("lab_document_workflow_status", [
   "PENDING_ADMIN_REVIEW", "ADMIN_REJECTED",
   "PENDING_QA_REVIEW", "QA_HOLD", "QA_APPROVED",
@@ -162,9 +132,13 @@ export const caseLockStatusEnum = pgEnum("case_lock_status", ["LOCKED", "SUPERSE
 export const caseLockResolvedByRoleEnum = pgEnum("case_lock_resolved_by_role", ["CLINICAL_DIRECTOR", "CHIEF_CONSULTANT"]);
 export const caseLockResolutionEnum = pgEnum("case_lock_resolution", ["APPROVED_TO_PROCEED", "REMAINS_BLOCKED"]);
 
-// ONCOFLOW_NURSING_OFFICER_BUILD_GUIDE.md — a "case" is one physical visitation's worth of
-// nursing documentation, not a standalone document. STARTED is set by the Nursing Officer's own
-// action (no cross-role co-sign to begin); PENDING_QA_REVIEW once the documentation sheet is
-// submitted; CLOSED only once QA records a REQUIREMENTS_MET review.
+// Nursing case lifecycle: STARTED by the nurse, PENDING_QA_REVIEW once the sheet is submitted, CLOSED when QA records REQUIREMENTS_MET.
 export const nursingCaseStatusEnum = pgEnum("nursing_case_status", ["STARTED", "PENDING_QA_REVIEW", "CLOSED"]);
 export const nursingCaseReviewDecisionEnum = pgEnum("nursing_case_review_decision", ["REQUIREMENTS_INCOMPLETE", "REQUIREMENTS_MET"]);
+// Drug supply chain: request → dispatch → acknowledge, with stock held as two append-only ledgers.
+export const drugRequestStatusEnum = pgEnum("drug_request_status", ["REQUESTED", "DISPATCHED", "DELIVERED", "CANCELLED"]);
+export const drugDispatchStatusEnum = pgEnum("drug_dispatch_status", ["IN_TRANSIT", "DELIVERED"]);
+export const drugLedgerReasonEnum = pgEnum("drug_ledger_reason", ["DELIVERY", "USAGE", "LOSS", "ADJUSTMENT"]);
+export const regionalDrugLedgerReasonEnum = pgEnum("regional_drug_ledger_reason", ["PROCUREMENT", "DISPATCH", "ADJUSTMENT"]);
+export const drugLossReasonEnum = pgEnum("drug_loss_reason", ["SPILLAGE", "BREAKAGE", "OTHER"]);
+export const drugReconciliationScopeEnum = pgEnum("drug_reconciliation_scope", ["REGIONAL", "NURSING_OFFICER"]);

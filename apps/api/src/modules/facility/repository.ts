@@ -2,7 +2,9 @@ import { db } from "../../db/index.js";
 import { eq, sql, and } from "drizzle-orm";
 import { facility, department } from "./schema.js";
 
+// Data access for facilities.
 export class FacilityRepository {
+  // Finds a non-deleted facility by id.
   async findById(id: string) {
     const row = await db
       .select()
@@ -12,15 +14,18 @@ export class FacilityRepository {
     return row[0] ?? null;
   }
 
+  // Lists all non-deleted facilities.
   async findAll() {
     return db.select().from(facility).where(sql`${facility.isDeleted} = false`);
   }
 
+  // Inserts a facility.
   async create(data: typeof facility.$inferInsert) {
     const row = await db.insert(facility).values(data).returning();
     return row[0]!;
   }
 
+  // Updates a facility.
   async update(id: string, data: Partial<typeof facility.$inferInsert>) {
     const row = await db
       .update(facility)
@@ -30,6 +35,7 @@ export class FacilityRepository {
     return row[0] ?? null;
   }
 
+  // Soft-deletes a facility.
   async softDelete(id: string) {
     await db
       .update(facility)
@@ -38,7 +44,9 @@ export class FacilityRepository {
   }
 }
 
+// Data access for departments.
 export class DepartmentRepository {
+  // Finds a department by id.
   async findById(id: string) {
     const row = await db
       .select()
@@ -48,6 +56,7 @@ export class DepartmentRepository {
     return row[0] ?? null;
   }
 
+  // Lists a facility's departments.
   async findByFacility(facilityId: string) {
     return db
       .select()
@@ -57,11 +66,13 @@ export class DepartmentRepository {
       );
   }
 
+  // Inserts a department.
   async create(data: typeof department.$inferInsert) {
     const row = await db.insert(department).values(data).returning();
     return row[0]!;
   }
 
+  // Updates a department.
   async update(id: string, data: Partial<typeof department.$inferInsert>) {
     const row = await db
       .update(department)
@@ -71,6 +82,7 @@ export class DepartmentRepository {
     return row[0] ?? null;
   }
 
+  // Soft-deletes a department.
   async softDelete(id: string) {
     await db
       .update(department)

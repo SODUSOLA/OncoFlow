@@ -16,6 +16,7 @@ let testFacilityId: string;
 let regionalAdminCookie: string;
 let plainCookie: string;
 
+// Creates a user and returns a valid session cookie for requests.
 async function createSessionCookie(): Promise<{ userId: string; cookie: string }> {
   const userId = crypto.randomUUID();
   await db.insert(user).values({

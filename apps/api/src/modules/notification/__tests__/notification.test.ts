@@ -10,6 +10,7 @@ import { SESSION_COOKIE_NAME } from "../../../lib/session-cookie.js";
 
 const app = createApp();
 
+// Creates a user and returns a valid session cookie for requests.
 async function createSessionCookie() {
   const userId = crypto.randomUUID();
   await db.insert(user).values({ id: userId, email: `notif-${crypto.randomUUID()}@test.com`, passwordHash: "test" });

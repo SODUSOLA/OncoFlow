@@ -11,6 +11,7 @@ const resources = [
   { icon: Lightbulb, title: "Healthcare Innovation", description: "How digital tools are reshaping care delivery." },
 ];
 
+// Resources preview section.
 export function ResourcesPreview() {
   return (
     <Section tone="surface" id="resources">

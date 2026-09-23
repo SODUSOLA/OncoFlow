@@ -8,6 +8,7 @@ export const metadata: Metadata = {
   description: "Set a new password for your OncoFlow account.",
 };
 
+// Reset-password page.
 export default function ResetPasswordPage() {
   return (
     <AuthCard title="Set a new password" description="Choose a new password for your account.">

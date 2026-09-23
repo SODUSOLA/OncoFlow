@@ -5,6 +5,7 @@ export const runtime = "edge";
 export const size = { width: 180, height: 180 };
 export const contentType = "image/png";
 
+// Generates the Apple touch icon from the ribbon logo.
 export default async function AppleIcon() {
   const [minX, minY, w, h] = RIBBON_VIEWBOX.split(" ").map(Number);
   return new ImageResponse(

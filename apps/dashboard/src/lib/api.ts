@@ -1,5 +1,6 @@
 const BASE_URL = "/api";
 
+// Sends a JSON request to the API with credentials and throws on a non-OK response.
 async function request<T>(path: string, options?: RequestInit): Promise<T> {
   const res = await fetch(`${BASE_URL}${path}`, {
     credentials: "include",
@@ -10,6 +11,8 @@ async function request<T>(path: string, options?: RequestInit): Promise<T> {
     const body = await res.json().catch(() => ({ error: res.statusText }));
     throw new Error(body.error ?? `Request failed: ${res.status}`);
   }
+  // 204 responses (acknowledge, cancel) have no body to parse.
+  if (res.status === 204) return undefined as T;
   return res.json();
 }
 

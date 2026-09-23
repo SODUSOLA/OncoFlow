@@ -6,6 +6,7 @@ export const metadata: Metadata = {
   description: "How OncoFlow collects, uses, and protects personal and health information.",
 };
 
+// Privacy policy page.
 export default function PrivacyPage() {
   return (
     <LegalPageLayout title="Privacy Policy" lastUpdated="Draft — not yet finalized">

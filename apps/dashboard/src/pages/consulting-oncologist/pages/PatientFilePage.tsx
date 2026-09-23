@@ -15,15 +15,11 @@ import {
   VITAL_LABELS, VITAL_UNITS, BMI_COLOR, CRCL_COLOR, EGFR_COLOR, TRIGGER_LABEL,
 } from "../lib/clinicalTypes";
 
-// Phase 3, rebuilt against ONCOFLOW_CONSULTANT_BUILD_GUIDE.md's revised spec (the original
-// Figma-matching version is explicitly superseded — severity-tiled lab panel is gone,
-// BMI/BSA/CrCl/eGFR is now core). Every section here reads from a real endpoint built and
-// curl-verified against ONCOFLOW_LAB_AND_METRICS_WORKFLOW.md; nothing on this page is
-// client-computed severity or a fabricated field. Types/color maps live in ../lib/clinicalTypes
-// so Phase 4/6/8 (Pre-call Briefing, Post-call Summary, Notification Center) share them exactly.
+// Rebuilt to the revised guide: BMI/BSA/CrCl/eGFR are core, and every section reads a real endpoint with no client-computed severity.
 
 const VITAL_ICONS: Record<string, typeof Heart> = { HEART_RATE_BPM: Heart, TEMPERATURE_C: Thermometer, SPO2_PERCENT: Droplets };
 
+// Patient file page: regimen, metrics, vitals, labs and activity for one patient.
 export default function PatientFilePage() {
   const { patientId } = useParams<{ patientId: string }>();
   const { setPatientContext } = useConsultantShell();
@@ -150,6 +146,7 @@ export default function PatientFilePage() {
 
 // ---- Case Lock Banner — new, not in the original Figma, takes priority over everything -----
 
+// Banner shown when the patient's case is locked.
 function CaseLockBanner({ lock }: { lock: CaseLockData }) {
   return (
     <Card className="flex items-start gap-4 border-2 border-admin-danger bg-admin-danger/5 p-5">
@@ -167,6 +164,7 @@ function CaseLockBanner({ lock }: { lock: CaseLockData }) {
 
 // ---- Active Regimen ---------------------------------------------------------------------
 
+// Card showing the active regimen and cycle progress.
 function ActiveRegimenCard({ regimen }: { regimen: RegimenData | null }) {
   if (!regimen) {
     return (
@@ -206,6 +204,7 @@ function ActiveRegimenCard({ regimen }: { regimen: RegimenData | null }) {
 
 // ---- Clinical Metrics — new, not in the original Figma at all -----------------------------
 
+// Card showing clinical metrics tiles.
 function ClinicalMetricsCard({ metrics }: { metrics: ClinicalMetricsSnapshot | null }) {
   return (
     <Card className="border-admin-border p-6">
@@ -233,6 +232,7 @@ function ClinicalMetricsCard({ metrics }: { metrics: ClinicalMetricsSnapshot | n
   );
 }
 
+// One metric tile with its classification badge.
 function MetricTile({ label, value, badge, color }: { label: string; value: string; badge: string | null; color: string }) {
   return (
     <div className="rounded-admin-sm bg-admin-card-alt p-3">
@@ -245,6 +245,7 @@ function MetricTile({ label, value, badge, color }: { label: string; value: stri
 
 // ---- Vitals Trend — real chart primitives, backend-computed severity only ------------------
 
+// Card showing vitals with weight and blood-pressure trends.
 function VitalsTrendCard({
   vitals, weightTrend, systolicTrend, diastolicTrend,
 }: {
@@ -286,6 +287,7 @@ function VitalsTrendCard({
   );
 }
 
+// Bar chart of weight readings.
 function WeightBarChart({ points }: { points: VitalTrendPoint[] }) {
   if (points.length === 0) return <p className="mt-3 text-admin-caption text-admin-text-secondary">No readings yet.</p>;
   const max = Math.max(...points.map((p) => p.value));
@@ -306,6 +308,7 @@ function WeightBarChart({ points }: { points: VitalTrendPoint[] }) {
   );
 }
 
+// Sparkline of systolic and diastolic readings.
 function BpSparkline({ systolic, diastolic }: { systolic: VitalTrendPoint[]; diastolic: VitalTrendPoint[] }) {
   if (systolic.length === 0) return <p className="mt-3 text-admin-caption text-admin-text-secondary">No readings yet.</p>;
   const allValues = [...systolic, ...diastolic].map((p) => p.value);
@@ -315,6 +318,7 @@ function BpSparkline({ systolic, diastolic }: { systolic: VitalTrendPoint[]; dia
   const w = 280;
   const h = 80;
 
+  // Converts a trend series into chart points.
   function toPoints(series: VitalTrendPoint[]) {
     return series.map((p, i) => {
       const x = series.length > 1 ? (i / (series.length - 1)) * w : w / 2;
@@ -339,6 +343,7 @@ function BpSparkline({ systolic, diastolic }: { systolic: VitalTrendPoint[]; dia
 
 // ---- Lab Documents — Track 2, approval metadata only, no values, no severity ---------------
 
+// Panel listing lab documents and their review status.
 function LabDocumentsPanel({ documents }: { documents: LabDocumentRow[] }) {
   return (
     <Card className="overflow-hidden border-admin-border">
@@ -376,6 +381,7 @@ function LabDocumentsPanel({ documents }: { documents: LabDocumentRow[] }) {
 const ACTIVITY_ICON: Record<string, typeof ClipboardList> = { CLINICAL_NOTE: ClipboardList, LAB_DOCUMENT: FlaskConical };
 const ACTIVITY_LABEL: Record<string, string> = { CLINICAL_NOTE: "Clinical Note", LAB_DOCUMENT: "Lab Document" };
 
+// Table of the patient's recent clinical activity.
 function ActivityLogTable({ entries }: { entries: ActivityEntry[] }) {
   return (
     <Card className="overflow-hidden border-admin-border">

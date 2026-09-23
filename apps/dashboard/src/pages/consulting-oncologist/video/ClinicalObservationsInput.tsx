@@ -3,16 +3,14 @@ import { ClipboardList, Check } from "lucide-react";
 import { api } from "../../../lib/api";
 import { Card } from "../../../components/ui/Card";
 
-// Independent of the transcription feature entirely, per the acceptance criteria — this is a
-// plain free-text field that saves straight to the patient's clinical record (the same
-// POST /clinical-notes the sidebar's "Add Clinical Note" action already uses), works with or
-// without a connected call, and with or without transcription ever being wired up.
+// Free-text observations that save to the patient's record via POST /clinical-notes, independent of transcription or an active call.
 export function ClinicalObservationsInput({ patientId }: { patientId: string }) {
   const [text, setText] = useState("");
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [savedCount, setSavedCount] = useState(0);
 
+  // Saves the observation as a clinical note.
   async function save() {
     if (!text.trim()) return;
     setSaving(true);

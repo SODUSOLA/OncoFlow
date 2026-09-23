@@ -26,8 +26,7 @@ const registerPatientSchema = z.object({
   userId: z.string().uuid().optional(),
 });
 
-// facilityId optional — omitted means "the self-reported choice was right, just confirm it";
-// supplied means Admin is reassigning the patient to a different facility as part of confirming.
+// facilityId is optional: omitted confirms the self-reported choice, supplied reassigns the patient to another facility.
 const confirmFacilitySchema = z.object({
   facilityId: z.string().uuid().optional(),
 });
@@ -40,11 +39,7 @@ const updatePatientSchema = z.object({
   phone: z.string().trim().min(1).max(32).optional(),
   email: z.string().trim().email().optional(),
   status: z.string().trim().min(1).max(32).optional(),
-  // Self-editable only (see controller.ts SELF_EDITABLE_FIELDS) — accepted here regardless
-  // of caller, the controller decides which fields actually apply.
-  // The empty string is accepted so a patient can *clear* this field. It is presented as
-  // optional in the UI, but .email() alone rejected "" — meaning it could be set once and then
-  // never removed. The controller normalises "" to NULL (the column is nullable).
+  // Self-editable only, but "" is accepted so the field can be cleared; the controller stores it as NULL.
   secondaryEmail: z.union([z.string().trim().email(), z.literal("")]).optional(),
   profilePictureFileId: z.string().uuid().optional(),
 });
@@ -63,9 +58,7 @@ const createEmergencyContactSchema = z.object({
 });
 
 const patientSearchQuerySchema = z.object({
-  // "all" is the frontend's own sentinel for "no facility filter" (dashboard-wide pickers,
-  // e.g. linking a public inquiry to a patient) — accepted alongside a real facility UUID
-  // rather than requiring callers to omit the param entirely.
+  // "all" is the frontend's no-filter sentinel, accepted alongside a facility UUID.
   facilityId: z.union([z.string().uuid(), z.literal("all")]).optional(),
   q: z.string().trim().min(1).max(128).optional(),
 });
@@ -76,31 +69,29 @@ const walletQuerySchema = z.object({
 
 const router = Router();
 
-// Not public: the only real caller (RegisterWizard, apps/web) creates a login account via
-// POST /auth/register only — a Regional Admin reviews that submission and issues the Unique
-// Patient ID from here (Design Spec §6.1's "confirm facility and issue ID" step). Letting any
-// caller hit this directly would let a patient self-assign their own ID, bypassing approval.
+// Not public: Admin issues the Unique Patient ID after reviewing a registration, so callers can't self-assign one.
 router.post("/patients", requirePermission("patient", "create"), validateBody(registerPatientSchema), registerPatientHandler);
+// Queue of registrations awaiting facility confirmation.
 router.get("/patients/pending-registrations", requirePermission("patient", "create"), listPendingRegistrationsHandler);
+// Searches patients within the caller's scope.
 router.get("/patients", requirePermission("patient", "read"), validateQuery(patientSearchQuerySchema), searchPatientsHandler);
-// Must come before /patients/:id — otherwise Express would try to match "me" against the
-// :id param (and validateParams' uuid check would reject it with a 400 before it ever reaches
-// the handler that actually means to treat "me" specially).
+// Must precede /patients/:id or "me" would fail the uuid param check.
 router.get("/patients/me", requireAuthenticated(), getMyPatientHandler);
-// requireAuthenticated, not requirePermission: reading/updating one's OWN record is a right,
-// not a grant — the ownership-or-permission check lives in the controller (needs the record
-// loaded first to know if it's "own"). See getPatientHandler/updatePatientHandler.
+// Authenticated only, since reading your own record is a right; the ownership check is in the controller.
 router.get("/patients/:id", requireAuthenticated(), validateParams(patientIdParamSchema), getPatientHandler);
+// Updates a patient (self-edit is limited to non-clinical fields).
 router.put("/patients/:id", requireAuthenticated(), validateParams(patientIdParamSchema), validateBody(updatePatientSchema), updatePatientHandler);
+// Reads a patient's timeline.
 router.get("/patients/:id/timeline", requireAuthenticated(), validateParams(patientIdParamSchema), getPatientTimelineHandler);
+// Soft-deletes a patient.
 router.delete("/patients/:id", requirePermission("patient", "delete"), validateParams(patientIdParamSchema), deletePatientHandler);
+// Adds an address.
 router.post("/patients/:id/addresses", requirePermission("patient", "update"), validateParams(patientIdParamSchema), validateBody(createAddressSchema), createAddressHandler);
+// Adds an emergency contact.
 router.post("/patients/:id/emergency-contacts", requirePermission("patient", "update"), validateParams(patientIdParamSchema), validateBody(createEmergencyContactSchema), createEmergencyContactHandler);
-// Regional Admin / Onsite Nursing Officer only (patient:call, granted to just those two roles
-// in seed/identity.ts) — places a masked call, never returns the raw phone number to the client.
+// Places a masked call for Regional Admin or Onsite Nursing Officer only, never returning the raw number.
 router.post("/patients/:id/call", requirePermission("patient", "call"), validateParams(patientIdParamSchema), callPatientHandler);
-// Staff-only, and specifically NOT requireAuthenticated-with-ownership like PUT /patients/:id —
-// a patient confirming their own facility would defeat the entire point of the review step.
+// Staff-only, since a patient confirming their own facility would defeat the review step.
 router.patch("/patients/:id/confirm-facility", requirePermission("patient", "update"), validateParams(patientIdParamSchema), validateBody(confirmFacilitySchema), confirmFacilityHandler);
 // Same reasoning as GET /patients/:id — ownership-or-permission check lives in getWalletHandler.
 router.get("/wallet", requireAuthenticated(), validateQuery(walletQuerySchema), getWalletHandler);

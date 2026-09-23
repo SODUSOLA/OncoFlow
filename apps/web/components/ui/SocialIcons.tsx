@@ -1,5 +1,6 @@
 /** lucide-react dropped brand/logo icons; these are minimal local marks for footer social links. */
 
+// LinkedIn icon.
 export function LinkedinIcon(props: React.SVGProps<SVGSVGElement>) {
   return (
     <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true" {...props}>
@@ -8,6 +9,7 @@ export function LinkedinIcon(props: React.SVGProps<SVGSVGElement>) {
   );
 }
 
+// X (Twitter) icon.
 export function XIcon(props: React.SVGProps<SVGSVGElement>) {
   return (
     <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true" {...props}>

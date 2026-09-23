@@ -7,20 +7,21 @@ import { Button } from "@/components/ui/Button";
 import { FieldWrapper, Input, PasswordInput } from "@/components/ui/Field";
 import { api } from "@/lib/api";
 
-// The backend only authenticates by email today, so the field is scoped to that — phone-based
-// login would need the backend to support looking a user up by phone first.
+// The backend authenticates by email only, so the field is scoped to that; phone login would need backend lookup support.
 const DASHBOARD_URL = process.env.NEXT_PUBLIC_DASHBOARD_URL ?? "http://localhost:5174";
 
 interface LoginResponse {
   roles: { roleName: string }[];
 }
 
+// Patient login form.
 export function LoginForm() {
   const router = useRouter();
   const [values, setValues] = useState({ identifier: "", password: "" });
   const [errors, setErrors] = useState<{ identifier?: string; password?: string; form?: string }>({});
   const [loading, setLoading] = useState(false);
 
+  // Submits the credentials and routes into the app.
   async function handleSubmit(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
     const nextErrors: typeof errors = {};

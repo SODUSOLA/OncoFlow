@@ -10,9 +10,7 @@ const { sendEmail } = await import("../email.js");
 
 afterEach(async () => {
   vi.mocked(sendEmail).mockClear();
-  // Queue state must not leak between tests — same Redis-backed queue instance is reused
-  // across every test in this file (BullMQ Queue objects are meant to be long-lived, not
-  // recreated per test).
+  // Drains the shared Redis-backed queue so state doesn't leak between tests.
   await emailQueue.drain();
   await emailQueue.clean(0, 0, "completed");
   await emailQueue.clean(0, 0, "failed");
@@ -74,8 +72,7 @@ describe("email worker — end to end", () => {
 
     await enqueueEmail("retry@example.com", "Retry Subject", "<p>retry body</p>");
 
-    // First attempt fails, backoff delay is 3s — waiting past that confirms a second call
-    // actually happens rather than the job being abandoned after attempt 1.
+    // The first attempt fails and backoff is 3s, so waiting past it proves a retry happens rather than the job being abandoned.
     await vi.waitFor(
       () => {
         const calls = vi.mocked(sendEmail).mock.calls.filter(([to]) => to === "retry@example.com");

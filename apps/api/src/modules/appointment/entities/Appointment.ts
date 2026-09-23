@@ -17,9 +17,7 @@ export interface AppointmentData {
   facilityId: string;
   appointmentType: string;
   scheduledAt: Date;
-  // Optional (not just nullable) so existing test fixtures built before this field existed
-  // don't all need updating — every real row from the repository has it, since the column
-  // itself is nullable-but-present.
+  // Optional so fixtures predating the column still compile; real repository rows always have it.
   durationMinutes?: number | null;
   status: AppointmentStatus;
   meetingId: string | null;
@@ -30,6 +28,7 @@ export interface AppointmentData {
   deletedAt: Date | null;
 }
 
+// Appointment domain entity that enforces the status state machine through immutable transitions.
 export class Appointment {
   constructor(private data: AppointmentData) {}
 
@@ -43,30 +42,37 @@ export class Appointment {
   get status() { return this.data.status; }
   get paymentConfirmedAt() { return this.data.paymentConfirmedAt; }
 
+  // Returns a copy moved to CONFIRMED.
   confirm(): Appointment {
     return this.transitionTo("CONFIRMED");
   }
 
+  // Returns a copy moved to CHECKED_IN.
   checkIn(): Appointment {
     return this.transitionTo("CHECKED_IN");
   }
 
+  // Returns a copy moved to IN_PROGRESS.
   startProgress(): Appointment {
     return this.transitionTo("IN_PROGRESS");
   }
 
+  // Returns a copy moved to COMPLETED.
   complete(): Appointment {
     return this.transitionTo("COMPLETED");
   }
 
+  // Returns a copy moved to CANCELLED.
   cancel(): Appointment {
     return this.transitionTo("CANCELLED");
   }
 
+  // Returns a copy moved to MISSED.
   miss(): Appointment {
     return this.transitionTo("MISSED");
   }
 
+  // Validates the target status against VALID_TRANSITIONS and returns a new Appointment, or throws if the move is illegal.
   private transitionTo(target: AppointmentStatus): Appointment {
     const allowed = VALID_TRANSITIONS[this.data.status];
     if (!allowed.includes(target)) {
@@ -75,10 +81,12 @@ export class Appointment {
     return new Appointment({ ...this.data, status: target, updatedAt: new Date() });
   }
 
+  // Returns a copy stamped with the payment confirmation time.
   confirmPayment(timestamp: Date): Appointment {
     return new Appointment({ ...this.data, paymentConfirmedAt: timestamp, updatedAt: new Date() });
   }
 
+  // Serializes the entity for API responses, with dates as ISO strings.
   toJSON() {
     return {
       id: this.data.id,

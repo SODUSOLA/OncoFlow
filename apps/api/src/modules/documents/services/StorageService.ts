@@ -8,12 +8,10 @@ const R2_SECRET_ACCESS_KEY = process.env.R2_SECRET_ACCESS_KEY ?? "";
 const R2_BUCKET_NAME = process.env.R2_BUCKET_NAME ?? "oncoflow-uploads";
 const R2_JURISDICTION = (process.env.R2_JURISDICTION ?? "").trim().toLowerCase();
 
-// Cloudflare serves each R2 jurisdiction from its own endpoint host, and a bucket created in
-// one jurisdiction is completely invisible from another: every request for it comes back as
-// NoSuchBucket, which is indistinguishable from a misspelt bucket name. Building the endpoint
-// from an explicit jurisdiction is what makes that difference configurable instead of a puzzle.
+// Each R2 jurisdiction has its own endpoint and buckets are invisible across them (NoSuchBucket), so the jurisdiction is explicit and configurable.
 const R2_JURISDICTIONS = new Set(["", "eu", "fedramp"]);
 
+// Builds the R2 endpoint URL for the configured jurisdiction.
 function r2Endpoint(): string {
   if (!R2_JURISDICTIONS.has(R2_JURISDICTION)) {
     throw new Error(
@@ -24,6 +22,7 @@ function r2Endpoint(): string {
   return `https://${host}.r2.cloudflarestorage.com`;
 }
 
+// Creates the S3 client for R2, throwing if credentials are missing.
 function createS3Client(): S3Client {
   if (!R2_ACCOUNT_ID || !R2_ACCESS_KEY_ID || !R2_SECRET_ACCESS_KEY) {
     throw new Error("R2 credentials not configured. Set R2_ACCOUNT_ID, R2_ACCESS_KEY_ID, R2_SECRET_ACCESS_KEY");
@@ -40,6 +39,7 @@ function createS3Client(): S3Client {
 
 let s3Client: S3Client | null = null;
 
+// Returns the shared S3 client, creating it lazily.
 function getS3Client(): S3Client {
   if (!s3Client) {
     s3Client = createS3Client();
@@ -47,16 +47,19 @@ function getS3Client(): S3Client {
   return s3Client;
 }
 
+// Returns the SHA-256 hex hash of a buffer.
 export function computeFileHash(buffer: Buffer): string {
   return crypto.createHash("sha256").update(buffer).digest("hex");
 }
 
+// Builds the object key for a file from its patient, type and hash.
 export function buildStorageKey(patientId: string | null, mimeType: string, fileHash: string): string {
   const ext = mimeType.split("/").pop() ?? "bin";
   const prefix = patientId ? `patients/${patientId}` : "unattached";
   return `${prefix}/${fileHash.slice(0, 2)}/${fileHash.slice(2, 4)}/${fileHash}.${ext}`;
 }
 
+// Uploads a buffer to R2 under the storage key.
 export async function uploadToR2(
   buffer: Buffer,
   storageKey: string,
@@ -73,6 +76,7 @@ export async function uploadToR2(
   );
 }
 
+// Downloads an object's bytes from R2.
 export async function downloadFromR2(storageKey: string): Promise<Buffer> {
   const client = getS3Client();
   const res = await client.send(new GetObjectCommand({ Bucket: R2_BUCKET_NAME, Key: storageKey }));
@@ -80,17 +84,10 @@ export async function downloadFromR2(storageKey: string): Promise<Buffer> {
   return Buffer.from(bytes);
 }
 
-// Per docs/build-plan/10-security-gates.md Gate 6: "Never a public R2 bucket. Every file
-// access goes through a short-TTL signed URL, generated server-side after an object-level
-// authorization check." Five minutes is long enough to actually fetch the object (including a
-// slow connection) but short enough that a leaked or logged URL is worthless shortly after —
-// the authorization check is what runs again on every request, not the URL's own secrecy.
-//
-// getSignedUrl computes the signature locally from the client's own credentials; it makes no
-// request to R2 itself, so calling this before an authorization decision is settled costs a
-// few CPU cycles, not a network round trip or a real access to the object.
+// Gate 6: never a public bucket; access uses a 5-minute signed URL minted after authorization, and signing is local so it costs no network call.
 const SIGNED_URL_TTL_SECONDS = 300;
 
+// Returns a short-lived signed R2 URL for the storage key.
 export async function getSignedDownloadUrl(
   storageKey: string,
   opts: { downloadFileName?: string } = {},
@@ -99,8 +96,7 @@ export async function getSignedDownloadUrl(
   const command = new GetObjectCommand({
     Bucket: R2_BUCKET_NAME,
     Key: storageKey,
-    // Only set when the caller explicitly asked to download rather than view — forcing this
-    // unconditionally would make every image open a save dialog instead of rendering inline.
+    // Set only when downloading was requested, so images still render inline by default.
     ...(opts.downloadFileName
       ? { ResponseContentDisposition: `attachment; filename="${opts.downloadFileName}"` }
       : {}),
@@ -108,6 +104,7 @@ export async function getSignedDownloadUrl(
   return getSignedUrl(client, command, { expiresIn: SIGNED_URL_TTL_SECONDS });
 }
 
+// Clears the cached S3 client so tests can reconfigure it.
 export function resetS3ClientForTest(): void {
   s3Client = null;
 }

@@ -4,10 +4,12 @@ import { Eye, EyeOff } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useBalanceVisibility } from "@/lib/useBalanceVisibility";
 
+// Formats a kobo string as a naira amount.
 function koboToNaira(kobo: string) {
   return `₦${(Number(kobo) / 100).toLocaleString("en-NG", { minimumFractionDigits: 2 })}`;
 }
 
+// Wallet balance that can be hidden or revealed.
 export function BalanceAmount({ balanceKobo, className }: { balanceKobo: string | undefined; className?: string }) {
   const { revealed, toggle } = useBalanceVisibility();
 

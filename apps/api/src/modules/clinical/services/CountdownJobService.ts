@@ -3,7 +3,9 @@ import { CountdownCase } from "../entities/CountdownCase.js";
 
 const caseRepo = new CountdownCaseRepository();
 
+// Daily job that advances countdown cases.
 export class CountdownJobService {
+  // Decrements every active case's day and escalates those reaching zero.
   async decrementActiveCases() {
     const active = await caseRepo.findActive();
     const results: { id: string; day: number; escalated: boolean }[] = [];

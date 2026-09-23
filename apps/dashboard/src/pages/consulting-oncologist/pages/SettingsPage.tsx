@@ -8,11 +8,7 @@ import { useAuth } from "../../../lib/auth";
 import { cn } from "../../../lib/utils";
 import type { ConsultantAvailability } from "../../../lib/types";
 
-// Phase 7 — same pattern as Regional Admin's Settings phase (ONCOFLOW_REGIONAL_ADMIN_BUILD_GUIDE.md),
-// reusing its shared <Toggle> rather than rebuilding one, scoped to what's actually real on the
-// `user` table: email, facilityId, mfaEnabled/mfaSecret. No name/photo/specialization columns
-// exist for staff accounts, and no per-user preference storage exists at all — every disabled
-// control below says exactly why, same honesty rule as before.
+// Settings limited to what the user table has (email, facility, MFA); unsupported controls are disabled with a reason.
 export default function SettingsPage() {
   const { user, roles } = useAuth();
   const roleLabel = roles[0]?.roleDescription || "Consulting Oncologist";
@@ -148,6 +144,7 @@ export default function SettingsPage() {
   );
 }
 
+// Disabled preference toggle row with its explanation.
 function ToggleRow({ label, description, checked, disabled }: { label: string; description: string; checked: boolean; disabled?: boolean }) {
   return (
     <div className="flex items-center justify-between gap-4">
@@ -160,6 +157,7 @@ function ToggleRow({ label, description, checked, disabled }: { label: string; d
   );
 }
 
+// Card for enrolling and confirming MFA.
 function MfaCard() {
   const [step, setStep] = useState<"idle" | "enrolling" | "verifying">("idle");
   const [secret, setSecret] = useState<string | null>(null);
@@ -169,6 +167,7 @@ function MfaCard() {
   const [busy, setBusy] = useState(false);
   const [enabled, setEnabled] = useState(false);
 
+  // Starts MFA enrolment and shows the secret.
   async function startEnrolment() {
     setBusy(true);
     setError(null);
@@ -183,6 +182,7 @@ function MfaCard() {
     }
   }
 
+  // Confirms MFA by verifying the entered code.
   async function confirmCode() {
     setBusy(true);
     setError(null);
@@ -198,6 +198,7 @@ function MfaCard() {
     }
   }
 
+  // Copies the MFA secret to the clipboard.
   async function copySecret() {
     if (!secret) return;
     await navigator.clipboard.writeText(secret).catch(() => {});
@@ -256,9 +257,7 @@ function MfaCard() {
   );
 }
 
-// ONCOFLOW_SCHEDULING_AND_VIDEO_LIFECYCLE.md §1 — "the literal source of truth Regional Admin's
-// scheduler reads from." No separate "default days" concept: whatever's here for a future date
-// IS the default. Real create/list/delete against /availability, not a preview mock.
+// Real create, list and delete against /availability; whatever is listed for a future date is the default the scheduler reads.
 function AvailabilityCard({ consultantId }: { consultantId: string | null }) {
   const [blocks, setBlocks] = useState<ConsultantAvailability[]>([]);
   const [loading, setLoading] = useState(true);
@@ -278,6 +277,7 @@ function AvailabilityCard({ consultantId }: { consultantId: string | null }) {
     return () => { cancelled = true; };
   }, [consultantId]);
 
+  // Adds an availability block.
   async function addBlock() {
     if (!date || !start || !end) return;
     setSaving(true);
@@ -295,6 +295,7 @@ function AvailabilityCard({ consultantId }: { consultantId: string | null }) {
     }
   }
 
+  // Removes an availability block.
   async function removeBlock(id: string) {
     setBlocks((prev) => prev.filter((b) => b.id !== id));
     await api.del(`/availability/${id}`).catch(() => {});

@@ -9,6 +9,7 @@ export const metadata: Metadata = {
   description: "Join the team building OncoFlow's oncology care navigation platform.",
 };
 
+// Careers page.
 export default function CareersPage() {
   return (
     <Section tone="surface" className="py-16 md:py-24">

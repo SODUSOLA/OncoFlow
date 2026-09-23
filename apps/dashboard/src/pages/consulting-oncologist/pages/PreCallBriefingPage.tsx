@@ -8,14 +8,10 @@ import { cn } from "../../../lib/utils";
 import { useConsultantShell } from "../ConsultantLayout";
 import { type RegimenData, type VitalLatest, type CaseLockData, VITAL_LABELS, VITAL_UNITS } from "../lib/clinicalTypes";
 
-// Phase 4 — waiting-room state before the patient joins. The room already exists (provisioned
-// the same way the old VideoConsultStub did), and this screen's whole job is to prove "Waiting
-// for Patient" is real: it polls Daily's own presence API (GET /meetings/:id/presence) rather
-// than making the clinician guess when to click through to the Room. If DAILY_API_KEY isn't
-// configured in this environment (a known, already-flagged infra gap), that poll fails honestly
-// and this screen says so — it does not fabricate a "patient joined" transition.
+// Waiting room that polls Daily's presence API to prove "Waiting for Patient" is real, and reports honestly if Daily isn't configured.
 const PRESENCE_POLL_MS = 4000;
 
+// Pre-call briefing page shown before the patient joins.
 export default function PreCallBriefingPage() {
   const { appointmentId } = useParams<{ appointmentId: string }>();
   const navigate = useNavigate();
@@ -60,11 +56,7 @@ export default function PreCallBriefingPage() {
       setCaseLock(cl.caseLock);
     }).catch(() => {});
 
-    // ONCOFLOW_SCHEDULING_AND_VIDEO_LIFECYCLE.md §3: "Consultant's Join Call no longer
-    // provisions anything." Regional Admin's New Consultation flow (POST /consultations)
-    // provisions the room at scheduling time now — this screen only ever reads. A missing
-    // meeting here means this appointment predates that flow (or wasn't scheduled through it),
-    // which is a real, honest state to surface, not something to paper over by creating one.
+    // Only reads the meeting, since rooms are provisioned at scheduling; a missing one means the appointment predates that flow.
     (async () => {
       try {
         const existing = await api.get<{ meeting: Meeting }>(`/meetings?appointmentId=${appointmentId}`);
@@ -83,10 +75,7 @@ export default function PreCallBriefingPage() {
     return () => { cancelled = true; setShowEndConsult(false); setPatientContext(null); };
   }, [appointmentId, setPatientContext, setShowEndConsult]);
 
-  // The real "Waiting for Patient" mechanic — polls Daily's presence endpoint for this room and
-  // navigates into the live Room (Phase 5) the moment anyone else connects. Stops polling once
-  // it either succeeds in transitioning or hits a hard error (no point hammering a misconfigured
-  // endpoint every 4s).
+  // Polls presence and moves into the room once anyone connects, stopping on a hard error instead of hammering a misconfigured endpoint.
   useEffect(() => {
     if (!meeting || navigatedRef.current) return;
     let cancelled = false;
@@ -217,6 +206,7 @@ const VITAL_ICONS: Record<string, typeof Heart> = {
   BLOOD_PRESSURE_SYSTOLIC: Activity, BLOOD_PRESSURE_DIASTOLIC: Activity,
 };
 
+// Tile showing one vital reading.
 function VitalTile({ vital }: { vital: VitalLatest }) {
   const Icon = VITAL_ICONS[vital.vitalType] ?? Activity;
   return (

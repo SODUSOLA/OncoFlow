@@ -1,12 +1,10 @@
-// Post-call Summary's SLA clock (Phase 6) — measured from Meeting.endedAt, the one timestamp the
-// backend sets exactly once when Daily.co's webhook reports the call actually ended (see the
-// column's comment in apps/api/src/modules/messaging/schema.ts). Not derived from `updatedAt`,
-// which keeps moving on later mutations (transcript correction, sign-off).
+// Post-call summary SLA in hours, measured from Meeting.endedAt (set once by Daily's webhook), not updatedAt which keeps changing.
 export const POST_CONSULT_SLA_HOURS = 24;
 export const POST_CONSULT_WARNING_HOURS = 18;
 
 export type PostConsultSlaState = "not-applicable" | "on-track" | "warning" | "breached" | "complete";
 
+// Derives the post-consult SLA state from the call end time and whether the summary is finalized.
 export function derivePostConsultSlaState(endedAt: string | null, finalized: boolean): PostConsultSlaState {
   if (!endedAt) return "not-applicable";
   if (finalized) return "complete";
@@ -16,6 +14,7 @@ export function derivePostConsultSlaState(endedAt: string | null, finalized: boo
   return "on-track";
 }
 
+// Formats milliseconds as a countdown, or as overdue when negative.
 export function formatCountdown(ms: number): string {
   const overdue = ms <= 0;
   const abs = Math.abs(ms);
@@ -24,6 +23,7 @@ export function formatCountdown(ms: number): string {
   return `${overdue ? "-" : ""}${hh}:${mm}`;
 }
 
+// Returns the SLA deadline timestamp in milliseconds for a call end time.
 export function postConsultDeadlineMs(endedAt: string): number {
   return new Date(endedAt).getTime() + POST_CONSULT_SLA_HOURS * 3_600_000;
 }

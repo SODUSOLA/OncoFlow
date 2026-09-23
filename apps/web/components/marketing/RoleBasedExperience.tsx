@@ -3,6 +3,7 @@ import { Card } from "@/components/ui/Card";
 import { Reveal } from "@/components/ui/Reveal";
 import { roleDetails } from "@/lib/content/roles";
 
+// Role-based experience section.
 export function RoleBasedExperience() {
   return (
     <Section tone="surface">

@@ -1,9 +1,7 @@
 import "server-only";
 import { cookies } from "next/headers";
 
-// Same cookie apps/api sets on login (apps/api/src/lib/session-cookie.ts) — reading it directly
-// here (rather than through the browser-only /api rewrite in next.config.ts) is what lets Server
-// Components check auth before anything renders, no client-side loading flash.
+// Reads the same session cookie the API sets, so Server Components can check auth before rendering without a loading flash.
 const SESSION_COOKIE_NAME = "oncoflow_session";
 const API_ORIGIN = process.env.API_PROXY_TARGET ?? "http://localhost:3000";
 
@@ -26,6 +24,7 @@ export interface Session {
   roles: SessionRole[];
 }
 
+// Returns the current session from the cookie, or null.
 export async function getSession(): Promise<Session | null> {
   const cookieStore = await cookies();
   const sessionCookie = cookieStore.get(SESSION_COOKIE_NAME);

@@ -4,15 +4,13 @@ import { usePathname } from "next/navigation";
 import { Section } from "@/components/ui/Section";
 import { Button } from "@/components/ui/Button";
 
-// A 404 under a patient-app path (e.g. /messages before that screen existed) should send the
-// user back into the app, not out to the marketing site — this is the global fallback (App
-// Router only renders nested layouts for routes that actually match), so it has to infer intent
-// from the URL itself rather than relying on the (patient) layout being present.
+// Sends 404s under patient paths back into the app, inferring intent from the URL because this global fallback can't rely on the patient layout.
 const PATIENT_PATH_PREFIXES = [
   "/home", "/wallet", "/records", "/messages", "/profile", "/settings",
   "/notifications", "/appointments",
 ];
 
+// Not-found page.
 export default function NotFound() {
   const pathname = usePathname();
   const isPatientPath = PATIENT_PATH_PREFIXES.some((p) => pathname.startsWith(p));

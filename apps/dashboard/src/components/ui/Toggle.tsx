@@ -7,9 +7,7 @@ export interface ToggleProps {
   label?: string;
 }
 
-// A generic on/off switch — not Regional-Admin-specific, so any future phase/screen that needs
-// a toggle reuses this one rather than building its own (ONCOFLOW_REGIONAL_ADMIN_BUILD_GUIDE.md
-// Phase 8's acceptance criteria calls this out explicitly).
+// Generic on/off switch, shared by any screen that needs one rather than rebuilt per screen.
 export function Toggle({ checked, onChange, disabled, label }: ToggleProps) {
   return (
     <button

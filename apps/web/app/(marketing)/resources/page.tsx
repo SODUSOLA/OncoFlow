@@ -43,6 +43,7 @@ const resourceGroups = [
   },
 ];
 
+// Resources page.
 export default function ResourcesPage() {
   return (
     <>

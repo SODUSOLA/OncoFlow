@@ -6,6 +6,7 @@ import { db } from "../db/index.js";
 import { closeRedis, connectRedis } from "./redis.js";
 import { sql, eq } from "drizzle-orm";
 
+// Builds a minimal Express app guarded by requirePermission for the tests.
 function createTestApp() {
   const app = express();
   app.get("/test", (req, _res, next) => {
@@ -20,6 +21,7 @@ function createTestApp() {
   return app;
 }
 
+// Builds a minimal Express app guarded by requireRole for the tests.
 function createRoleTestApp() {
   const app = express();
   app.get("/role-test", (req, _res, next) => {

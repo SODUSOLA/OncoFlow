@@ -1,9 +1,7 @@
 import { db } from "../db/index.js";
 import { labAnalyteReference, vitalReferenceRange } from "../db/schema.js";
 
-// FBC/E-U-Cr panel, exactly the table given in ONCOFLOW_LAB_AND_METRICS_WORKFLOW.md's Track 1
-// extension. Only normal ranges were supplied — critical thresholds stay null (see the doc's
-// own "Open gap" note) until a clinical lead provides real cutoffs for auto-flagging.
+// FBC/E-U-Cr panel from the workflow doc; only normal ranges were supplied, so critical thresholds stay null until a clinical lead provides them.
 const LAB_ANALYTES = [
   { analyteCode: "WBC", displayName: "White Blood Cells", unit: "×10⁹/L", normalLow: "4.0", normalHigh: "11.0" },
   { analyteCode: "RBC", displayName: "Red Blood Cells", unit: "×10¹²/L", normalLow: "3.8", normalHigh: "5.8" },
@@ -22,12 +20,7 @@ const LAB_ANALYTES = [
   { analyteCode: "CREATININE", displayName: "Creatinine", unit: "µmol/L", normalLow: "44", normalHigh: "106" },
 ];
 
-// Standard adult vital-sign reference bands (widely-cited WHO/AHA norms) — the source docs
-// didn't supply explicit numbers for these, unlike the lab panel above, so same flag: standard
-// values, not confirmed against an internal clinical spec. WEIGHT_KG is deliberately not seeded
-// here — weight has no population-wide "normal band" the way BP/HR/temp/SpO2 do; its own
-// severity concept (per the Post-call Summary mockup) is a trend ("-1.2kg since last consult"),
-// not a fixed range, and that's a UI/query concern, not a reference-range row.
+// Standard adult vital bands (WHO/AHA), unconfirmed against an internal spec; weight is not seeded since its severity is a trend, not a range.
 const VITAL_RANGES = [
   { vitalType: "BLOOD_PRESSURE_SYSTOLIC" as const, low: "90", high: "120" },
   { vitalType: "BLOOD_PRESSURE_DIASTOLIC" as const, low: "60", high: "80" },
@@ -36,6 +29,7 @@ const VITAL_RANGES = [
   { vitalType: "SPO2_PERCENT" as const, low: "95", high: "100" },
 ];
 
+// Seeds lab analyte references and vital reference ranges once.
 export async function seedClinicalMetrics() {
   const existing = await db.select().from(labAnalyteReference).limit(1);
   if (existing.length > 0) {

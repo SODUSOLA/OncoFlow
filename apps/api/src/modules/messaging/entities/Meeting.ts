@@ -14,9 +14,7 @@ export interface MeetingData {
   provider: string;
   roomId: string;
   status: MeetingStatus;
-  // Optional (not just nullable) so existing test fixtures built before this field existed don't
-  // all need updating — every real row from the repository has it, since the column itself is
-  // nullable-but-present.
+  // Optional so fixtures predating the column still compile; real rows always have it.
   endedAt?: Date | null;
   dailyRoomExp?: Date | null;
   transcriptCorrectedAt: Date | null;
@@ -25,6 +23,7 @@ export interface MeetingData {
   transcriptSignedOffBy: string | null;
 }
 
+// Domain entity for a video meeting and its status and transcript sign-off stages.
 export class Meeting {
   constructor(private data: MeetingData) {}
 
@@ -40,6 +39,7 @@ export class Meeting {
   get transcriptSignedOffAt() { return this.data.transcriptSignedOffAt; }
   get transcriptSignedOffBy() { return this.data.transcriptSignedOffBy; }
 
+  // Returns a copy in the target status, or throws if the transition is illegal.
   transitionTo(target: MeetingStatus): Meeting {
     const allowed = VALID_TRANSITIONS[this.data.status];
     if (!allowed.includes(target)) {
@@ -48,11 +48,7 @@ export class Meeting {
     return new Meeting({ ...this.data, status: target });
   }
 
-  // F3.11 §4, stage 1 of 2 — a Scribe completing corrections on every segment. This alone does
-  // NOT make the transcript trusted/citable; it just closes out the Scribe's own work and makes
-  // the transcript ready for the assigned consultant's sign-off (stage 2, below). Can only
-  // happen once the call has actually ended, and only once — post-correction fixes go through
-  // Transcript.edit(), not a second call here.
+  // Stage 1 of transcript trust: the Scribe's corrections, allowed once after the call ends; later fixes go through Transcript.edit().
   recordTranscriptCorrection(correctedBy: string, at: Date): Meeting {
     if (this.data.status !== "ENDED") {
       throw new Error("Cannot record a transcript correction for a meeting that hasn't ended");
@@ -63,11 +59,7 @@ export class Meeting {
     return new Meeting({ ...this.data, transcriptCorrectedAt: at, transcriptCorrectedBy: correctedBy });
   }
 
-  // Stage 2 of 2 — the respective consultant (the appointment's assigned oncologist; enforced
-  // by the service layer, not here) reviewing and signing off. This is the actual gate for
-  // "eligible to be referenced from a ClinicalNote" (Sprint 4) — a corrected-but-unsigned
-  // transcript is not yet trusted. Same hard sequencing rule as ClinicalDecision's QA->Director
-  // stages (ADR-0012): stage 2 can never be set while stage 1 is still null, no bypass.
+  // Stage 2: the assigned consultant's sign-off, which makes a transcript citable and can't precede stage 1 (same rule as ADR-0012).
   signOffTranscript(signedOffBy: string, at: Date): Meeting {
     if (!this.data.transcriptCorrectedAt) {
       throw new Error("Cannot sign off a transcript before the Scribe has recorded corrections");
@@ -78,6 +70,7 @@ export class Meeting {
     return new Meeting({ ...this.data, transcriptSignedOffAt: at, transcriptSignedOffBy: signedOffBy });
   }
 
+  // Serializes the meeting for API responses.
   toJSON() {
     return {
       id: this.data.id,

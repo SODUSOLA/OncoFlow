@@ -1,6 +1,4 @@
-// [append-only] — the 5 fixed mandatory triage questions (Blueprint §2.3). Once completed,
-// a TriageChecklist is never edited; a correction would be a new Conversation's checklist,
-// not a mutation of this one.
+// Append-only: the five mandatory triage answers are never edited; a correction is a new conversation's checklist.
 export interface TriageChecklistData {
   id: string;
   conversationId: string;
@@ -13,6 +11,7 @@ export interface TriageChecklistData {
   canTalkWalkEat: string;
 }
 
+// Domain entity for a completed triage checklist.
 export class TriageChecklist {
   constructor(private data: TriageChecklistData) {}
 
@@ -26,6 +25,7 @@ export class TriageChecklist {
   get priorMeasures() { return this.data.priorMeasures; }
   get canTalkWalkEat() { return this.data.canTalkWalkEat; }
 
+  // Serializes the checklist for API responses.
   toJSON() {
     return {
       id: this.data.id,

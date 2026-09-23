@@ -3,6 +3,7 @@ import { RIBBON_PATH, RIBBON_VIEWBOX } from "@/components/brand/ribbon-paths";
 
 export const runtime = "edge";
 
+// Serves the 192px app icon.
 export async function GET() {
   const [minX, minY, w, h] = RIBBON_VIEWBOX.split(" ").map(Number);
   return new ImageResponse(

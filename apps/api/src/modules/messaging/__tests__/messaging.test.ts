@@ -49,9 +49,7 @@ beforeAll(async () => {
 });
 
 describe("MessagingService — SLA deadlines by conversation type", () => {
-  // createdAt is stamped by Postgres's own defaultNow(), slaDeadline is computed from a
-  // separate new Date() in the app a moment earlier — comparing their difference for exact
-  // millisecond equality is inherently flaky; assert within a generous tolerance instead.
+  // createdAt and slaDeadline come from different clocks, so exact equality would be flaky; assert within a tolerance.
   it("gives ADMIN_INQUIRY a 5-minute SLA", async () => {
     const convo = await messagingSvc.startConversation({ patientId: testPatientId, conversationType: "ADMIN_INQUIRY" }, testPatientUserId);
     const row = await conversationRepo.findById(convo.id);
@@ -60,9 +58,7 @@ describe("MessagingService — SLA deadlines by conversation type", () => {
   });
 
   it("gives MO_SIDE_EFFECT a 2-minute SLA", async () => {
-    // Self-service MO_SIDE_EFFECT now goes through the paid startSideEffectReport path
-    // (side-effect-report.test.ts) — this test is purely about the SLA window computed for
-    // the conversation type, so it uses the staff/free path (TEST_USER_ID bypass) to reach it.
+    // Uses the staff/free path because this test is only about the SLA window computed for the conversation type.
     const convo = await messagingSvc.startConversation(
       { patientId: testPatientId, conversationType: "MO_SIDE_EFFECT" }, process.env.TEST_USER_ID!,
     );
@@ -75,8 +71,7 @@ describe("MessagingService — SLA deadlines by conversation type", () => {
 describe("MessagingService — first_response_at (F3.1 DoD)", () => {
   it("does not stamp first_response_at for a SYSTEM message", async () => {
     const convo = await messagingSvc.startConversation({ patientId: testPatientId, conversationType: "ADMIN_INQUIRY" }, testPatientUserId);
-    // SUPER_ADMIN as caller (bypasses ownership/permission) — this test is about the SYSTEM
-    // message type's stamping behavior, not about who's authorized to post as staff.
+    // Posts as SUPER_ADMIN to bypass ownership, since this test covers SYSTEM message stamping, not authorization.
     await messagingSvc.postMessage({
       conversationId: convo.id, type: "SYSTEM", content: "We'll respond within 5 minutes.",
     }, process.env.TEST_USER_ID!);
@@ -186,8 +181,7 @@ describe("MessagingJobService — SLA breach sweep (F3.1 DoD)", () => {
       status: "OPEN",
       slaDeadline: new Date(Date.now() - 1000),
     });
-    // A completely different, already-OPEN conversation is what gets read — the sweep it
-    // triggers is global, not scoped to the conversation being viewed.
+    // Viewing reads a different, already-OPEN conversation because the sweep it triggers is global, not scoped to the viewed one.
     const viewed = await messagingSvc.startConversation(
       { patientId: testPatientId, conversationType: "ADMIN_INQUIRY" }, testPatientUserId,
     );
@@ -199,13 +193,7 @@ describe("MessagingJobService — SLA breach sweep (F3.1 DoD)", () => {
   });
 });
 
-// A patient could post into their own conversation with senderId set to any user id — the
-// service authorized the caller against the conversation but then persisted the body's
-// senderId verbatim. Storing clinical advice under a doctor's name is the worst case, and it
-// was reachable over plain HTTP by anyone who could post at all.
-// The conversation list feeds a card that previews the thread, so it has to carry the latest
-// message. Previously the list returned conversation rows only, and every card could show was
-// the conversation type — making two threads of the same type indistinguishable.
+// Regressions: a client-supplied senderId was persisted verbatim (impersonation), and the conversation list lacked the latest message its preview cards need.
 describe("MessagingService — conversation list previews", () => {
   it("attaches the most recent message to each conversation", async () => {
     const convo = await messagingSvc.startConversation(
@@ -235,8 +223,7 @@ describe("MessagingService — conversation list previews", () => {
     expect(list.find((c) => c.id === convo.id)!.lastMessage).toBeNull();
   });
 
-  // One query for the whole list, not one per conversation — the preview must not turn the
-  // list endpoint into an N+1 that grows with the number of threads.
+  // Previews are resolved in one query for the whole list so the endpoint doesn't become an N+1.
   it("resolves previews for several conversations at once", async () => {
     const a = await messagingSvc.startConversation(
       { patientId: testPatientId, conversationType: "ADMIN_INQUIRY" }, testPatientUserId,
@@ -274,8 +261,7 @@ describe("MessagingService — message attribution", () => {
       { patientId: testPatientId, conversationType: "ADMIN_INQUIRY" }, testPatientUserId,
     );
 
-    // Schema-level: a client attempting to choose the sender fails loudly rather than having
-    // the field quietly dropped, so an old client cannot appear to work while being ignored.
+    // Schema-level rejection makes a client that tries to choose the sender fail loudly instead of being quietly ignored.
     const res = await request(app)
       .post(`/conversations/${convo.id}/messages`)
       .send({ senderId: testStaffId, type: "TEXT", content: "Forged" });

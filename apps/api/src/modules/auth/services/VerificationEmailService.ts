@@ -1,9 +1,6 @@
 import { enqueueEmail } from "../../../lib/email-queue.js";
 
-// Per-service, call-time env read (Resend/Monnify/R2 pattern) — but this one isn't a vendor
-// credential, it's "where does the patient-facing web app live" so the fallback link in the
-// email actually resolves. Same fail-loudly-in-production shape as config.ts's CORS_ORIGIN,
-// since a silently wrong default here would mail out a broken link, not just error at boot.
+// Resolves where the patient web app lives at call time, failing loudly in production so emails don't carry a broken link.
 function resolvePatientWebOrigin(): string {
   const origin = process.env.PATIENT_WEB_ORIGIN;
   if (origin) return origin;
@@ -13,9 +10,7 @@ function resolvePatientWebOrigin(): string {
   return "http://localhost:5173";
 }
 
-// Request #4: a 6-digit code entered on the same page, not a link to a separate one — the code
-// itself is the primary content. The link is kept as a harmless fallback (verify-email's route
-// still accepts a code via ?token=, see auth/routes.ts) for a patient who'd rather tap than type.
+// Emails the 6-digit code as the primary content, with a link kept as a fallback for people who'd rather tap than type.
 export async function sendVerificationEmail(email: string, code: string): Promise<void> {
   const link = `${resolvePatientWebOrigin()}/verify-email?token=${encodeURIComponent(code)}`;
 

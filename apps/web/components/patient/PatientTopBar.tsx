@@ -7,6 +7,7 @@ import { Bell, Headphones } from "lucide-react";
 import { api } from "@/lib/api";
 import type { AppNotification } from "@/lib/types";
 
+// Top bar for the patient app with the notification bell.
 export function PatientTopBar() {
   const router = useRouter();
   const [unreadCount, setUnreadCount] = useState(0);

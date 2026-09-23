@@ -2,15 +2,13 @@ import type { Request, Response } from "express";
 import type { AuthenticatedRequest } from "../../lib/rbac.js";
 import { AuthService } from "./service.js";
 import { SessionRepository, UserRepository } from "./repository.js";
-import { SESSION_COOKIE_NAME, getSessionCookieOptions } from "../../lib/session-cookie.js";
+import { SESSION_COOKIE_NAME, getSessionCookieOptions, getClearSessionCookieOptions } from "../../lib/session-cookie.js";
 
 const auth = new AuthService();
 const sessionRepo = new SessionRepository();
 const userRepo = new UserRepository();
 
-// Regional Admin's New Consultation consultant picker — scoped by requirePermission's
-// appointment:create in routes.ts, not a new broad staff-directory permission, since this
-// endpoint exists specifically to populate that flow's picker.
+// Consultant picker for Regional Admin's New Consultation flow, gated by appointment:create rather than a broad staff-directory permission.
 export async function listConsultantsHandler(req: Request, res: Response) {
   try {
     const facilityId = typeof req.query.facilityId === "string" ? req.query.facilityId : undefined;
@@ -21,6 +19,7 @@ export async function listConsultantsHandler(req: Request, res: Response) {
   }
 }
 
+// Registers a new account and starts email verification.
 export async function registerHandler(req: Request, res: Response) {
   try {
     const { email, password, device, fullName, dob, gender, phone, preferredFacilityId } = req.body;
@@ -39,6 +38,7 @@ export async function registerHandler(req: Request, res: Response) {
   }
 }
 
+// Verifies an email with the 6-digit code.
 export async function verifyEmailHandler(req: Request, res: Response) {
   try {
     const { token } = req.body;
@@ -54,6 +54,7 @@ export async function verifyEmailHandler(req: Request, res: Response) {
   }
 }
 
+// Re-sends the verification email for the caller's own account.
 export async function resendVerificationHandler(req: Request, res: Response) {
   try {
     const userId = (req as AuthenticatedRequest).userId;
@@ -66,6 +67,7 @@ export async function resendVerificationHandler(req: Request, res: Response) {
   }
 }
 
+// Starts a password reset for the given email.
 export async function forgotPasswordHandler(req: Request, res: Response) {
   try {
     const { email } = req.body;
@@ -74,17 +76,15 @@ export async function forgotPasswordHandler(req: Request, res: Response) {
       return;
     }
     await auth.requestPasswordReset(email);
-    // Always 200 with the same body, whether or not the account exists — see
-    // AuthService.requestPasswordReset's own comment on why.
+    // Always 200 with the same body whether or not the account exists, to avoid account enumeration.
     res.json({ sent: true });
   } catch {
-    // Deliberately still doesn't leak anything more specific than a generic failure — a 500
-    // here shouldn't be distinguishable from a "no such account" success by response shape,
-    // only by status code, and status alone doesn't confirm account existence.
+    // The generic 500 body reveals nothing that distinguishes it from the "no such account" success.
     res.status(500).json({ error: "Internal server error" });
   }
 }
 
+// Completes a password reset with the emailed token.
 export async function resetPasswordHandler(req: Request, res: Response) {
   try {
     const { token, password } = req.body;
@@ -100,6 +100,7 @@ export async function resetPasswordHandler(req: Request, res: Response) {
   }
 }
 
+// Logs in with email and password and sets the session cookie.
 export async function loginHandler(req: Request, res: Response) {
   try {
     const { email, password, device } = req.body;
@@ -122,6 +123,7 @@ export async function loginHandler(req: Request, res: Response) {
   }
 }
 
+// Revokes the current session and clears the cookie.
 export async function logoutHandler(req: Request, res: Response) {
   try {
     const cookieSessionId = typeof req.cookies?.[SESSION_COOKIE_NAME] === "string"
@@ -132,13 +134,14 @@ export async function logoutHandler(req: Request, res: Response) {
       return;
     }
     await auth.logout(cookieSessionId);
-    res.clearCookie(SESSION_COOKIE_NAME, getSessionCookieOptions());
+    res.clearCookie(SESSION_COOKIE_NAME, getClearSessionCookieOptions());
     res.json({ ok: true });
   } catch {
     res.status(500).json({ error: "Internal server error" });
   }
 }
 
+// Starts MFA enrolment by generating a secret for the caller.
 export async function enrollMfaHandler(req: Request, res: Response) {
   try {
     const userId = (req as AuthenticatedRequest).userId;
@@ -150,6 +153,7 @@ export async function enrollMfaHandler(req: Request, res: Response) {
   }
 }
 
+// Verifies a TOTP code and marks the session as MFA-verified.
 export async function verifyMfaHandler(req: Request, res: Response) {
   try {
     const { code } = req.body;
@@ -168,6 +172,7 @@ export async function verifyMfaHandler(req: Request, res: Response) {
   }
 }
 
+// Returns the caller's own profile with roles and permissions.
 export async function profileHandler(req: Request, res: Response) {
   try {
     const userId = (req as Request & { userId?: string }).userId;
@@ -205,6 +210,7 @@ export async function listSessionsHandler(req: Request, res: Response) {
   }
 }
 
+// Revokes one of the caller's own sessions.
 export async function revokeSessionHandler(req: Request, res: Response) {
   try {
     const userId = (req as AuthenticatedRequest).userId;

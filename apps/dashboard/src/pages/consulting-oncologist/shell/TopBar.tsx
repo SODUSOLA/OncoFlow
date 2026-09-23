@@ -8,10 +8,7 @@ interface TopBarProps {
   profileInitials: string;
 }
 
-// Phase 1's TopBar — search input is intentionally static for now (real, controlled, but not
-// wired to anything): there's no defined cross-page search destination yet in the build guide,
-// and a text box that silently does nothing on submit would be worse than one that visibly
-// doesn't try. "Patient Folder" and "End Consult" are the two real, context-driven actions.
+// Search is static since no destination is defined, while Patient Folder and End Consult are the real context-driven actions.
 export function TopBar({ patientFolderTo, showEndConsult, onEndConsult, profileInitials }: TopBarProps) {
   return (
     <header className="flex h-16 shrink-0 items-center justify-between gap-4 border-b border-admin-border bg-white px-8">

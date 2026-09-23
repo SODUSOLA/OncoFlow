@@ -12,18 +12,7 @@ import { TopAppBar } from "./shell/TopAppBar";
 import { AppShell } from "./shell/AppShell";
 import { NewConsultationModal } from "./components/NewConsultationModal";
 
-// Regional Admin's own shell — rebuilt per ONCOFLOW_REGIONAL_ADMIN_BUILD_GUIDE.md Phase 1 against
-// ONCOFLOW_DESIGN_SYSTEM.md's locked Figma tokens, replacing the earlier ad hoc restyle. The
-// presentational pieces (Sidebar/TopAppBar/AppShell, under ./shell) are the reusable components
-// the guide calls for; this file stays the "smart" layer — routes, data, and the pages behind
-// each label are unchanged except where noted.
-//
-// Two items intentionally do NOT appear here: "Clinical Chat" and "+ New Consultation", even
-// though the new build guide specs a "New Consultation" sidebar CTA. Clinical Chat opens a
-// specific patient's vitals/allergies/labs — exactly what NOT_PERMITTED_ITEMS below exists to
-// wall off, and no role but SUPER_ADMIN currently holds file:read at all. Reconfirmed with the
-// user when the new docs were introduced: keep it dropped rather than build a button with
-// nowhere to go.
+// Regional Admin shell built on the locked design tokens; Clinical Chat and New Consultation are omitted since Clinical Chat needs file:read that only SUPER_ADMIN holds.
 const NAV_ITEMS = [
   { to: "/dashboard/regional-admin", label: "Dashboard", icon: LayoutGrid, end: true, title: "Region Overview" },
   { to: "/dashboard/regional-admin/scheduling", label: "Appointment Grid", icon: CalendarRange, end: false, title: "Scheduling & Clinical Allocation" },
@@ -34,29 +23,24 @@ const NAV_ITEMS = [
   { to: "/dashboard/regional-admin/inquiry", label: "Inquiry Chat", icon: MessageSquare, end: false, title: "Inquiry Chat Inbox" },
 ] as const;
 
-// Present in every mockup's sidebar, but neither has a dedicated screen spec or backing data
-// model (no clinical-guidelines content table, no reports/analytics endpoint). Real, clickable
-// nav entries that land on the existing ComingSoon treatment — not fabricated content standing
-// in for a page that doesn't exist yet.
+// Reports and Clinical Guidelines appear in every mockup but have no spec or data, so they land on ComingSoon.
 const COMING_SOON_ITEMS = [
   { to: "/dashboard/regional-admin/guidelines", label: "Clinical Guidelines", icon: BookOpen },
   { to: "/dashboard/regional-admin/reports", label: "Reports", icon: FileBarChart },
 ] as const;
 
-// RBAC walls that are correctly zero-interaction for this role — shown, not hidden, so the
-// boundary reads as intentional rather than an accidental missing feature.
+// Zero-interaction RBAC walls, shown rather than hidden so the boundary reads as intentional.
 const NOT_PERMITTED_ITEMS = ["Clinical Records", "Physical Case Board", "Payouts & Disbursement"];
 
 const SIDEBAR_COLLAPSED_KEY = "ra-sidebar-collapsed";
 
-// Reached from the top bar (bell / profile), not the sidebar — deliberately absent from
-// NAV_ITEMS/COMING_SOON_ITEMS, so they need their own title rather than falling through to
-// whatever NAV_ITEMS[0] happens to be.
+// Titles for pages reached from the top bar, which aren't in the sidebar lists.
 const TOPBAR_TITLES: Record<string, string> = {
   "/dashboard/regional-admin/notifications": "Notification Center",
   "/dashboard/regional-admin/settings": "Configuration",
 };
 
+// Regional Admin shell with sidebar, top bar and route outlet.
 export function RegionalAdminLayout() {
   const { user, roles, logout } = useAuth();
   const location = useLocation();
@@ -67,6 +51,7 @@ export function RegionalAdminLayout() {
   const [search, setSearch] = useState("");
   const [newConsultationOpen, setNewConsultationOpen] = useState(false);
 
+  // Toggles the sidebar collapsed state.
   function toggleCollapsed() {
     setCollapsed((prev) => {
       const next = !prev;
@@ -75,6 +60,7 @@ export function RegionalAdminLayout() {
     });
   }
 
+  // Submits the top-bar search.
   function submitSearch(e: React.FormEvent) {
     e.preventDefault();
     const q = search.trim();

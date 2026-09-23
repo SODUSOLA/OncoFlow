@@ -6,13 +6,9 @@ import { notificationService } from "../../notification/index.js";
 const conversationRepo = new ConversationRepository();
 const transcriptionAssignmentRepo = new TranscriptionAssignmentRepository();
 
+// Background sweeps for SLA breaches.
 export class MessagingJobService {
-  // Previously run only on an external schedule that was never wired up (no queue infra —
-  // same gap CountdownJobService's decrementActiveCases() had). Now invoked lazily as a
-  // side effect of MessagingService.listMessages (same pattern as markReadForViewer/
-  // markDeliveredForViewer there) — this sweeps every open, unanswered, overdue conversation
-  // globally on any single thread read, not just the one being viewed. Slightly redundant
-  // per-call, but needs zero new scheduling infrastructure.
+  // Flips every overdue open conversation to breached; run lazily on any thread read since there's no scheduler.
   async sweepSlaBreaches() {
     const overdue = await conversationRepo.findOverdueUnbreached();
     const results: { id: string; breached: boolean }[] = [];
@@ -34,11 +30,7 @@ export class MessagingJobService {
     return results;
   }
 
-  // F3.11 §5 — mirrors sweepSlaBreaches() above. Unlike the MO/Admin SLA breach gaps flagged
-  // in the trigger-web doc, this one has a defined recipient from the start per the role
-  // definition: whoever manages the scribe pool — no dedicated "scribe lead" role exists yet,
-  // so that's SUPER_ADMIN for now. Actual notification delivery is the same pending hook noted
-  // on TranscriptionAssignmentService.finalize() (Notification module still an empty scaffold).
+  // Mirrors sweepSlaBreaches for transcription; the recipient is SUPER_ADMIN until a scribe-lead role exists, and delivery is still a pending hook.
   async sweepTranscriptionSlaBreaches() {
     const overdue = await transcriptionAssignmentRepo.findOverdueUnbreached();
     const results: { id: string; breached: boolean }[] = [];

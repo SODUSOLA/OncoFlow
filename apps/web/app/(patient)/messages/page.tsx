@@ -15,6 +15,7 @@ import { currentSideEffectFeeKobo, isNightRateNow } from "@/lib/sideEffectPricin
 import { getSocket } from "@/lib/socket";
 import type { Conversation, Message, Invoice, ConversationFeedback } from "@/lib/types";
 
+// Formats a kobo string as a naira amount.
 function koboToNaira(kobo: string) {
   return `₦${(Number(kobo) / 100).toLocaleString("en-NG", { minimumFractionDigits: 2 })}`;
 }
@@ -29,17 +30,12 @@ const TYPE_ICONS: Record<Conversation["conversationType"], typeof MessageSquare>
   MO_SIDE_EFFECT: Activity,
 };
 
-// Appending is idempotent by message id because the same message arrives twice by design: once
-// as the POST response and once as the socket broadcast, and either can win the race. Only the
-// socket path guarded against this, so when the broadcast landed before the POST resolved the
-// message was rendered twice and React warned about duplicate keys.
+// Idempotent by message id, since the same message arrives via both the POST response and the socket, and either can win the race.
 function appendMessage(prev: Message[], msg: Message): Message[] {
   return prev.some((m) => m.id === msg.id) ? prev : [...prev, msg];
 }
 
-// A conversation card shows the thread's latest message, so the patient can tell threads apart
-// without opening each one. IMAGE and VOICE messages carry a file id in `content` — never
-// printable — so they get a label instead.
+// Previews a thread's latest message, using a label for IMAGE and VOICE since their content is a file id.
 function lastMessagePreview(c: Conversation, ownUserId: string | null | undefined): string {
   const m = c.lastMessage;
   if (!m) return "No messages yet";
@@ -49,13 +45,11 @@ function lastMessagePreview(c: Conversation, ownUserId: string | null | undefine
       : m.type === "VOICE" ? "Voice note"
         : m.content;
 
-  // "You:" mirrors the convention every messaging app uses; a message from the care team is
-  // left unprefixed rather than guessing at a role the list response does not carry.
+  // "You:" prefixes the patient's own message; care-team messages are left plain rather than guessing a role.
   return ownUserId && m.senderId === ownUserId ? `You: ${body}` : body;
 }
 
-// Short, relative, and stable enough for a list: minutes within the hour, hours within the day,
-// then the calendar date. Long-form timestamps belong in the thread, not the card.
+// Short relative timestamp for a list card; long-form times belong in the thread.
 function shortTimestamp(iso: string): string {
   const then = new Date(iso);
   const minutes = Math.floor((Date.now() - then.getTime()) / 60_000);
@@ -66,6 +60,7 @@ function shortTimestamp(iso: string): string {
   return then.toLocaleDateString(undefined, { day: "numeric", month: "short" });
 }
 
+// Reads a blob as a base64 string.
 function blobToBase64(blob: Blob): Promise<string> {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
@@ -75,8 +70,7 @@ function blobToBase64(blob: Blob): Promise<string> {
   });
 }
 
-// WhatsApp-style: a conversation that's been replied to just shows a read-style tick, not a
-// text badge — "Answered" as a label was the generic status the real per-message ticks replace.
+// Shows a read-style tick once answered instead of a text badge.
 function SlaBadge({ conversation }: { conversation: Conversation }) {
   if (conversation.status === "CLOSED") return <Badge>Closed</Badge>;
   if (conversation.slaBreached && !conversation.firstResponseAt) return <Badge variant="critical">SLA Breached</Badge>;
@@ -90,6 +84,7 @@ const STATUS_TITLE: Record<Message["status"], string> = {
   READ: "Read",
 };
 
+// Delivery tick for a message: single for sent, double for delivered or read.
 function DeliveryStatus({ status }: { status: Message["status"] }) {
   const Icon = status === "SENT" ? Check : CheckCheck;
   return (
@@ -103,18 +98,13 @@ function DeliveryStatus({ status }: { status: Message["status"] }) {
   );
 }
 
-// `content` is the attached file's id for IMAGE/VOICE messages (never printable text — see
-// lastMessagePreview above). GET /api/files/:id/content redirects to a short-TTL signed R2 URL
-// after checking the caller actually owns or is staff on this conversation's patient, so a
-// same-origin <img>/<audio> tag can point straight at it — no separate fetch-and-blob step, the
-// browser's normal cookie-bearing request handles the auth.
+// Renders IMAGE and VOICE attachments from the same-origin file content route, which checks access then redirects to a signed R2 URL.
 function MessageAttachment({ type, fileId }: { type: "IMAGE" | "VOICE"; fileId: string }) {
   const [failed, setFailed] = useState(false);
   const src = `/api/files/${fileId}/content`;
 
   if (type === "VOICE") {
-    // <audio> shows its own disabled/broken control on error — no separate fallback needed
-    // the way a broken <img> needs one.
+    // <audio> shows its own error control, so it needs no separate fallback.
     return <audio controls src={src} className="h-9 max-w-[220px]" />;
   }
 
@@ -138,6 +128,7 @@ function MessageAttachment({ type, fileId }: { type: "IMAGE" | "VOICE"; fileId: 
   );
 }
 
+// Messages page wrapper.
 export default function MessagesPage() {
   return (
     <Suspense fallback={<p className="p-6 text-center text-sm text-neutral-400">Loading messages…</p>}>
@@ -146,6 +137,7 @@ export default function MessagesPage() {
   );
 }
 
+// Messages page with the conversation list, thread and side-effect report flow.
 function MessagesPageInner() {
   const { patient, wallet, loading: patientLoading, notLinked } = useMyPatient();
   const searchParams = useSearchParams();
@@ -163,9 +155,7 @@ function MessagesPageInner() {
   const chunksRef = useRef<Blob[]>([]);
   const autoOpenedRef = useRef(false);
 
-  // Side-effect reports carry a real per-report fee, paid upfront — this gate sits in front of
-  // the thread view whenever the patient has no existing OPEN MO_SIDE_EFFECT conversation yet.
-  // A CLOSED one doesn't count as "existing" — the encounter is over, a new report is a new fee.
+  // Gates a new side-effect report behind the fee intake unless the patient already has an OPEN one, since a CLOSED one means a new fee.
   const [sideEffectGate, setSideEffectGate] = useState<"form" | "insufficient" | null>(null);
   const [reportDraft, setReportDraft] = useState("");
   const [feeInvoice, setFeeInvoice] = useState<Invoice | null>(null);
@@ -196,9 +186,7 @@ function MessagesPageInner() {
     })();
   }, [patient, loadConversations]);
 
-  // Quick-action deep link from the Help button ("/messages?type=MO_SIDE_EFFECT") — jump
-  // straight into the patient's side-effect conversation if they already have one open
-  // (follow-ups are free), otherwise show the paid report intake instead of creating one.
+  // Handles the Help button deep link: opens an existing side-effect conversation, otherwise shows the paid intake.
   useEffect(() => {
     if (loading || autoOpenedRef.current || !patient) return;
     if (searchParams.get("type") !== "MO_SIDE_EFFECT") return;
@@ -231,14 +219,13 @@ function MessagesPageInner() {
       .finally(() => setFeedbackLoaded(true));
   }, [selected]);
 
-  // Live delivery for the open thread — join the conversation's room, append anything the
-  // server pushes for it, leave on cleanup so a socket doesn't accumulate stale room
-  // memberships as the patient switches between conversations.
+  // Joins the open conversation's room for live messages and leaves on cleanup to avoid stale memberships.
   useEffect(() => {
     if (!selected) return;
     const socket = getSocket();
     socket.emit("conversation:join", selected.id);
 
+    // Appends a pushed socket message if it belongs to the open conversation.
     function onNewMessage(msg: Message & { conversationId: string }) {
       if (msg.conversationId !== selected!.id) return;
       setMessages((prev) => appendMessage(prev, msg));
@@ -251,6 +238,7 @@ function MessagesPageInner() {
     };
   }, [selected]);
 
+  // Opens a conversation and loads its messages.
   async function openConversation(conversation: Conversation) {
     setSelected(conversation);
     setError(null);
@@ -266,13 +254,12 @@ function MessagesPageInner() {
     }
   }
 
+  // Starts a new conversation of the chosen type.
   async function startConversation() {
     if (!patient) return;
     setError(null);
 
-    // Side-effect reports aren't free to self-start — reuse an existing open one if there is
-    // one, otherwise show the paid intake instead of calling the plain create endpoint (which
-    // now rejects patient-initiated MO_SIDE_EFFECT conversations).
+    // Side-effect reports aren't free to self-start, so this reuses an open one or shows the paid intake instead of the plain create endpoint.
     if (newType === "MO_SIDE_EFFECT") {
       const existing = conversations.find((c) => c.conversationType === "MO_SIDE_EFFECT" && c.status === "OPEN");
       if (existing) {
@@ -295,6 +282,7 @@ function MessagesPageInner() {
     }
   }
 
+  // Submits the paid side-effect report.
   async function submitSideEffectReport() {
     if (!patient || !reportDraft.trim()) return;
     setSending(true);
@@ -322,6 +310,7 @@ function MessagesPageInner() {
     }
   }
 
+  // Ends the open side-effect report.
   async function endReport() {
     if (!selected) return;
     setSending(true);
@@ -337,6 +326,7 @@ function MessagesPageInner() {
     }
   }
 
+  // Submits the patient's rating and review.
   async function submitFeedback() {
     if (!selected || myRating < 1) return;
     setSubmittingFeedback(true);
@@ -354,13 +344,13 @@ function MessagesPageInner() {
     }
   }
 
+  // Sends the typed message.
   async function sendMessage() {
     if (!selected || !newMessage.trim() || !patient?.userId) return;
     setSending(true);
     setError(null);
     try {
-      // No senderId: the server attributes the message to the authenticated session. Sending
-      // one was how a message could be stored under another user's name.
+      // No senderId: the server attributes the message to the session, since sending one allowed impersonation.
       const res = await api.post<{ message: Message }>(`/conversations/${selected.id}/messages`, {
         type: "TEXT",
         content: newMessage.trim(),
@@ -375,6 +365,7 @@ function MessagesPageInner() {
     }
   }
 
+  // Uploads an image or voice attachment and posts it as a message.
   async function sendAttachment(blob: Blob, type: "IMAGE" | "VOICE") {
     if (!selected || !patient?.userId) return;
     setSending(true);
@@ -398,12 +389,14 @@ function MessagesPageInner() {
     }
   }
 
+  // Handles picking an image to send.
   function handleImagePick(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
     e.target.value = "";
     if (file) sendAttachment(file, "IMAGE");
   }
 
+  // Starts or stops voice recording.
   async function toggleRecording() {
     if (recording) {
       mediaRecorderRef.current?.stop();
@@ -442,6 +435,7 @@ function MessagesPageInner() {
     );
   }
 
+  // Closes the side-effect gate.
   function closeSideEffectGate() {
     setSideEffectGate(null);
     setReportDraft("");
@@ -537,8 +531,7 @@ function MessagesPageInner() {
     );
   }
 
-  // Mobile-first single-column: either the conversation list, or an open thread — not both
-  // side by side (that's the apps/dashboard staff-desktop layout, not appropriate at phone width).
+  // Mobile-first: either the list or an open thread, never side by side like the staff desktop layout.
   if (selected) {
     const showFeedback = selected.conversationType === "MO_SIDE_EFFECT" && selected.status === "CLOSED" && feedbackLoaded;
     const myFeedback = feedbackList.find((f) => f.raterId === patient.userId);

@@ -3,6 +3,7 @@ import { Section, SectionHeading } from "@/components/ui/Section";
 import { Reveal } from "@/components/ui/Reveal";
 import { comparisonRows } from "@/lib/content/metrics";
 
+// Why-choose-us section.
 export function WhyChoose() {
   return (
     <Section tone="surface">

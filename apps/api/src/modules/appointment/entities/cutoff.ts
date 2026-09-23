@@ -1,3 +1,4 @@
+// True when the timestamp falls at or after 2PM in Africa/Lagos.
 export function isAfter2pmNigeria(timestamp: Date): boolean {
   const lagos = new Intl.DateTimeFormat("en-CA", {
     timeZone: "Africa/Lagos",
@@ -8,6 +9,7 @@ export function isAfter2pmNigeria(timestamp: Date): boolean {
   return hour >= 14;
 }
 
+// Whether an appointment can still be confirmed today: only on its own scheduled Lagos calendar day.
 export function canConfirmOnDay(scheduledAt: Date, now: Date): { allowed: boolean; reason?: string } {
   const sched = new Intl.DateTimeFormat("en-CA", {
     timeZone: "Africa/Lagos",

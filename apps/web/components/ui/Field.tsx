@@ -23,6 +23,7 @@ interface FieldWrapperProps {
   children: React.ReactNode;
 }
 
+// Wrapper adding a label, hint and error to a form field.
 export function FieldWrapper({ label, htmlFor, error, hint, required, children }: FieldWrapperProps) {
   return (
     <div className="flex flex-col gap-1.5">

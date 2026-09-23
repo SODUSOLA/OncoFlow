@@ -15,6 +15,7 @@ import { FAQSection } from "@/components/marketing/FAQSection";
 import { ResourcesPreview } from "@/components/marketing/ResourcesPreview";
 import { EnterpriseCTA } from "@/components/marketing/EnterpriseCTA";
 
+// Marketing home page composed of the landing sections.
 export default function Home() {
   return (
     <>

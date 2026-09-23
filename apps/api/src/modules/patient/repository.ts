@@ -4,7 +4,9 @@ import {
   patient, patientAddress, emergencyContact, wallet, patientTimeline, patientRegistrationRequest,
 } from "./schema.js";
 
+// Data access for patients.
 export class PatientRepository {
+  // Finds a non-deleted patient by id.
   async findById(id: string) {
     const row = await db
       .select()
@@ -14,6 +16,7 @@ export class PatientRepository {
     return row[0] ?? null;
   }
 
+  // Finds a patient by their Unique Patient ID.
   async findByUniqueId(uniquePatientId: string) {
     const row = await db
       .select()
@@ -23,8 +26,7 @@ export class PatientRepository {
     return row[0] ?? null;
   }
 
-  // FR-01: reject a second active ID for a matched patient (name+DOB+facility). Case-insensitive
-  // on name since "Jane"/"jane" typed at two different registration times is still one person.
+  // FR-01: finds an active patient with the same name, DOB and facility, matching names case-insensitively.
   async findPotentialDuplicate(firstName: string, lastName: string, dob: string, facilityId: string) {
     const row = await db
       .select()
@@ -40,6 +42,7 @@ export class PatientRepository {
     return row[0] ?? null;
   }
 
+  // Finds the patient linked to a user account.
   async findByUserId(userId: string) {
     const row = await db
       .select()
@@ -49,6 +52,7 @@ export class PatientRepository {
     return row[0] ?? null;
   }
 
+  // Lists a facility's patients.
   async findByFacility(facilityId: string) {
     return db
       .select()
@@ -56,8 +60,7 @@ export class PatientRepository {
       .where(and(eq(patient.facilityId, facilityId), eq(patient.isDeleted, false)));
   }
 
-  // Takes the authorization-narrowed set from lib/facility-scope.ts. One query rather than a
-  // findByFacility per facility, which is what the scoped search originally fanned out into.
+  // Takes the authorization-narrowed facility set and fetches in one query instead of one per facility.
   async findByFacilityIds(facilityIds: string[]) {
     return db
       .select()
@@ -65,18 +68,18 @@ export class PatientRepository {
       .where(and(inArray(patient.facilityId, facilityIds), eq(patient.isDeleted, false)));
   }
 
-  // Cross-facility search (e.g. Regional Admin linking a public inquiry to an existing
-  // patient, or the invoice generator's patient picker) — same permission gate as
-  // findByFacility (patient:read), just not scoped to one facility.
+  // Cross-facility search for pickers such as linking an inquiry, under the same patient:read gate.
   async findAll() {
     return db.select().from(patient).where(eq(patient.isDeleted, false));
   }
 
+  // Inserts a patient.
   async create(data: typeof patient.$inferInsert) {
     const row = await db.insert(patient).values(data).returning();
     return row[0]!;
   }
 
+  // Updates a patient.
   async update(id: string, data: Partial<typeof patient.$inferInsert>) {
     const row = await db
       .update(patient)
@@ -86,6 +89,7 @@ export class PatientRepository {
     return row[0] ?? null;
   }
 
+  // Soft-deletes a patient.
   async softDelete(id: string) {
     await db
       .update(patient)
@@ -94,7 +98,9 @@ export class PatientRepository {
   }
 }
 
+// Data access for patient addresses.
 export class AddressRepository {
+  // Lists a patient's addresses.
   async findByPatient(patientId: string) {
     return db
       .select()
@@ -102,11 +108,13 @@ export class AddressRepository {
       .where(and(eq(patientAddress.patientId, patientId), eq(patientAddress.isDeleted, false)));
   }
 
+  // Inserts an address.
   async create(data: typeof patientAddress.$inferInsert) {
     const row = await db.insert(patientAddress).values(data).returning();
     return row[0]!;
   }
 
+  // Soft-deletes an address.
   async softDelete(id: string) {
     await db
       .update(patientAddress)
@@ -115,7 +123,9 @@ export class AddressRepository {
   }
 }
 
+// Data access for emergency contacts.
 export class EmergencyContactRepository {
+  // Lists a patient's emergency contacts.
   async findByPatient(patientId: string) {
     return db
       .select()
@@ -123,11 +133,13 @@ export class EmergencyContactRepository {
       .where(and(eq(emergencyContact.patientId, patientId), eq(emergencyContact.isDeleted, false)));
   }
 
+  // Inserts an emergency contact.
   async create(data: typeof emergencyContact.$inferInsert) {
     const row = await db.insert(emergencyContact).values(data).returning();
     return row[0]!;
   }
 
+  // Soft-deletes an emergency contact.
   async softDelete(id: string) {
     await db
       .update(emergencyContact)
@@ -136,7 +148,9 @@ export class EmergencyContactRepository {
   }
 }
 
+// Data access for wallets.
 export class WalletRepository {
+  // Finds a patient's wallet.
   async findByPatient(patientId: string) {
     const row = await db
       .select()
@@ -146,11 +160,13 @@ export class WalletRepository {
     return row[0] ?? null;
   }
 
+  // Inserts a wallet.
   async create(data: typeof wallet.$inferInsert) {
     const row = await db.insert(wallet).values(data).returning();
     return row[0]!;
   }
 
+  // Sets a wallet's balance.
   async updateBalance(id: string, balanceKobo: bigint) {
     const row = await db
       .update(wallet)
@@ -161,7 +177,9 @@ export class WalletRepository {
   }
 }
 
+// Data access for the patient timeline.
 export class PatientTimelineRepository {
+  // Lists a patient's timeline entries.
   async findByPatient(patientId: string) {
     return db
       .select()
@@ -170,18 +188,22 @@ export class PatientTimelineRepository {
       .orderBy(patientTimeline.createdAt);
   }
 
+  // Inserts a timeline entry.
   async create(data: typeof patientTimeline.$inferInsert) {
     const row = await db.insert(patientTimeline).values(data).returning();
     return row[0]!;
   }
 }
 
+// Data access for patient registration requests.
 export class PatientRegistrationRequestRepository {
+  // Inserts a registration request.
   async create(data: typeof patientRegistrationRequest.$inferInsert) {
     const row = await db.insert(patientRegistrationRequest).values(data).returning();
     return row[0]!;
   }
 
+  // Finds a user's registration request.
   async findByUserId(userId: string) {
     const row = await db
       .select()
@@ -191,11 +213,7 @@ export class PatientRegistrationRequestRepository {
     return row[0] ?? null;
   }
 
-  // Every remaining row here IS pending, by construction — approval deletes the row
-  // (see PatientService.registerPatient), so there's no separate status to filter on.
-  // Returns request rows only — the caller (controller) enriches each with the user's email
-  // via UserRepository, rather than this repository importing auth/schema.ts directly for a
-  // SQL join (forbidden cross-module schema import, .dependency-cruiser.js).
+  // Every remaining row is pending by construction; the controller adds emails rather than this module importing auth's schema for a join.
   async findAllPending() {
     return db
       .select()
@@ -203,6 +221,7 @@ export class PatientRegistrationRequestRepository {
       .orderBy(desc(patientRegistrationRequest.createdAt));
   }
 
+  // Deletes a user's registration request.
   async deleteByUserId(userId: string) {
     await db.delete(patientRegistrationRequest).where(eq(patientRegistrationRequest.userId, userId));
   }

@@ -7,9 +7,7 @@ interface MyPatientResponse {
   wallet: Wallet | null;
 }
 
-// Every patient-facing tab needs "who am I as a patient" — resolved once here via GET
-// /patients/me (the caller's own linked record, no ID typed in anywhere) rather than each
-// panel re-deriving it separately.
+// Resolves "who am I as a patient" once via GET /patients/me so every patient tab shares it.
 export function useMyPatient() {
   const [patient, setPatient] = useState<Patient | null>(null);
   const [wallet, setWallet] = useState<Wallet | null>(null);

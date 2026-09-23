@@ -15,9 +15,7 @@ const TYPE_OPTIONS: { value: Appointment["appointmentType"]; label: string }[] =
   { value: "PROCEDURE", label: "Procedure" },
 ];
 
-// ONCOFLOW_SCHEDULING_AND_VIDEO_LIFECYCLE.md — the revived New Consultation action. Real POST
-// /consultations call: server-side availability enforcement, room provisioning, notifications,
-// and reminders all happen behind this one submit, not simulated here.
+// The revived New Consultation action: one real POST /consultations that enforces availability, provisions the room, and notifies and schedules reminders.
 export function NewConsultationModal({ onClose, onScheduled }: { onClose: () => void; onScheduled: () => void }) {
   const { user } = useAuth();
   const [patients, setPatients] = useState<Patient[]>([]);
@@ -53,6 +51,7 @@ export function NewConsultationModal({ onClose, onScheduled }: { onClose: () => 
 
   const blocksForDate = useMemo(() => availability.filter((b) => b.availableDate === date), [availability, date]);
 
+  // Submits the consultation to the API.
   async function submit() {
     if (!patientId || !oncologistId || !date || !time || !user?.facilityId) return;
     setSaving(true);

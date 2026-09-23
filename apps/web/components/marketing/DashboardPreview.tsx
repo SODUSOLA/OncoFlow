@@ -1,10 +1,6 @@
 import { Activity, CalendarDays, CheckCircle2, Clock3 } from "lucide-react";
 
-/**
- * Hand-built, static composition standing in for a real product screen —
- * per the illustration policy, never a stock photo or generic mockup.
- * No floating/bobbing animation: depth comes from layered offset + shadow only.
- */
+// A hand-built static composition standing in for a product screen, with depth from layered offset and shadow rather than animation.
 export function DashboardPreview() {
   return (
     <div className="relative mx-auto aspect-4/3 w-full max-w-lg">

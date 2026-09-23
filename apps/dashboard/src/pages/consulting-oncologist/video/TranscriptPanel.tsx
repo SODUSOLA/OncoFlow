@@ -3,20 +3,12 @@ import { FileText, MessageSquare } from "lucide-react";
 import { api } from "../../../lib/api";
 import { cn } from "../../../lib/utils";
 
-// The build guide's Decision 3 (transcription/AI summary source) is explicitly OPEN in
-// ONCOFLOW_CONSULTANT_BUILD_GUIDE.md — but this codebase already has a real answer at the data
-// layer from an earlier sprint (F3.7/F3.11): Daily's native transcription webhook appends real
-// utterances to the `transcript` table live during the call, a SCRIBE then corrects every
-// segment, and the appointment's own consultant signs off — that sign-off, not raw transcription,
-// is what F3.11 treats as "trusted". This panel is built against that real pipeline, polling the
-// same GET /meetings/:meetingId/transcript endpoint the Scribe/sign-off screens use — it is not a
-// placeholder. What's genuinely not built yet is the *second* job the guide describes: an LLM
-// summarization pass over a finished, signed-off transcript — so Quick Summary stays an honest
-// placeholder until that's decided, exactly as the guide asks.
+// Built on the real pipeline (Daily webhook → scribe correction → consultant sign-off) by polling the transcript endpoint; only the LLM Quick Summary remains an honest placeholder.
 export interface TranscriptEntry { speaker: string; timestamp: string; text: string }
 
 const POLL_MS = 5000;
 
+// Live transcript panel with a transcript tab and a summary placeholder tab.
 export function TranscriptPanel({ meetingId, live }: { meetingId: string; live: boolean }) {
   const [tab, setTab] = useState<"transcript" | "summary">("transcript");
   const [entries, setEntries] = useState<TranscriptEntry[]>([]);
@@ -24,6 +16,7 @@ export function TranscriptPanel({ meetingId, live }: { meetingId: string; live: 
 
   useEffect(() => {
     let cancelled = false;
+    // Loads the meeting's transcript entries.
     async function load() {
       try {
         const res = await api.get<{ transcript: { speaker: string; content: string; createdAt: string }[] }>(
@@ -84,6 +77,7 @@ export function TranscriptPanel({ meetingId, live }: { meetingId: string; live: 
   );
 }
 
+// Tab button for the transcript panel.
 function TabButton({ active, onClick, icon: Icon, label }: { active: boolean; onClick: () => void; icon: typeof FileText; label: string }) {
   return (
     <button

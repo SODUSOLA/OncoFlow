@@ -14,9 +14,7 @@ const QUICK_REPLIES = [
   { label: "Hand off to clinician", text: "I'm routing this to your clinical team — they'll follow up directly." },
 ] as const;
 
-// Bounds how many threads get an enriched "time since last unanswered message" badge. Fetching
-// that for every open inquiry is an N+1 — this dev database alone has 200+ — so only the most
-// recently active window is enriched, same reasoning as the shared alert aggregator's own cap.
+// Caps how many threads get the "time since last message" enrichment to avoid an N+1 over hundreds of inquiries.
 const ENRICH_LIMIT = 30;
 
 interface ThreadSummary {
@@ -25,13 +23,12 @@ interface ThreadSummary {
   lastMessageAt: string | null;
 }
 
+// Returns whole minutes elapsed since a timestamp.
 function minutesSince(iso: string): number {
   return Math.floor((Date.now() - new Date(iso).getTime()) / 60_000);
 }
 
-// A live mm:ss SLA countdown (counting past zero into overdue, like "-02:15") derived from the
-// real last-visitor-message timestamp — matches the design reference's per-thread SLA timer,
-// not a fabricated field.
+// Live mm:ss SLA countdown, going negative when overdue, derived from the real last visitor message.
 function formatSlaCountdown(lastMessageAt: string, slaMinutes: number, now: number): { text: string; overdue: boolean } {
   const elapsedSeconds = Math.floor((now - new Date(lastMessageAt).getTime()) / 1000);
   const remaining = slaMinutes * 60 - elapsedSeconds;
@@ -42,12 +39,10 @@ function formatSlaCountdown(lastMessageAt: string, slaMinutes: number, now: numb
   return { text: `${overdue ? "-" : ""}${mm}:${ss}`, overdue };
 }
 
-// Phase 6's 4 list-item states, collapsed to one derived field rather than independent booleans
-// that could contradict each other. "auto-replied" isn't included — there's no automated-reply
-// concept anywhere in this data model (PublicInquiryMessage.senderType is only VISITOR|STAFF),
-// so it would be fabricated, not derived.
+// The four list states collapsed into one derived field; "auto-replied" is omitted since no automated reply exists in the data model.
 type InquiryListState = "breached" | "unread" | "ongoing" | "closed";
 
+// Derives the list state of an inquiry.
 function inquiryListState(inq: PublicInquiry, summary: ThreadSummary | undefined, now: number): InquiryListState {
   if (inq.status === "CLOSED") return "closed";
   if (!summary?.lastMessageFromVisitor || !summary.lastMessageAt) return "ongoing";
@@ -55,18 +50,7 @@ function inquiryListState(inq: PublicInquiry, summary: ThreadSummary | undefined
   return classifyInquirySla(minutes) === "breached" ? "breached" : "unread";
 }
 
-// A public inquiry may or may not be from a registered patient — the visitor only gave a
-// self-reported name/email/phone at chat-widget intake, no account. This panel lets staff
-// reply regardless, and separately search-and-link it to an existing patient record once
-// they've identified one (or leave it unlinked if it's a general/pre-registration question).
-//
-// Deliberately does NOT have an "Escalate to Clinical" action or a manual "Assign" button, even
-// though the design reference shows both. Escalate has no destination — clinical questions hand
-// off to a clinician and leave this queue entirely, and there's no Clinical Chat in this app for
-// such a button to open (reconfirmed with the user when the new design docs were introduced).
-// Assign has no backend to call either — `assignedTo` is set automatically by the first staff
-// reply (a lightweight ownership claim, not a hard lock — see apps/api's inquiry controller),
-// there's no dedicated "assign to a specific person" endpoint to wire a button to.
+// Lets staff reply and link the visitor to a patient; there's no Escalate (no destination) or manual Assign (assignedTo is set by the first reply).
 function InquiryThread({ inquiry, now, onUpdated }: { inquiry: PublicInquiry; now: number; onUpdated: () => void }) {
   const [messages, setMessages] = useState<PublicInquiryMessage[]>([]);
   const [loading, setLoading] = useState(true);
@@ -79,6 +63,7 @@ function InquiryThread({ inquiry, now, onUpdated }: { inquiry: PublicInquiry; no
   const [linkedPatient, setLinkedPatient] = useState<Patient | null>(null);
   const [linkedCase, setLinkedCase] = useState<CountdownCase | null>(null);
 
+  // Loads the inquiry's messages.
   async function load() {
     setLoading(true);
     try {
@@ -98,8 +83,7 @@ function InquiryThread({ inquiry, now, onUpdated }: { inquiry: PublicInquiry; no
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [inquiry.id]);
 
-  // Real patient context only — name/ID/DOB from the actual linked record, and an active
-  // pre-chemo cycle day only when one genuinely exists for them. No fabricated fields.
+  // Shows real linked-patient context only, with no fabricated fields.
   useEffect(() => {
     setLinkedPatient(null);
     setLinkedCase(null);
@@ -110,6 +94,7 @@ function InquiryThread({ inquiry, now, onUpdated }: { inquiry: PublicInquiry; no
       .catch(() => {});
   }, [inquiry.linkedPatientId]);
 
+  // Sends a staff reply.
   async function sendReply(text?: string) {
     const content = (text ?? reply).trim();
     if (!content) return;
@@ -127,6 +112,7 @@ function InquiryThread({ inquiry, now, onUpdated }: { inquiry: PublicInquiry; no
     }
   }
 
+  // Searches patients to link to the inquiry.
   async function searchPatients() {
     if (!linkQuery.trim()) return;
     try {
@@ -137,6 +123,7 @@ function InquiryThread({ inquiry, now, onUpdated }: { inquiry: PublicInquiry; no
     }
   }
 
+  // Links the inquiry to a patient.
   async function linkPatient(patientId: string) {
     setLinking(true);
     setError(null);
@@ -150,6 +137,7 @@ function InquiryThread({ inquiry, now, onUpdated }: { inquiry: PublicInquiry; no
     }
   }
 
+  // Closes the inquiry.
   async function closeInquiry() {
     try {
       await api.post(`/admin/inquiries/${inquiry.id}/close`);
@@ -299,6 +287,7 @@ function InquiryThread({ inquiry, now, onUpdated }: { inquiry: PublicInquiry; no
   );
 }
 
+// Pill showing whether an inquiry is linked to a patient.
 function CategoryPill({ linked }: { linked: boolean }) {
   return linked ? (
     <Badge variant="info" className="gap-1"><User className="size-3" aria-hidden="true" /> Patient</Badge>
@@ -307,6 +296,7 @@ function CategoryPill({ linked }: { linked: boolean }) {
   );
 }
 
+// Inquiry inbox with thread list and detail panel.
 export default function GeneralInquiryPage() {
   const [inquiries, setInquiries] = useState<PublicInquiry[]>([]);
   const [summaries, setSummaries] = useState<Record<string, ThreadSummary>>({});
@@ -319,6 +309,7 @@ export default function GeneralInquiryPage() {
     return () => clearInterval(interval);
   }, []);
 
+  // Loads open inquiries and enriches the most recent with SLA data.
   function loadInquiries() {
     api.get<{ inquiries: PublicInquiry[] }>("/admin/inquiries").then(async (d) => {
       setInquiries(d.inquiries);
@@ -354,8 +345,7 @@ export default function GeneralInquiryPage() {
   const sortedInquiries = useMemo(() => {
     const list = [...inquiries];
     if (!urgentFirst) return list;
-    // Urgent = open, unanswered by staff, longest waiting first. Everything else (closed,
-    // already replied to, or outside the enriched window) sorts after, by recency.
+    // Urgent means open, unanswered and longest waiting; everything else sorts after by recency.
     return list.sort((a, b) => {
       const sa = summaries[a.id];
       const sb = summaries[b.id];

@@ -1,7 +1,6 @@
 import { enqueueEmail } from "../../../lib/email-queue.js";
 
-// Same per-call PATIENT_WEB_ORIGIN resolution as VerificationEmailService — fail loudly in
-// production rather than mail out a link that resolves to the wrong origin.
+// Resolves the patient web origin per call, failing loudly in production rather than mailing a link to the wrong origin.
 function resolvePatientWebOrigin(): string {
   const origin = process.env.PATIENT_WEB_ORIGIN;
   if (origin) return origin;
@@ -11,6 +10,7 @@ function resolvePatientWebOrigin(): string {
   return "http://localhost:5173";
 }
 
+// Emails the password reset link to the user.
 export async function sendPasswordResetEmail(email: string, token: string): Promise<void> {
   const link = `${resolvePatientWebOrigin()}/reset-password?token=${encodeURIComponent(token)}`;
 

@@ -119,8 +119,7 @@ describe("PaymentService — receipt email is best-effort", () => {
       classificationId: classId, status: "SENT", totalKobo: 100000n, issuedAt: new Date(),
     }).returning();
 
-    // Resend isn't configured in this test env — sendReceiptBestEffort will throw internally,
-    // but it's fire-and-forget (void ...catch(...)), so the payment result must be unaffected.
+    // Resend isn't configured here, but the receipt send is fire-and-forget so the payment result must be unaffected.
     const result = await paySvc.payInvoiceWithWallet(invRows[0]!.id);
     expect(result.invoice.status).toBe("PAID");
   });
@@ -148,8 +147,7 @@ describe("PaymentService — invoice-paid notification", () => {
 
     await paySvc.payInvoiceWithWallet(invRows[0]!.id);
 
-    // notifyPaidBestEffort is fire-and-forget (not awaited by payInvoiceWithWallet, same as
-    // the receipt email), so poll for the row rather than assuming a fixed delay is enough.
+    // The paid notification is fire-and-forget, so poll for the row rather than assuming a fixed delay.
     const notificationRepo = new NotificationRepository();
     const notifications = await waitFor(async () => {
       const rows = await notificationRepo.findByRecipient(patientUserId);

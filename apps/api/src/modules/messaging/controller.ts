@@ -7,10 +7,10 @@ const messagingSvc = new MessagingService();
 const meetingSvc = new MeetingService();
 const transcriptionAssignmentSvc = new TranscriptionAssignmentService();
 
+// Maps a messaging error message to an HTTP status.
 function messagingErrorStatus(message: string): number {
   if (message === "Conversation not found" || message === "Appointment not found" || message === "Patient not found") return 404;
-  // Checked before the broader "You can only" 403 prefix below, since these are more specific
-  // and would otherwise be shadowed by it.
+  // Checked before the broader "You can only" 403 prefix, which would otherwise shadow these more specific cases.
   if (
     message.startsWith("You already have an open")
     || message === "This conversation has been closed"
@@ -21,6 +21,7 @@ function messagingErrorStatus(message: string): number {
   return 500;
 }
 
+// Starts a conversation of the given type.
 export async function startConversationHandler(req: Request, res: Response) {
   try {
     const { patientId, conversationType, assignedTo } = req.body;
@@ -33,6 +34,7 @@ export async function startConversationHandler(req: Request, res: Response) {
   }
 }
 
+// Returns one conversation, allowed for participants and permitted staff.
 export async function getConversationHandler(req: Request, res: Response) {
   try {
     const callerId = (req as AuthenticatedRequest).userId;
@@ -44,6 +46,7 @@ export async function getConversationHandler(req: Request, res: Response) {
   }
 }
 
+// Lists conversations with their latest-message previews.
 export async function listConversationsHandler(req: Request, res: Response) {
   try {
     const patientId = typeof req.query.patientId === "string" ? req.query.patientId : undefined;
@@ -63,6 +66,7 @@ export async function listConversationsHandler(req: Request, res: Response) {
   }
 }
 
+// Posts a message as the authenticated caller.
 export async function postMessageHandler(req: Request, res: Response) {
   try {
     const { type, content } = req.body;
@@ -77,6 +81,7 @@ export async function postMessageHandler(req: Request, res: Response) {
   }
 }
 
+// Starts a paid side-effect report conversation.
 export async function startSideEffectReportHandler(req: Request, res: Response) {
   try {
     const { patientId, message } = req.body;
@@ -93,6 +98,7 @@ export async function startSideEffectReportHandler(req: Request, res: Response) 
   }
 }
 
+// Lists a conversation's messages.
 export async function listMessagesHandler(req: Request, res: Response) {
   try {
     const callerId = (req as AuthenticatedRequest).userId;
@@ -104,6 +110,7 @@ export async function listMessagesHandler(req: Request, res: Response) {
   }
 }
 
+// Closes a conversation.
 export async function closeConversationHandler(req: Request, res: Response) {
   try {
     const callerId = (req as AuthenticatedRequest).userId;
@@ -115,6 +122,7 @@ export async function closeConversationHandler(req: Request, res: Response) {
   }
 }
 
+// Submits post-conversation feedback.
 export async function submitFeedbackHandler(req: Request, res: Response) {
   try {
     const { rating, review } = req.body;
@@ -127,6 +135,7 @@ export async function submitFeedbackHandler(req: Request, res: Response) {
   }
 }
 
+// Lists a conversation's feedback.
 export async function listFeedbackHandler(req: Request, res: Response) {
   try {
     const callerId = (req as AuthenticatedRequest).userId;
@@ -138,6 +147,7 @@ export async function listFeedbackHandler(req: Request, res: Response) {
   }
 }
 
+// Provisions the video room for an appointment.
 export async function provisionMeetingHandler(req: Request, res: Response) {
   try {
     const { appointmentId } = req.body;
@@ -150,6 +160,7 @@ export async function provisionMeetingHandler(req: Request, res: Response) {
   }
 }
 
+// Returns a meeting for participants.
 export async function getMeetingHandler(req: Request, res: Response) {
   try {
     const appointmentId = typeof req.query.appointmentId === "string" ? req.query.appointmentId : undefined;
@@ -170,6 +181,7 @@ export async function getMeetingHandler(req: Request, res: Response) {
   }
 }
 
+// Returns who is currently present in a meeting's room.
 export async function getMeetingPresenceHandler(req: Request, res: Response) {
   try {
     const callerId = (req as AuthenticatedRequest).userId;
@@ -185,6 +197,7 @@ export async function getMeetingPresenceHandler(req: Request, res: Response) {
   }
 }
 
+// Ends a meeting.
 export async function endMeetingHandler(req: Request, res: Response) {
   try {
     const callerId = (req as AuthenticatedRequest).userId;
@@ -200,6 +213,7 @@ export async function endMeetingHandler(req: Request, res: Response) {
   }
 }
 
+// Issues a Daily meeting token for an authorized participant.
 export async function issueMeetingTokenHandler(req: Request, res: Response) {
   try {
     const callerId = (req as AuthenticatedRequest).userId;
@@ -216,6 +230,7 @@ export async function issueMeetingTokenHandler(req: Request, res: Response) {
   }
 }
 
+// Verifies the Daily webhook signature and returns the raw body, or sends a 401 and returns null.
 function requireVerifiedDailyWebhook(req: Request, res: Response): string | null {
   const rawBody = (req as Request & { rawBody?: Buffer }).rawBody;
   const timestamp = req.header("X-Webhook-Timestamp");
@@ -238,9 +253,7 @@ function requireVerifiedDailyWebhook(req: Request, res: Response): string | null
   return rawBody.toString("utf-8");
 }
 
-// F3.7 DoD: signature verification confirmed on both the meeting-status and transcription
-// webhooks — requireVerifiedDailyWebhook() is the shared gate both handlers go through
-// before touching anything from the payload.
+// F3.7: both Daily webhooks pass through requireVerifiedDailyWebhook before reading anything from the payload.
 export async function dailyMeetingStatusWebhookHandler(req: Request, res: Response) {
   if (!requireVerifiedDailyWebhook(req, res)) return;
   try {
@@ -277,6 +290,7 @@ export async function dailyRecordingWebhookHandler(req: Request, res: Response) 
   }
 }
 
+// Handles Daily transcription webhooks, storing transcript segments.
 export async function dailyTranscriptionWebhookHandler(req: Request, res: Response) {
   if (!requireVerifiedDailyWebhook(req, res)) return;
   try {
@@ -288,6 +302,7 @@ export async function dailyTranscriptionWebhookHandler(req: Request, res: Respon
   }
 }
 
+// Lists a meeting's transcript entries.
 export async function listTranscriptHandler(req: Request, res: Response) {
   try {
     const result = await meetingSvc.listTranscript(String(req.params.meetingId));
@@ -297,6 +312,7 @@ export async function listTranscriptHandler(req: Request, res: Response) {
   }
 }
 
+// Edits a transcript entry, restricted to the assigned consultant or scribe.
 export async function editTranscriptEntryHandler(req: Request, res: Response) {
   try {
     const editedBy = (req as AuthenticatedRequest).userId;
@@ -335,6 +351,7 @@ function transcriptionAssignmentErrorStatus(message: string): number {
   return 500;
 }
 
+// Lists the transcription queue for scribes.
 export async function listTranscriptionQueueHandler(_req: Request, res: Response) {
   try {
     const result = await transcriptionAssignmentSvc.listQueue();
@@ -344,6 +361,7 @@ export async function listTranscriptionQueueHandler(_req: Request, res: Response
   }
 }
 
+// Lists the scribe's own transcription assignments.
 export async function listMyTranscriptionAssignmentsHandler(req: Request, res: Response) {
   try {
     const scribeId = (req as AuthenticatedRequest).userId;
@@ -354,6 +372,7 @@ export async function listMyTranscriptionAssignmentsHandler(req: Request, res: R
   }
 }
 
+// Claims a transcription assignment for the scribe.
 export async function claimTranscriptionAssignmentHandler(req: Request, res: Response) {
   try {
     const scribeId = (req as AuthenticatedRequest).userId;
@@ -365,6 +384,7 @@ export async function claimTranscriptionAssignmentHandler(req: Request, res: Res
   }
 }
 
+// Releases a claimed transcription assignment.
 export async function releaseTranscriptionAssignmentHandler(req: Request, res: Response) {
   try {
     const scribeId = (req as AuthenticatedRequest).userId;
@@ -376,6 +396,7 @@ export async function releaseTranscriptionAssignmentHandler(req: Request, res: R
   }
 }
 
+// Finalizes a transcription assignment as complete.
 export async function finalizeTranscriptionAssignmentHandler(req: Request, res: Response) {
   try {
     const scribeId = (req as AuthenticatedRequest).userId;

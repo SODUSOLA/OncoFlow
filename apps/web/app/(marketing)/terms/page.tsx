@@ -6,6 +6,7 @@ export const metadata: Metadata = {
   description: "The terms governing use of the OncoFlow platform.",
 };
 
+// Terms of service page.
 export default function TermsPage() {
   return (
     <LegalPageLayout title="Terms of Service" lastUpdated="Draft — not yet finalized">

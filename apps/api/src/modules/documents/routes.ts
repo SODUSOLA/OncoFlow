@@ -20,14 +20,13 @@ const listFilesQuerySchema = z.object({
 
 const router = Router();
 
-// requireAuthenticated, not requirePermission: a patient uploading/reading their OWN files
-// (e.g. their own lab results) is a right, not a grant — the ownership-or-permission check
-// lives in the controller (callerOwnsPatient), which needs the record loaded first.
+// Authenticated only, since patients uploading or reading their own files is a right; ownership is checked in the controller.
 router.post("/files/upload", requireAuthenticated(), validateBody(uploadSchema), uploadFileHandler);
+// Reads a file's metadata.
 router.get("/files/:id", requireAuthenticated(), validateParams(fileIdParamSchema), getFileHandler);
-// Separate from /files/:id (metadata) on purpose — a browser <img>/<a> tag hits this one
-// directly and expects a redirect to bytes, not a JSON body.
+// Separate from the metadata route because <img> and <a> tags hit it directly and expect a redirect to bytes.
 router.get("/files/:id/content", requireAuthenticated(), validateParams(fileIdParamSchema), downloadFileHandler);
+// Lists a patient's files.
 router.get("/files", requireAuthenticated(), validateQuery(listFilesQuerySchema), listPatientFilesHandler);
 
 export { router as documentRoutes };

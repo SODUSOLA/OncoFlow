@@ -1,8 +1,7 @@
 import type { LucideIcon } from "lucide-react";
 import { Card } from "../../../components/ui/Card";
 
-// Same precedent as apps/web's wallet top-up screen — a real placeholder that looks intentional
-// rather than a broken/empty page, until there's actual content or data behind the nav item.
+// Intentional-looking placeholder for nav items with no content or data yet, like apps/web's wallet top-up screen.
 export function ComingSoon({ icon: Icon, title, description }: { icon: LucideIcon; title: string; description: string }) {
   return (
     <Card className="flex flex-col items-center gap-3 px-6 py-16 text-center">

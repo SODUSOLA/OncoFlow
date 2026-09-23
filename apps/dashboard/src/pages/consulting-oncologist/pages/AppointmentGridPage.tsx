@@ -7,23 +7,15 @@ import type { Appointment, Patient } from "../../../lib/types";
 import { Card } from "../../../components/ui/Card";
 import { cn } from "../../../lib/utils";
 
-// Phase 2 of ONCOFLOW_CONSULTANT_BUILD_GUIDE.md. Two real data gaps in the schema, handled the
-// same way the Regional Admin build handled missing fields — derive a real signal where one
-// exists, and honestly substitute where it doesn't, rather than fabricate:
-//   - No urgency/priority column on `appointment` at all. Urgency here is derived from how soon
-//     the appointment starts (same "imminent = urgent" logic as every SLA countdown elsewhere
-//     in this app), not a stored value.
-//   - No diagnosis field anywhere in the schema. "Primary Diagnosis" in the mockup is replaced
-//     with the real `appointmentType` (VIRTUAL/PHYSICAL/CHEMOTHERAPY/PROCEDURE).
+// With no urgency or diagnosis column, urgency is derived from how soon the appointment starts and "Primary Diagnosis" shows the real appointmentType.
 const HIGH_URGENCY_WINDOW_MIN = 20;
-// Join Call enables from 20 minutes before start through 2 hours after — wide enough to cover
-// a call that's simply running long, but not an appointment that's days or weeks overdue (this
-// dev database has exactly that: seeded appointments with no relationship to "today").
+// Join Call enables from 20 minutes before start to 2 hours after, covering long calls but not appointments that are days overdue.
 const JOIN_WINDOW_BEFORE_MIN = 20;
 const JOIN_WINDOW_AFTER_MIN = 120;
 
 type Urgency = "high" | "routine";
 
+// Derives urgency from status and time until the appointment.
 function urgencyOf(a: Appointment, now: number): Urgency {
   if (a.status === "IN_PROGRESS") return "high";
   if (a.status !== "CONFIRMED" && a.status !== "CHECKED_IN" && a.status !== "PENDING") return "routine";
@@ -31,6 +23,7 @@ function urgencyOf(a: Appointment, now: number): Urgency {
   return minutesUntil <= HIGH_URGENCY_WINDOW_MIN ? "high" : "routine";
 }
 
+// Formats milliseconds as a countdown, or as overdue when negative.
 function formatCountdown(ms: number): string {
   const overdue = ms <= 0;
   const abs = Math.abs(ms);
@@ -46,6 +39,7 @@ const APPOINTMENT_TYPE_LABEL: Record<Appointment["appointmentType"], string> = {
   PROCEDURE: "Procedure",
 };
 
+// Appointment grid: the consultant's live video queue for today.
 export default function AppointmentGridPage() {
   const { user } = useAuth();
   const navigate = useNavigate();
@@ -79,8 +73,7 @@ export default function AppointmentGridPage() {
 
   const patientById = useMemo(() => new Map(patients.map((p) => [p.id, p])), [patients]);
 
-  // "Today's clinical queue" per the page subtitle — future-facing appointments only (nothing
-  // already CANCELLED/MISSED/COMPLETED clutters an active work queue).
+  // Today's queue shows only active future-facing appointments, hiding cancelled, missed and completed ones.
   const activeAppointments = useMemo(
     () => appointments.filter((a) => !["CANCELLED", "MISSED", "COMPLETED"].includes(a.status)),
     [appointments],

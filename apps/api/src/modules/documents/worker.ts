@@ -3,14 +3,12 @@ import { Redis as IORedis } from "ioredis";
 import { config } from "../../config.js";
 import { VIRUS_SCAN_QUEUE_NAME, processVirusScanJob } from "./queue.js";
 
-// Deliberately a SEPARATE module from queue.ts (which FileService.upload imports to enqueue
-// jobs) — importing this file is what actually starts a Worker consuming from Redis, and that
-// should only ever happen once, in the real server process (index.ts), never as a side effect
-// of importing the documents module from a test file.
+// Separate from queue.ts because importing this starts a Worker, which should only happen in the real server process, never as a test import side effect.
 const connection = new IORedis(config.redisUrl, { maxRetriesPerRequest: null });
 
 let worker: Worker | null = null;
 
+// Starts the virus-scan Worker once and returns the existing one on repeat calls.
 export function startVirusScanWorker(): Worker {
   if (worker) return worker;
   worker = new Worker(

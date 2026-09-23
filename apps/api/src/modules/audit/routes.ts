@@ -10,6 +10,7 @@ const activityQuerySchema = z.object({
 
 const router = Router();
 
+// Recent activity feed, restricted to callers with audit:read.
 router.get("/audit/activity", requirePermission("audit", "read"), validateQuery(activityQuerySchema), getActivityFeedHandler);
 
 export { router as auditRoutes };

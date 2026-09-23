@@ -20,6 +20,7 @@ let testAppointmentId3: string;
 let testPatientId: string;
 let testFacilityId: string;
 
+// Inserts an appointment and returns its id.
 async function createTestAppointment(): Promise<string> {
   const rows = await db.insert(appointment).values({
     id: crypto.randomUUID(), patientId: testPatientId, facilityId: testFacilityId,

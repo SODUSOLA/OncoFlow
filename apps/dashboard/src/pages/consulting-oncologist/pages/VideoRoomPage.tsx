@@ -15,10 +15,7 @@ import { SafetyCheckBanner } from "../video/SafetyCheckBanner";
 import { TranscriptPanel } from "../video/TranscriptPanel";
 import { ClinicalObservationsInput } from "../video/ClinicalObservationsInput";
 
-// Phase 5 — the actual call, per the build guide's ADR: a custom daily-js Call Object wrapper
-// (useDailyCall), not Daily Prebuilt. Mic/camera/leave are wired to the real call object; the
-// Safety Check banner and Clinical Observations input are deliberately independent of it (they
-// read patient data, not video state).
+// The live call via a custom daily-js Call Object; the Safety Check banner and observations are independent of video state.
 export default function VideoRoomPage() {
   const { appointmentId } = useParams<{ appointmentId: string }>();
   const navigate = useNavigate();
@@ -60,9 +57,7 @@ export default function VideoRoomPage() {
       setCaseLock(cl.caseLock);
       setVitals(v.vitals);
 
-      // §3: no lazy provisioning here either — Regional Admin's New Consultation flow already
-      // created this room at scheduling time. Reaching this screen without one existing means
-      // this appointment predates that flow.
+      // No lazy provisioning: a missing room means the appointment predates the scheduling flow.
       let meetingRow: Meeting;
       try {
         const existing = await api.get<{ meeting: Meeting }>(`/meetings?appointmentId=${appointmentId}`);
@@ -95,13 +90,11 @@ export default function VideoRoomPage() {
 
   const call = useDailyCall(tokenInfo?.roomUrl ?? null, tokenInfo?.token ?? null, user?.email ? `Dr. ${user.email.split("@")[0]}` : "Consulting Oncologist");
 
+  // Ends the call, marks the meeting ended and opens the summary.
   async function endCall() {
     setEnding(true);
     call.leave();
-    // Marks the meeting ENDED from the clinician's own action, not only via Daily's webhook —
-    // see MeetingService.endCall's comment for why relying on the webhook alone would leave
-    // Phase 6's post-consult SLA clock permanently inert in an environment with no public
-    // webhook URL. Best-effort: navigating to the summary should never hang on this.
+    // Marks the meeting ENDED from the clinician's action so the SLA clock works without a webhook; best-effort so navigation never hangs.
     if (meeting) await api.post(`/meetings/${meeting.id}/end`, {}).catch(() => {});
     navigate(`/dashboard/consulting-oncologist/consult/${appointmentId}/summary`);
   }

@@ -11,6 +11,7 @@ import { useRegionScope } from "../lib/useRegionScope";
 
 const CALL_ALLOWED_ROLES = new Set(["REGIONAL_ADMIN", "ONSITE_NURSING_OFFICER"]);
 
+// Button that places a masked call to a patient.
 function CallPatientButton({ patientId }: { patientId: string }) {
   const { roles } = useAuth();
   const [calling, setCalling] = useState(false);
@@ -18,6 +19,7 @@ function CallPatientButton({ patientId }: { patientId: string }) {
 
   if (!roles.some((r) => CALL_ALLOWED_ROLES.has(r.roleName))) return null;
 
+  // Places the call through the API.
   async function call() {
     setCalling(true);
     setResult(null);
@@ -46,6 +48,7 @@ interface AdminLabResult {
   fileStatus: "PENDING" | "CLEAN" | "INFECTED";
 }
 
+// Detail panel for a selected patient.
 function PatientDetailPanel({ patient, facilities }: { patient: Patient; facilities: Facility[] }) {
   const [labResults, setLabResults] = useState<AdminLabResult[]>([]);
 
@@ -122,10 +125,7 @@ function PatientDetailPanel({ patient, facilities }: { patient: Patient; facilit
   );
 }
 
-// The patient record and Unique Patient ID already exist by the time a row reaches this queue
-// — they're created server-side the moment the patient verifies their email. What's left for
-// Admin is confirming the self-reported facility (or reassigning it), which closes out
-// onboarding and sends the patient their confirmation email.
+// The patient already exists at this point; Admin only confirms or reassigns the self-reported facility, which triggers the confirmation email.
 function ConfirmFacilityForm({
   registration, facilities, onConfirmed, onCancel,
 }: {
@@ -140,6 +140,7 @@ function ConfirmFacilityForm({
 
   const reassigning = facilityId !== registration.preferredFacilityId;
 
+  // Confirms the facility for a registration.
   async function handleConfirm() {
     if (!registration.patientId) {
       setError("This patient hasn't verified their email yet — no record to confirm.");
@@ -205,6 +206,7 @@ function ConfirmFacilityForm({
   );
 }
 
+// Approval queue for registrations and pending appointment confirmations.
 function ApprovalQueueSection({ facilities }: { facilities: Facility[] }) {
   const [section, setSection] = useState<"registrations" | "confirmations">("registrations");
   const [registrations, setRegistrations] = useState<PendingRegistration[]>([]);
@@ -212,11 +214,13 @@ function ApprovalQueueSection({ facilities }: { facilities: Facility[] }) {
   const [pendingConfirmations, setPendingConfirmations] = useState<Appointment[]>([]);
   const [confirmingId, setConfirmingId] = useState<string | null>(null);
 
+  // Loads pending registrations.
   function loadRegistrations() {
     api.get<{ registrations: PendingRegistration[] }>("/patients/pending-registrations")
       .then((d) => setRegistrations(d.registrations)).catch(() => {});
   }
 
+  // Loads appointments awaiting confirmation.
   function loadPendingConfirmations() {
     api.get<{ appointments: Appointment[] }>("/appointments/pending-confirmation-queue")
       .then((d) => setPendingConfirmations(d.appointments)).catch(() => {});
@@ -227,6 +231,7 @@ function ApprovalQueueSection({ facilities }: { facilities: Facility[] }) {
     loadPendingConfirmations();
   }, []);
 
+  // Confirms a pending appointment.
   async function confirmAppointment(id: string) {
     setConfirmingId(id);
     try {
@@ -334,11 +339,10 @@ function ApprovalQueueSection({ facilities }: { facilities: Facility[] }) {
   );
 }
 
+// Patient search page.
 export default function PatientSearchPage() {
   const { facilities } = useRegionScope();
-  // The topbar's global search (RegionalAdminLayout) has nowhere of its own to show results,
-  // so it navigates here with ?q= and this page runs the real search — no separate search
-  // implementation, just seeding this page's own existing query state from the URL once.
+  // The top bar's search navigates here with ?q=, so the page seeds its own query from the URL instead of a separate search.
   const [searchParams] = useSearchParams();
   const [tab, setTab] = useState<"search" | "approval-queue">("search");
   const [patients, setPatients] = useState<Patient[]>([]);
@@ -347,6 +351,7 @@ export default function PatientSearchPage() {
   const [loading, setLoading] = useState(false);
   const [selectedId, setSelectedId] = useState<string | null>(null);
 
+  // Runs the patient search.
   function load(q?: string) {
     setLoading(true);
     api.get<{ patients: Patient[] }>(`/patients?facilityId=${facilityFilter}${q ? `&q=${encodeURIComponent(q)}` : ""}`)

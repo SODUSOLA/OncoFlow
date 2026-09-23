@@ -1,9 +1,8 @@
-// FR-20: fixed weekly clinical structure — Mon/Wed/Fri = virtual consults + chemo,
-// Tue/Thu = procedures + physical consults. Evaluated in the facility's local time
-// (Africa/Lagos, per FR-03's same convention), not the server's/client's time zone.
+// FR-20 weekly structure: Mon/Wed/Fri for virtual consults and chemo, Tue/Thu for procedures and physical consults, in Africa/Lagos time.
 const MON_WED_FRI_TYPES = new Set(["VIRTUAL", "CHEMOTHERAPY"]);
 const TUE_THU_TYPES = new Set(["PHYSICAL", "PROCEDURE"]);
 
+// Day of week (0-6) of the timestamp in Africa/Lagos.
 function lagosDayOfWeek(timestamp: Date): number {
   const parts = new Intl.DateTimeFormat("en-US", {
     timeZone: "Africa/Lagos",
@@ -13,6 +12,7 @@ function lagosDayOfWeek(timestamp: Date): number {
   return ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"].indexOf(weekday);
 }
 
+// Checks an appointment type against the FR-20 weekly structure for its Lagos day.
 export function checkWeeklyStructure(
   appointmentType: string,
   scheduledAt: Date,

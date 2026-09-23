@@ -26,10 +26,7 @@ export const tariff = pgTable("tariff", {
   classificationId: uuid("classification_id").notNull().references(() => serviceClassification.id),
   networkFeeKobo: bigint("network_fee_kobo", { mode: "bigint" }).notNull(),
   facilityBedFeeKobo: bigint("facility_bed_fee_kobo", { mode: "bigint" }).notNull(),
-  // Default via sql`0`, not a JS BigInt literal — drizzle-kit's snapshot diffing JSON.stringifies
-  // the default and can't serialize a real BigInt. Same numeric effect, avoids the crash.
-  // Default so this column-add doesn't break already-seeded tariff rows — seed/billing.ts
-  // backfills real values for the tariff-bearing classifications on the next reseed.
+  // Defaulted via sql`0` because drizzle-kit can't serialize a BigInt default, and so adding the column doesn't break already-seeded tariffs.
   professionalFeeKobo: bigint("professional_fee_kobo", { mode: "bigint" }).notNull().default(sql`0`),
   drugPriceKobo: bigint("drug_price_kobo", { mode: "bigint" }).notNull(),
   createdAt: timestamp("created_at").notNull().defaultNow(),

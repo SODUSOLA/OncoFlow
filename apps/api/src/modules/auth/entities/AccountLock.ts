@@ -14,6 +14,7 @@ export interface AccountLockData {
   deletedAt: Date | null;
 }
 
+// Domain entity for an account lock and whether it is still active.
 export class AccountLock {
   constructor(private data: AccountLockData) {}
 

@@ -5,8 +5,7 @@ export interface Invoice {
   classificationId: string;
   totalKobo: number;
   status: "DRAFT" | "SENT" | "PAID" | "VOID" | "OVERDUE";
-  // No dueDate/createdAt columns exist on the real Invoice entity (apps/api's Invoice.toJSON())
-  // — issuedAt is the one real timestamp it returns, null until the invoice is SENT.
+  // The real Invoice entity has no dueDate or createdAt; issuedAt is its only timestamp, null until SENT.
   issuedAt: string | null;
 }
 
@@ -51,9 +50,7 @@ export interface Facility {
 export interface PendingRegistration {
   id: string;
   userId: string;
-  // Non-null once the patient has verified their email — the patient record and Unique Patient
-  // ID are created automatically at that point, so this queue is now "awaiting facility
-  // confirmation", not "awaiting record creation".
+  // Non-null once the patient verifies their email, so this queue now means "awaiting facility confirmation".
   patientId: string | null;
   uniquePatientId: string | null;
   fullName: string;

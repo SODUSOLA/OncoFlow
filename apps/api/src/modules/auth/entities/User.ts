@@ -23,9 +23,11 @@ export interface UserData {
   deletedAt: Date | null;
 }
 
+// User domain entity owning password, status transitions and MFA/email flags.
 export class User {
   constructor(private data: UserData) {}
 
+  // Returns the allowed user status transitions.
   static getValidTransitions(): Record<UserStatus, UserStatus[]> {
     return VALID_TRANSITIONS;
   }
@@ -52,14 +54,17 @@ export class User {
     return this.data.passwordHash;
   }
 
+  // Hashes a password with bcrypt (cost 12).
   static async hashPassword(password: string): Promise<string> {
     return bcrypt.hash(password, 12);
   }
 
+  // Checks a plaintext password against the stored hash.
   async verifyPassword(password: string): Promise<boolean> {
     return bcrypt.compare(password, this.data.passwordHash);
   }
 
+  // Moves the user to a new status, or throws if the transition is illegal.
   transitionTo(newStatus: UserStatus): void {
     const allowed = VALID_TRANSITIONS[this.data.status];
     if (!allowed?.includes(newStatus)) {
@@ -70,22 +75,27 @@ export class User {
     this.data.status = newStatus;
   }
 
+  // Stamps the last-login time.
   markLastLogin(): void {
     this.data.lastLogin = new Date();
   }
 
+  // Stamps the email as verified.
   markEmailVerified(): void {
     this.data.emailVerifiedAt = new Date();
   }
 
+  // Marks MFA as enabled.
   enableMfa(): void {
     this.data.mfaEnabled = true;
   }
 
+  // Marks MFA as disabled.
   disableMfa(): void {
     this.data.mfaEnabled = false;
   }
 
+  // Serializes the user without secrets (password hash, MFA secret).
   toSafeJSON() {
     return {
       id: this.data.id,

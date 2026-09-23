@@ -13,9 +13,7 @@ export const appointment = pgTable("appointment", {
   facilityId: uuid("facility_id").notNull().references(() => facility.id),
   appointmentType: appointmentTypeEnum("appointment_type").notNull(),
   scheduledAt: timestamp("scheduled_at").notNull(),
-  // ONCOFLOW_SCHEDULING_AND_VIDEO_LIFECYCLE.md §2 — nullable/defaulted rather than a backfill
-  // migration: every pre-existing appointment simply has no stated duration, which is honest
-  // (nothing actually tracked one before this), not zero.
+  // Nullable rather than backfilled: older appointments honestly have no stated duration, which isn't zero.
   durationMinutes: integer("duration_minutes"),
   status: appointmentStatusEnum("status").notNull().default("PENDING"),
   meetingId: uuid("meeting_id"),

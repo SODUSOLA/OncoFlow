@@ -18,9 +18,7 @@ let ownCookie: string;
 let otherUserId: string;
 let otherCookie: string;
 
-// A logged-in user with no roles/permissions at all — the "not this patient, and not staff
-// either" case. Session-cookie login, mirrors request-context.test.ts's pattern, since these
-// checks depend on the real cookie -> session -> userId derivation, not a synthetic req.userId.
+// Creates a user with no roles through a real session cookie, covering "not this patient and not staff".
 async function createSessionCookie(): Promise<{ userId: string; cookie: string }> {
   const userId = crypto.randomUUID();
   await db.insert(user).values({
@@ -73,8 +71,7 @@ describe("GET /patients/me — self-lookup entry point", () => {
 });
 
 describe("GET /patients/:id — ownership (no blanket patient:read needed for own record)", () => {
-  // secondaryEmail is presented as optional, but the update schema required a valid email with
-  // no empty-string case, so once set it could never be removed.
+  // Regression: the update schema had no empty-string case, so a secondary email could never be removed once set.
   it("lets the patient clear their own secondary email", async () => {
     await request(app)
       .put(`/patients/${ownPatientId}`)

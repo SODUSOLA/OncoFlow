@@ -1,16 +1,14 @@
 import { ShieldCheck, Wifi, WifiOff, Clock3 } from "lucide-react";
 import type { DailyCallStatus } from "./useDailyCall";
 
+// Formats seconds as mm:ss.
 function formatDuration(sec: number): string {
   const mm = String(Math.floor(sec / 60)).padStart(2, "0");
   const ss = String(sec % 60).padStart(2, "0");
   return `${mm}:${ss}`;
 }
 
-// Top-left connection/encryption badges + call duration timer. "Encrypted" reflects Daily's own
-// baseline (all calls are SRTP-encrypted transport by default) — it does not claim a specific
-// HIPAA/BAA compliance status, per the build guide ADR's Decision 4 flag: that's a business
-// follow-up, not something this UI should assert ahead of the actual paperwork.
+// Connection and encryption badges plus a call timer; "Encrypted" reflects Daily's baseline only and makes no HIPAA/BAA claim.
 export function VideoHUD({ status, durationSec }: { status: DailyCallStatus; durationSec: number }) {
   const connected = status === "joined";
   return (

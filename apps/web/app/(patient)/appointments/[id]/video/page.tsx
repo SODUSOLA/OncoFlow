@@ -9,6 +9,7 @@ import { api } from "@/lib/api";
 import { useCountdown } from "@/lib/useCountdown";
 import type { Appointment, Meeting } from "@/lib/types";
 
+// Video consultation page that joins the patient into their scheduled room.
 export default function VideoConsultationPage() {
   const params = useParams<{ id: string }>();
   const router = useRouter();

@@ -1,6 +1,7 @@
 import { Mic, MicOff, Video, VideoOff, PhoneOff } from "lucide-react";
 import { cn } from "../../../lib/utils";
 
+// Call controls for microphone, camera and ending the call.
 export function ControlBar({
   audioOn, videoOn, onToggleAudio, onToggleVideo, onEndCall,
 }: {

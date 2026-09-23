@@ -1,3 +1,4 @@
+// Placeholder dashboard for the Virtual Medical Officer.
 export default function Dashboard() {
   return (
     <div className="flex items-center justify-center h-64">

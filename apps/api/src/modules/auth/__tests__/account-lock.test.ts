@@ -9,6 +9,7 @@ import { accountLock, misconductFlag } from "../schema.js";
 const app = createApp();
 const base = "/auth";
 
+// Registers a user through the API and returns the response.
 async function registerUser(email: string) {
   const res = await request(app)
     .post(`${base}/register`)
@@ -16,6 +17,7 @@ async function registerUser(email: string) {
   return res.body.user as { id: string; email: string };
 }
 
+// Extracts the session cookie from a login response.
 function cookieFromLogin(loginRes: request.Response): string {
   const cookieHeader = loginRes.headers["set-cookie"];
   const cookies = Array.isArray(cookieHeader) ? cookieHeader : cookieHeader ? [cookieHeader] : [];

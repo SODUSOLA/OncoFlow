@@ -21,6 +21,7 @@ const TYPE_LABELS: Record<string, string> = {
   CONVERSATION_FEEDBACK: "New Feedback Received",
 };
 
+// Notifications page listing the patient's notifications live.
 export default function NotificationsPage() {
   const [notifications, setNotifications] = useState<AppNotification[]>([]);
   const [loading, setLoading] = useState(true);
@@ -32,11 +33,10 @@ export default function NotificationsPage() {
       .finally(() => setLoading(false));
   }, []);
 
-  // The per-user room is auto-joined server-side on connect (no explicit join needed here,
-  // unlike a conversation room) — any notification created for this patient while the page is
-  // open arrives live.
+  // The per-user room is joined server-side on connect, so notifications created while the page is open arrive live.
   useEffect(() => {
     const socket = getSocket();
+    // Prepends a pushed notification if it isn't already listed.
     function onNewNotification(n: AppNotification) {
       setNotifications((prev) => (prev.some((existing) => existing.id === n.id) ? prev : [n, ...prev]));
     }

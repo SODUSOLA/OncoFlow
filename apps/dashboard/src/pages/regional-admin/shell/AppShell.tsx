@@ -6,10 +6,7 @@ interface AppShellProps {
   children: ReactNode;
 }
 
-// Phase 1 layout wrapper: sidebar + a main column of (fixed top bar, scrollable content).
-// `font-public-sans` is applied here rather than globally so the rest of the dashboard (Login,
-// patient views) keeps its existing typeface — this token is specific to the Regional Admin
-// rebuild's locked design system.
+// Sidebar plus a main column of fixed top bar and scrolling content; the font is applied here so other dashboard screens keep their typeface.
 export function AppShell({ sidebar, topBar, children }: AppShellProps) {
   return (
     <div className="flex h-screen overflow-hidden bg-admin-canvas-bg font-public-sans">

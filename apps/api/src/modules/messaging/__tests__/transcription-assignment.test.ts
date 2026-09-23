@@ -23,6 +23,7 @@ const meetingRepo = new MeetingRepository();
 let testPatientId: string;
 let testFacilityId: string;
 
+// Creates an appointment and meeting in the given status for the tests.
 async function createMeeting(status: MeetingStatus = "SCHEDULED", oncologistId: string | null = null) {
   const apptRows = await db.insert(appointment).values({
     id: crypto.randomUUID(), patientId: testPatientId, facilityId: testFacilityId,
@@ -34,9 +35,7 @@ async function createMeeting(status: MeetingStatus = "SCHEDULED", oncologistId: 
   });
 }
 
-// Fresh scribe per call, deliberately — the backlog cap (5 concurrent CLAIMED/IN_PROGRESS)
-// is a real per-scribe limit, so tests sharing one scribe fixture across many claims would
-// pollute each other's counts. Each test that claims something gets its own scribe.
+// A fresh scribe per call because the 5-claim backlog cap is per scribe and shared fixtures would pollute each other's counts.
 async function createScribe() {
   const rows = await db.insert(user).values({
     id: crypto.randomUUID(), email: "scribe-" + crypto.randomUUID().slice(0, 8) + "@test.com", passwordHash: "test",

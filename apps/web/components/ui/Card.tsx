@@ -19,6 +19,7 @@ export interface CardProps
   extends React.HTMLAttributes<HTMLDivElement>,
     VariantProps<typeof cardVariants> {}
 
+// Container card styled by variant.
 export function Card({ className, variant, ...props }: CardProps) {
   return <div className={cn(cardVariants({ variant }), className)} {...props} />;
 }

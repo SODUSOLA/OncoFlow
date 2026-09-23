@@ -8,6 +8,7 @@ import { Badge } from "../../../components/ui/Badge";
 import { cn } from "../../../lib/utils";
 import { useRegionScope } from "../lib/useRegionScope";
 
+// Formats kobo as a naira string.
 function koboToNaira(k: number) {
   return `₦${(k / 100).toLocaleString("en-NG", { minimumFractionDigits: 2 })}`;
 }
@@ -22,11 +23,7 @@ const STATUS_VARIANT: Record<Invoice["status"], "success" | "info" | "neutral" |
 
 type StepStatus = "done" | "active" | "pending";
 
-// Matches the designer's Invoice Generator mockup: a numbered, sequential accordion — done
-// steps collapse with a checkmark + "Edit", the active step is expanded, later steps stay
-// locked/pending until their prerequisite is satisfied. Step 4 here is a real confirmation step
-// (not a fabricated "Medication bundle" selector — no backend model exists for one; medication
-// cost is already a real line item within the tariff the other 3 steps resolve).
+// Numbered accordion step matching the mockup; step 4 is a real confirmation since no medication-bundle model exists.
 function StepCard({
   index, title, status, doneSummary, onEdit, children,
 }: {
@@ -71,6 +68,7 @@ function StepCard({
   );
 }
 
+// Billing page with invoice list and the Invoice Generator.
 export default function BillingPage() {
   const { facilitiesInRegion } = useRegionScope();
   const [invoices, setInvoices] = useState<Invoice[]>([]);
@@ -84,6 +82,7 @@ export default function BillingPage() {
   const [genResult, setGenResult] = useState<string | null>(null);
   const [editingStep, setEditingStep] = useState<1 | 2 | 3 | null>(null);
 
+  // Loads invoices across the region.
   function loadInvoices() {
     api.get<{ invoices: Invoice[] }>("/invoices?facilityId=all").then((d) => setInvoices(d.invoices)).catch(() => {});
   }
@@ -120,6 +119,7 @@ export default function BillingPage() {
   const step4Status: StepStatus = genPatientId && genClassificationId && genFacilityId ? "active" : "pending";
   const allComplete = step4Status === "active" && !!genTariff;
 
+  // Generates an invoice for the chosen patient, facility and classification.
   async function generateInvoice() {
     if (!genPatientId || !genFacilityId || !genClassificationId) return;
     setGenLoading(true);

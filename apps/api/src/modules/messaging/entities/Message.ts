@@ -13,6 +13,7 @@ export interface MessageData {
   createdAt: Date;
 }
 
+// Domain entity for one conversation message.
 export class Message {
   constructor(private data: MessageData) {}
 
@@ -28,6 +29,7 @@ export class Message {
     return this.data.type !== "SYSTEM";
   }
 
+  // Serializes the message for API responses.
   toJSON() {
     return {
       id: this.data.id,
