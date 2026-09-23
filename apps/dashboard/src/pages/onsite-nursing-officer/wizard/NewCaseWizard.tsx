@@ -108,11 +108,13 @@ export default function NewCaseWizard() {
 
   // Uploads the identity photo and waits for its scan.
   async function handleIdPhoto(file: File) {
-    if (!selectedCycle) return;
+    // nursingCase, not selectedCycle: a resumed case (Case Detail's "Continue Documentation") jumps straight
+    // to this step and never sets selectedCycle, which silently dropped every file picked on that path.
+    if (!nursingCase) return;
     setIdPhotoError(null);
     setIdPhotoScanning(true);
     try {
-      const uploaded = await uploadFile(file, selectedCycle.patientId);
+      const uploaded = await uploadFile(file, nursingCase.patientId);
       const resolved = await pollScanStatus(uploaded.id);
       if (resolved.virusScanStatus === "INFECTED") {
         await reportIncident(uploaded.id);
@@ -128,11 +130,13 @@ export default function NewCaseWizard() {
 
   // Uploads the documentation file and waits for its scan.
   async function handleDocUpload(file: File) {
-    if (!selectedCycle) return;
+    // Same reasoning as handleIdPhoto: nursingCase is set on both the fresh and the resumed path, selectedCycle
+    // only on the fresh one.
+    if (!nursingCase) return;
     setDocError(null);
     setDocScanning(true);
     try {
-      const uploaded = await uploadFile(file, selectedCycle.patientId);
+      const uploaded = await uploadFile(file, nursingCase.patientId);
       const resolved = await pollScanStatus(uploaded.id);
       if (resolved.virusScanStatus === "INFECTED") {
         await reportIncident(uploaded.id);
