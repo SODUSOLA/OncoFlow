@@ -16,7 +16,7 @@ function fileToBase64(file: File): Promise<string> {
 }
 
 // Uploads through POST /files/upload, the shared virus-scan pipeline; the record starts PENDING and is only real once the scan resolves.
-export async function uploadFile(file: File, patientId: string): Promise<FileRecord> {
+export async function uploadFile(file: File, patientId?: string): Promise<FileRecord> {
   const content = await fileToBase64(file);
   const res = await api.post<{ file: FileRecord }>("/files/upload", { patientId, mimeType: file.type || "application/octet-stream", content });
   return res.file;

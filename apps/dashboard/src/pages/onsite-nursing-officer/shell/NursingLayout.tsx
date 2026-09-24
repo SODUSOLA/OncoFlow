@@ -1,8 +1,10 @@
-import type { ComponentType } from "react";
+import { useEffect, type ComponentType } from "react";
 import { NavLink, Outlet, useNavigate } from "react-router-dom";
 import { CalendarClock, ClipboardList, Users, Package } from "lucide-react";
 import { useAuth } from "../../../lib/auth";
 import { cn } from "../../../lib/utils";
+import { ProfileAvatar } from "../lib/ProfileAvatar";
+import { applyTextSize } from "../lib/preferences";
 
 // Mobile-first frame with a 4-tab bottom nav instead of a desktop shell, matching how a nurse uses a phone or tablet on the ward.
 interface Tab { to: string; label: string; icon: ComponentType<{ className?: string }>; end?: boolean }
@@ -17,7 +19,9 @@ const TABS: readonly Tab[] = [
 export function NursingLayout() {
   const { user } = useAuth();
   const navigate = useNavigate();
-  const initials = (user?.email.slice(0, 2) ?? "NO").toUpperCase();
+
+  // Re-applies the saved text-size preference whenever the nursing app opens.
+  useEffect(() => { applyTextSize(); }, []);
 
   return (
     <div className="flex h-screen justify-center bg-admin-canvas-bg font-public-sans">
@@ -30,13 +34,9 @@ export function NursingLayout() {
               <p className="text-admin-micro leading-tight text-admin-text-secondary">Nursing Officer</p>
             </div>
           </div>
-          {/* Opens Settings rather than signing out directly — signing out is its own explicit action there. */}
-          <button
-            onClick={() => navigate("/dashboard/onsite-nursing-officer/settings")}
-            title="Settings"
-            className="flex size-8 items-center justify-center rounded-full bg-admin-card-alt text-admin-caption font-semibold text-admin-text"
-          >
-            {initials}
+          {/* Profile (image, details) lives behind the avatar; Settings is the gear on that page. */}
+          <button onClick={() => navigate("/dashboard/onsite-nursing-officer/profile")} title="Profile" aria-label="Profile" className="rounded-full">
+            <ProfileAvatar user={user} className="size-8 text-admin-caption" />
           </button>
         </header>
 

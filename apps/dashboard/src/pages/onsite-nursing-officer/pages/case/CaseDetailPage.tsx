@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import {
-  ChevronLeft, FileCheck2, Clock3, CheckCircle2, IdCard, FileText, ShieldCheck, TriangleAlert, ExternalLink,
+  ChevronLeft, FileCheck2, Clock3, CheckCircle2, IdCard, FileText, ShieldCheck, TriangleAlert, ExternalLink, Lock,
 } from "lucide-react";
 import { api } from "../../../../lib/api";
 import { Card } from "../../../../components/ui/Card";
@@ -43,6 +43,9 @@ export default function CaseDetailPage() {
 
   const Icon = STATUS_ICON[nursingCase.status];
   const latestReview = nursingCase.reviews[0] ?? null;
+  // Sent back and not yet resubmitted — the only state in which a submitted case can be changed again.
+  const sentBack = nursingCase.status === "PENDING_QA_REVIEW" && nursingCase.editable;
+  const awaitingQa = nursingCase.status === "PENDING_QA_REVIEW" && !nursingCase.editable;
 
   return (
     <div className="space-y-4">
@@ -75,7 +78,7 @@ export default function CaseDetailPage() {
           <TriangleAlert className="mt-0.5 size-4 shrink-0 text-admin-warning" aria-hidden="true" />
           <div className="min-w-0 flex-1">
             <p className="text-admin-body-sm font-semibold text-admin-text">Documentation not submitted yet</p>
-            <p className="text-admin-caption text-admin-text-secondary">Identity verification and the documentation upload were never finished for this case.</p>
+            <p className="text-admin-caption text-admin-text-secondary">Identity verification and the documentation form were never finished for this case.</p>
             <Button
               onClick={() => navigate("/dashboard/onsite-nursing-officer/new-case", { state: { resumeCase: nursingCase } })}
               size="sm" className="mt-2 rounded-admin-xs bg-admin-sidebar-cta hover:bg-admin-sidebar-cta/90"
@@ -86,25 +89,73 @@ export default function CaseDetailPage() {
         </Card>
       )}
 
+      {awaitingQa && (
+        <Card className="flex items-start gap-2.5 border-admin-sidebar-cta/30 bg-admin-sidebar-cta/5 p-3.5">
+          <Lock className="mt-0.5 size-4 shrink-0 text-admin-sidebar-cta" aria-hidden="true" />
+          <div>
+            <p className="text-admin-body-sm font-semibold text-admin-text">Submitted — awaiting QA review</p>
+            <p className="text-admin-caption text-admin-text-secondary">This case is locked. It can only be changed if QA sends it back.</p>
+          </div>
+        </Card>
+      )}
+
+      {sentBack && (
+        <Card className="flex items-start gap-2.5 border-admin-danger/40 bg-admin-danger/5 p-3.5">
+          <TriangleAlert className="mt-0.5 size-4 shrink-0 text-admin-danger" aria-hidden="true" />
+          <div className="min-w-0 flex-1">
+            <p className="text-admin-body-sm font-semibold text-admin-text">QA sent this case back</p>
+            {latestReview?.reason && <p className="text-admin-caption text-admin-text-secondary">{latestReview.reason}</p>}
+            <Button
+              onClick={() => navigate("/dashboard/onsite-nursing-officer/new-case", { state: { resumeCase: nursingCase } })}
+              size="sm" className="mt-2 rounded-admin-xs bg-admin-sidebar-cta hover:bg-admin-sidebar-cta/90"
+            >
+              Amend &amp; Resubmit
+            </Button>
+          </div>
+        </Card>
+      )}
+
       {nursingCase.documentationSheet && (
         <Card className="space-y-2 border-admin-border p-4">
           <p className="text-admin-caption font-bold uppercase tracking-wide text-admin-text-secondary">Documentation</p>
-          <p className="text-admin-body-sm text-admin-text">UPI entered: <span className="font-mono">{nursingCase.documentationSheet.upiCodeEntered}</span></p>
-          <p className="text-admin-body-sm text-admin-text-secondary">Identity verified {new Date(nursingCase.documentationSheet.identityVerifiedAt).toLocaleString()}</p>
+          <Row label="Treatment Date" value={nursingCase.documentationSheet.treatmentDate ?? "—"} />
+          <Row label="Diagnosis" value={nursingCase.documentationSheet.diagnosis ?? "—"} />
+          <Row label="Managing Consultant (QA Officer)" value={nursingCase.documentationSheet.managingConsultant ?? "—"} />
+          <Row
+            label="Infusion Time"
+            value={
+              nursingCase.documentationSheet.infusionStartTime || nursingCase.documentationSheet.infusionEndTime
+                ? `${nursingCase.documentationSheet.infusionStartTime?.slice(0, 5) ?? "—"} – ${nursingCase.documentationSheet.infusionEndTime?.slice(0, 5) ?? "—"}`
+                : "—"
+            }
+          />
+          <Row label="Next Appointment" value={nursingCase.documentationSheet.nextAppointmentDate ?? "—"} />
+          <Row label="UPI" value={nursingCase.documentationSheet.upiCodeEntered} />
+          <p className="text-admin-caption text-admin-text-secondary">Identity verified {new Date(nursingCase.documentationSheet.identityVerifiedAt).toLocaleString()}</p>
           <div className="flex flex-wrap gap-2 pt-1">
+            {nursingCase.documentationSheet.idPhotoFileId && (
             <a
-              href={`/api/files/${nursingCase.documentationSheet.idPhotoFileId}/content`} target="_blank" rel="noreferrer"
-              className="flex items-center gap-1.5 rounded-admin-xs border border-admin-border px-3 py-1.5 text-admin-caption text-admin-text hover:bg-admin-card-alt"
-            >
-              <IdCard className="size-3.5" aria-hidden="true" /> ID Photo <ExternalLink className="size-3" aria-hidden="true" />
-            </a>
-            <a
-              href={`/api/files/${nursingCase.documentationSheet.fileReference}/content`} target="_blank" rel="noreferrer"
-              className="flex items-center gap-1.5 rounded-admin-xs border border-admin-border px-3 py-1.5 text-admin-caption text-admin-text hover:bg-admin-card-alt"
-            >
-              <FileText className="size-3.5" aria-hidden="true" /> Documentation File <ExternalLink className="size-3" aria-hidden="true" />
-            </a>
+                href={`/api/files/${nursingCase.documentationSheet.idPhotoFileId}/content`} target="_blank" rel="noreferrer"
+                className="flex items-center gap-1.5 rounded-admin-xs border border-admin-border px-3 py-1.5 text-admin-caption text-admin-text hover:bg-admin-card-alt"
+              >
+                <IdCard className="size-3.5" aria-hidden="true" /> ID Photo <ExternalLink className="size-3" aria-hidden="true" />
+              </a>
+            )}
+            {nursingCase.documentationSheet.fileReference && (
+              <a
+                href={`/api/files/${nursingCase.documentationSheet.fileReference}/content`} target="_blank" rel="noreferrer"
+                className="flex items-center gap-1.5 rounded-admin-xs border border-admin-border px-3 py-1.5 text-admin-caption text-admin-text hover:bg-admin-card-alt"
+              >
+                <FileText className="size-3.5" aria-hidden="true" /> Legacy Upload <ExternalLink className="size-3" aria-hidden="true" />
+              </a>
+            )}
           </div>
+          {nursingCase.documentationSheet.note && (
+            <div className="border-t border-admin-border pt-2">
+              <p className="text-admin-micro font-semibold text-admin-text-secondary">Note</p>
+              <p className="text-admin-body-sm text-admin-text">{nursingCase.documentationSheet.note}</p>
+            </div>
+          )}
         </Card>
       )}
 
@@ -119,7 +170,17 @@ export default function CaseDetailPage() {
         </Card>
       )}
 
-      <CaseDrugUsage nursingCaseId={nursingCase.id} editable={nursingCase.status !== "CLOSED"} />
+      <CaseDrugUsage nursingCaseId={nursingCase.id} editable={nursingCase.editable} lockedReason={awaitingQa ? "awaiting QA review" : "closed"} />
+    </div>
+  );
+}
+
+// One label/value line in the documentation card.
+function Row({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="flex justify-between gap-3 text-admin-body-sm">
+      <span className="text-admin-text-secondary">{label}</span>
+      <span className="text-right text-admin-text">{value}</span>
     </div>
   );
 }

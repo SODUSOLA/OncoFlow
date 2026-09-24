@@ -1,12 +1,12 @@
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { User, ShieldCheck, Copy, Check, LogOut } from "lucide-react";
+import { ShieldCheck, Copy, Check, LogOut, Monitor, SlidersHorizontal } from "lucide-react";
 import { Card } from "../../../components/ui/Card";
 import { Button } from "../../../components/ui/Button";
 import { api } from "../../../lib/api";
 import { useAuth } from "../../../lib/auth";
 import { cn } from "../../../lib/utils";
-import type { Facility } from "../../../lib/types";
+import { getTextSize, setTextSize, type TextSize } from "../lib/preferences";
 
 // Card for enrolling and confirming MFA.
 function MfaCard() {
@@ -16,7 +16,9 @@ function MfaCard() {
   const [copied, setCopied] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
-  const [enabled, setEnabled] = useState(false);
+  const { user } = useAuth();
+  // Starts from what the account really has, not always "off".
+  const [enabled, setEnabled] = useState(user?.mfaEnabled ?? false);
 
   // Starts MFA enrolment and shows the secret.
   async function startEnrolment() {
@@ -108,21 +110,105 @@ function MfaCard() {
   );
 }
 
-// Settings limited to what the user table has (email, facility, MFA) — the avatar in the header opens this
-// page rather than signing out directly, and signing out is its own explicit action here.
-export default function SettingsPage() {
-  const { user, logout } = useAuth();
-  const navigate = useNavigate();
-  const [facilityName, setFacilityName] = useState<string | null>(null);
-  const [signingOut, setSigningOut] = useState(false);
-  const initials = (user?.email.slice(0, 2) ?? "NO").toUpperCase();
+interface SessionRow { id: string; device: string; ip: string; createdAt: string; isCurrent: boolean }
 
-  useEffect(() => {
-    if (!user?.facilityId) return;
-    api.get<{ facilities: Facility[] }>("/facilities")
-      .then((d) => setFacilityName(d.facilities.find((f) => f.id === user.facilityId)?.name ?? null))
-      .catch(() => {});
-  }, [user?.facilityId]);
+// Where this account is signed in, with a way to end the ones you don't recognise.
+function SessionsCard() {
+  const [sessions, setSessions] = useState<SessionRow[]>([]);
+  const [busyId, setBusyId] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [showAll, setShowAll] = useState(false);
+
+  // Reloads the account's active sessions.
+  function load() {
+    api.get<{ sessions: SessionRow[] }>("/auth/sessions").then((d) => setSessions(d.sessions)).catch(() => {});
+  }
+  useEffect(load, []);
+
+  // Ends another session (the current one is ended by signing out).
+  async function revoke(id: string) {
+    setBusyId(id);
+    setError(null);
+    try {
+      await api.post(`/auth/sessions/${id}/revoke`);
+      load();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Could not end that session");
+    } finally {
+      setBusyId(null);
+    }
+  }
+
+  // This device first, then the most recent others.
+  const ordered = [...sessions].sort((a, b) => Number(b.isCurrent) - Number(a.isCurrent) || b.createdAt.localeCompare(a.createdAt));
+  const visible = showAll ? ordered : ordered.slice(0, 3);
+
+  return (
+    <Card className="border-admin-border p-5">
+      <h2 className="flex items-center gap-2 text-admin-h4 text-admin-text">
+        <Monitor className="size-4 text-admin-text-secondary" aria-hidden="true" /> Active Sessions
+      </h2>
+      <ul className="mt-3 space-y-2">
+        {visible.map((s) => (
+          <li key={s.id} className="flex items-center justify-between gap-3 rounded-admin-sm bg-admin-card-alt px-3 py-2">
+            <div className="min-w-0">
+              <p className="truncate text-admin-body-sm text-admin-text">{s.device === "unknown" ? "Unknown device" : s.device}{s.isCurrent && <span className="ml-1.5 text-admin-micro font-semibold text-admin-success">This device</span>}</p>
+              <p className="text-admin-micro text-admin-text-secondary">{s.ip} · signed in {new Date(s.createdAt).toLocaleString()}</p>
+            </div>
+            {!s.isCurrent && (
+              <Button onClick={() => revoke(s.id)} loading={busyId === s.id} variant="outline" size="sm" className="shrink-0 rounded-admin-xs">End</Button>
+            )}
+          </li>
+        ))}
+      </ul>
+      {ordered.length > 3 && (
+        <button onClick={() => setShowAll((v) => !v)} className="mt-2 text-admin-caption font-semibold text-admin-sidebar-cta">
+          {showAll ? "Show fewer" : `Show all ${ordered.length} sessions`}
+        </button>
+      )}
+      {error && <p className="mt-2 text-admin-micro text-admin-danger">{error}</p>}
+    </Card>
+  );
+}
+
+// Display preferences. Stored on this device only — the server has no per-user preference storage yet.
+function PreferencesCard() {
+  const [size, setSize] = useState<TextSize>(getTextSize());
+  const OPTIONS: { id: TextSize; label: string }[] = [{ id: "small", label: "Small" }, { id: "default", label: "Default" }, { id: "large", label: "Large" }];
+
+  // Applies and saves the chosen size.
+  function choose(next: TextSize) {
+    setSize(next);
+    setTextSize(next);
+  }
+
+  return (
+    <Card className="border-admin-border p-5">
+      <h2 className="flex items-center gap-2 text-admin-h4 text-admin-text">
+        <SlidersHorizontal className="size-4 text-admin-text-secondary" aria-hidden="true" /> Preferences
+      </h2>
+      <p className="mt-3 text-admin-body-sm font-medium text-admin-text">Text size</p>
+      <div className="mt-1.5 flex gap-2">
+        {OPTIONS.map((o) => (
+          <button
+            key={o.id} onClick={() => choose(o.id)} aria-pressed={size === o.id}
+            className={cn("flex-1 rounded-admin-sm border px-3 py-1.5 text-admin-body-sm", size === o.id ? "border-admin-sidebar-cta bg-admin-sidebar-cta/10 text-admin-sidebar-cta" : "border-admin-border text-admin-text-secondary")}
+          >
+            {o.label}
+          </button>
+        ))}
+      </div>
+      <p className="mt-2 text-admin-micro text-admin-text-secondary">Saved on this device only.</p>
+    </Card>
+  );
+}
+
+// Settings: security (MFA, active sessions), preferences, and signing out. Who you are — image, name,
+// designation, hospital — is on the Profile page (the avatar, top right).
+export default function SettingsPage() {
+  const { logout } = useAuth();
+  const navigate = useNavigate();
+  const [signingOut, setSigningOut] = useState(false);
 
   // Signs out and returns to the login screen.
   async function signOut() {
@@ -135,22 +221,9 @@ export default function SettingsPage() {
     <div className="space-y-4">
       <p className="text-admin-h4 text-admin-text">Settings</p>
 
-      <Card className="border-admin-border p-5">
-        <h2 className="flex items-center gap-2 text-admin-h4 text-admin-text">
-          <User className="size-4 text-admin-text-secondary" aria-hidden="true" /> Profile Information
-        </h2>
-        <div className="mt-4 flex items-center gap-4">
-          <div className="flex size-16 shrink-0 items-center justify-center rounded-full bg-admin-sidebar-cta text-admin-h4 font-semibold text-white">
-            {initials}
-          </div>
-          <div className="min-w-0">
-            <p className="truncate text-admin-body font-semibold text-admin-text">{user?.email}</p>
-            <p className="text-admin-caption text-admin-text-secondary">Onsite Nursing Officer{facilityName ? ` · ${facilityName}` : ""}</p>
-          </div>
-        </div>
-      </Card>
-
       <MfaCard />
+      <SessionsCard />
+      <PreferencesCard />
 
       <Card className="border-admin-border p-4">
         <button

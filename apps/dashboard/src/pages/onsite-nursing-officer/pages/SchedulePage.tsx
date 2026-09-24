@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { TriangleAlert, CalendarClock, ChevronRight, Clock } from "lucide-react";
+import { TriangleAlert, CalendarClock, ChevronRight } from "lucide-react";
 import { api } from "../../../lib/api";
 import { useAuth } from "../../../lib/auth";
 import { Card } from "../../../components/ui/Card";
@@ -8,6 +8,7 @@ import { Card } from "../../../components/ui/Card";
 import { getIsoWeek } from "../../regional-admin/lib/isoWeek";
 import { cn } from "../../../lib/utils";
 import type { RegimenCycleRow } from "../lib/types";
+import { CycleStatusBadge } from "../lib/CycleStatusBadge";
 
 // Returns today's date as YYYY-MM-DD.
 function todayDateString(): string {
@@ -77,10 +78,10 @@ export default function SchedulePage() {
     return () => { cancelled = true; };
   }, [user?.facilityId]);
 
-  // Cycle rows are day-independent (SCHEDULED with a date); clicking always goes through the patient page,
-  // which is the one place that decides whether a case can actually be started for this patient right now.
-  function goToPatient(patientId: string) {
-    navigate(`/dashboard/onsite-nursing-officer/patients/${patientId}`);
+  // A visitation with a live case opens that case (where it can be continued or amended); one with none goes
+  // through the patient page, the one place that decides whether a case can be started for them right now.
+  function open(c: RegimenCycleRow) {
+    navigate(c.caseId ? `/dashboard/onsite-nursing-officer/cases/${c.caseId}` : `/dashboard/onsite-nursing-officer/patients/${c.patientId}`);
   }
 
   return (
@@ -117,12 +118,11 @@ export default function SchedulePage() {
         ) : (
           <div className="space-y-2">
             {due.map((c) => {
-              const overdue = c.scheduledDate < todayDateString();
               return (
                 <Card
                   key={c.id}
                   className="flex cursor-pointer items-center justify-between gap-3 border-admin-border p-3.5 hover:border-admin-sidebar-cta"
-                  onClick={() => goToPatient(c.patientId)}
+                  onClick={() => open(c)}
                 >
                   <div className="flex min-w-0 items-center gap-3">
                     <div className="flex size-10 shrink-0 items-center justify-center rounded-full bg-admin-sidebar-cta text-admin-caption font-semibold text-white">
@@ -134,11 +134,7 @@ export default function SchedulePage() {
                     </div>
                   </div>
                   <div className="flex shrink-0 items-center gap-2">
-                    {overdue && (
-                      <span className="flex items-center gap-1 rounded-admin-lg bg-admin-danger/10 px-2 py-0.5 text-admin-micro font-semibold text-admin-danger">
-                        <Clock className="size-3" aria-hidden="true" /> Overdue
-                      </span>
-                    )}
+                    <CycleStatusBadge cycle={c} today={todayDateString()} />
                     <ChevronRight className="size-4 text-admin-text-secondary" aria-hidden="true" />
                   </div>
                 </Card>
@@ -160,7 +156,7 @@ export default function SchedulePage() {
               <Card
                 key={c.id}
                 className={cn("flex cursor-pointer items-center justify-between gap-3 border-admin-border p-3 opacity-80 hover:border-admin-sidebar-cta hover:opacity-100")}
-                onClick={() => goToPatient(c.patientId)}
+                onClick={() => open(c)}
               >
                 <div className="flex min-w-0 items-center gap-3">
                   <div className="flex size-8 shrink-0 items-center justify-center rounded-full bg-admin-card-alt text-admin-micro font-semibold text-admin-text">

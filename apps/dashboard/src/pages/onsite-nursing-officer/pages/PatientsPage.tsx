@@ -1,14 +1,16 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { useNavigate } from "react-router-dom";
 import { Search, ChevronRight, CalendarClock, History } from "lucide-react";
 import { api } from "../../../lib/api";
 import { useAuth } from "../../../lib/auth";
 import type { Patient } from "../../../lib/types";
 import { Card } from "../../../components/ui/Card";
-import { cn } from "../../../lib/utils";
 import type { NursingCase, RegimenCycleRow } from "../lib/types";
+import { CycleStatusBadge } from "../lib/CycleStatusBadge";
 
-interface ScheduleInfo { label: string; detail: string }
+// A due cycle carries its live case state (same server-computed fields the Schedule tab shows); a
+// tomorrow-only patient has no case yet, so just a label.
+interface ScheduleInfo { detail: string; cycle?: RegimenCycleRow; label?: string }
 
 // Patients tab: who this officer is scheduled to see (today, overdue, tomorrow), who they've seen before,
 // and — as a fallback for anyone else — the rest of the facility's patients.
@@ -37,13 +39,14 @@ export default function PatientsPage() {
       setPatients(patientRows);
 
       const scheduleMap = new Map<string, ScheduleInfo>();
+      // Due cycles arrive oldest first, so the first one per patient is the one to act on.
       for (const c of due) {
-        const overdue = c.scheduledDate < today;
-        scheduleMap.set(c.patientId, { label: overdue ? "Overdue" : "Today", detail: `Cycle ${c.cycleNumber} · ${c.drugName}` });
+        if (scheduleMap.has(c.patientId)) continue;
+        scheduleMap.set(c.patientId, { detail: `Cycle ${c.cycleNumber} · ${c.drugName}`, cycle: c });
       }
       for (const c of tomorrowCycles) {
         if (scheduleMap.has(c.patientId)) continue;
-        scheduleMap.set(c.patientId, { label: "Tomorrow", detail: `Cycle ${c.cycleNumber} · ${c.drugName}` });
+        scheduleMap.set(c.patientId, { detail: `Cycle ${c.cycleNumber} · ${c.drugName}`, label: "Tomorrow" });
       }
       setScheduled(scheduleMap);
 
@@ -63,7 +66,7 @@ export default function PatientsPage() {
 
   const { scheduledPatients, seenPatients, otherPatients } = useMemo(() => {
     const scheduledList = patients.filter((p) => scheduled.has(p.id) && matches(p))
-      .sort((a, b) => (scheduled.get(a.id)!.label === "Tomorrow" ? 1 : 0) - (scheduled.get(b.id)!.label === "Tomorrow" ? 1 : 0));
+      .sort((a, b) => (scheduled.get(a.id)!.cycle ? 0 : 1) - (scheduled.get(b.id)!.cycle ? 0 : 1));
     const seenList = patients.filter((p) => !scheduled.has(p.id) && lastSeenAt.has(p.id) && matches(p))
       .sort((a, b) => lastSeenAt.get(b.id)!.localeCompare(lastSeenAt.get(a.id)!));
     const otherList = patients.filter((p) => !scheduled.has(p.id) && !lastSeenAt.has(p.id) && matches(p))
@@ -95,12 +98,18 @@ export default function PatientsPage() {
         <>
           <PatientGroup
             title="Scheduled" icon={CalendarClock} patients={scheduledPatients}
-            subtitle={(p) => scheduled.get(p.id)!.detail} badge={(p) => scheduled.get(p.id)!.label}
+            subtitle={(p) => scheduled.get(p.id)!.detail}
+            badge={(p) => {
+              const info = scheduled.get(p.id)!;
+              return info.cycle
+                ? <CycleStatusBadge cycle={info.cycle} today={new Date().toISOString().slice(0, 10)} />
+                : <span className="rounded-admin-lg bg-admin-card-alt px-2 py-0.5 text-admin-micro font-semibold text-admin-text-secondary">{info.label}</span>;
+            }}
             onOpen={(id) => navigate(`/dashboard/onsite-nursing-officer/patients/${id}`)}
           />
           <PatientGroup
             title="Previously Seen" icon={History} patients={seenPatients}
-            subtitle={(p) => p.uniquePatientId} badge={() => null}
+            subtitle={(p) => `${p.uniquePatientId} · last seen ${new Date(lastSeenAt.get(p.id)!).toLocaleDateString()}`} badge={() => null}
             onOpen={(id) => navigate(`/dashboard/onsite-nursing-officer/patients/${id}`)}
           />
           <PatientGroup
@@ -119,7 +128,7 @@ function PatientGroup({
   title, icon: Icon, patients, subtitle, badge, onOpen,
 }: {
   title: string; icon?: typeof CalendarClock; patients: Patient[];
-  subtitle: (p: Patient) => string; badge: (p: Patient) => string | null; onOpen: (patientId: string) => void;
+  subtitle: (p: Patient) => string; badge: (p: Patient) => ReactNode; onOpen: (patientId: string) => void;
 }) {
   if (patients.length === 0) return null;
   return (
@@ -146,14 +155,7 @@ function PatientGroup({
                 </div>
               </div>
               <div className="flex shrink-0 items-center gap-2">
-                {tag && (
-                  <span className={cn(
-                    "rounded-admin-lg px-2 py-0.5 text-admin-micro font-semibold",
-                    tag === "Overdue" ? "bg-admin-danger/10 text-admin-danger" : tag === "Today" ? "bg-admin-success/10 text-admin-success" : "bg-admin-card-alt text-admin-text-secondary",
-                  )}>
-                    {tag}
-                  </span>
-                )}
+                {tag}
                 <ChevronRight className="size-4 text-admin-text-secondary" aria-hidden="true" />
               </div>
             </Card>

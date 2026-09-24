@@ -3,16 +3,18 @@ import { Pill } from "lucide-react";
 import { api } from "../../../../lib/api";
 import { Card } from "../../../../components/ui/Card";
 import { Button } from "../../../../components/ui/Button";
-import type { Drug } from "../../../../lib/drugSupply";
+import type { Drug, DrugStockRow } from "../../../../lib/drugSupply";
 import { DrugPicker } from "../inventory/DrugPicker";
 
 interface UsageRow { id: string; drugId: string; drugName: string; drugStrength: string; quantityUsed: number; usedAt: string }
 
 // Drugs administered for this case: the case is the context, so logging usage here takes only a drug and a
 // quantity — no case picker, the same "no-option for user input" shape the invoice generator uses, per request.
-export function CaseDrugUsage({ nursingCaseId, editable }: { nursingCaseId: string; editable: boolean }) {
+export function CaseDrugUsage({ nursingCaseId, editable, lockedReason = "closed" }: { nursingCaseId: string; editable: boolean; lockedReason?: string }) {
   const [drugs, setDrugs] = useState<Drug[]>([]);
   const [usage, setUsage] = useState<UsageRow[]>([]);
+  // What the officer actually holds, drug by drug: logging can't exceed it (the API refuses too).
+  const [stock, setStock] = useState<Map<string, number>>(new Map());
   const [loading, setLoading] = useState(true);
   const [drugId, setDrugId] = useState("");
   const [quantity, setQuantity] = useState("");
@@ -24,7 +26,13 @@ export function CaseDrugUsage({ nursingCaseId, editable }: { nursingCaseId: stri
     api.get<{ usage: UsageRow[] }>(`/drug-usage?nursingCaseId=${nursingCaseId}`).then((d) => setUsage(d.usage)).catch(() => {}).finally(() => setLoading(false));
   }
 
+  // Reloads the officer's stock on hand.
+  function loadStock() {
+    api.get<{ stock: DrugStockRow[] }>("/drug-stock/mine").then((d) => setStock(new Map(d.stock.map((r) => [r.drugId, r.quantity])))).catch(() => {});
+  }
+
   useEffect(() => {
+    loadStock();
     api.get<{ drugs: Drug[] }>("/inventory/drugs").then((d) => setDrugs(d.drugs)).catch(() => {});
     load();
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -32,7 +40,7 @@ export function CaseDrugUsage({ nursingCaseId, editable }: { nursingCaseId: stri
 
   // Logs the drug against this case, which deducts it from the officer's stock immediately.
   async function logUsage() {
-    if (!drugId || !(Number(quantity) > 0)) return;
+    if (!drugId || !(Number(quantity) > 0) || overStock) return;
     setBusy(true);
     setError(null);
     try {
@@ -40,12 +48,17 @@ export function CaseDrugUsage({ nursingCaseId, editable }: { nursingCaseId: stri
       setDrugId("");
       setQuantity("");
       load();
+      loadStock();
     } catch (err) {
+      loadStock();
       setError(err instanceof Error ? err.message : "Could not log this drug");
     } finally {
       setBusy(false);
     }
   }
+
+  const onHand = drugId ? Math.max(stock.get(drugId) ?? 0, 0) : null;
+  const overStock = onHand !== null && Number(quantity) > onHand;
 
   return (
     <Card className="space-y-3 border-admin-border p-4">
@@ -70,17 +83,20 @@ export function CaseDrugUsage({ nursingCaseId, editable }: { nursingCaseId: stri
 
       {editable ? (
         <div className="flex gap-2 border-t border-admin-border pt-3">
-          <div className="min-w-0 flex-1"><DrugPicker drugs={drugs} value={drugId} onChange={setDrugId} /></div>
+          <div className="min-w-0 flex-1"><DrugPicker drugs={drugs} value={drugId} onChange={setDrugId} stock={stock} /></div>
           <input
             type="number" min={1} value={quantity} onChange={(e) => setQuantity(e.target.value)} placeholder="Qty"
             className="w-20 rounded-admin-sm border border-admin-border px-3 py-2 text-admin-body-sm"
           />
-          <Button onClick={logUsage} loading={busy} disabled={!drugId || !(Number(quantity) > 0)} size="sm" className="shrink-0 rounded-admin-xs bg-admin-sidebar-cta hover:bg-admin-sidebar-cta/90">
+          <Button onClick={logUsage} loading={busy} disabled={!drugId || !(Number(quantity) > 0) || overStock} size="sm" className="shrink-0 rounded-admin-xs bg-admin-sidebar-cta hover:bg-admin-sidebar-cta/90">
             Log
           </Button>
         </div>
       ) : (
-        <p className="border-t border-admin-border pt-3 text-admin-micro text-admin-text-secondary">This case is closed — nothing more can be logged against it.</p>
+        <p className="border-t border-admin-border pt-3 text-admin-micro text-admin-text-secondary">This case is {lockedReason} — nothing more can be logged against it.</p>
+      )}
+      {editable && overStock && (
+        <p className="text-admin-micro text-admin-danger">Only {onHand} in stock — request a delivery or lower the quantity.</p>
       )}
       {error && <p className="text-admin-micro text-admin-danger">{error}</p>}
     </Card>

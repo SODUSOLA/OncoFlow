@@ -5,6 +5,12 @@ import { invalidateRegionScope } from "../pages/regional-admin/lib/facilityStore
 export interface AuthUser {
   id: string;
   email: string;
+  firstName: string | null;
+  lastName: string | null;
+  // First + last name, or the email's local part when no name is on record.
+  fullName: string;
+  profilePictureFileId: string | null;
+  mfaEnabled: boolean;
   status: string;
   facilityId: string | null;
 }
@@ -25,6 +31,8 @@ interface AuthState {
 interface AuthContextValue extends AuthState {
   login: (email: string, password: string) => Promise<{ user: AuthUser; roles: AuthRole[] }>;
   logout: () => Promise<void>;
+  // Replaces the cached user after the caller changed their own profile (e.g. new profile image).
+  updateUser: (user: AuthUser) => void;
 }
 
 // React context holding the current session.
@@ -53,10 +61,19 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     await api.post("/auth/logout").catch(() => { /* clear local state regardless */ });
     // Clears the module-level facility cache, which outlives this provider, so a long-lived tab doesn't serve the previous session's data.
     invalidateRegionScope();
+    // Unsent documentation drafts are per person; don't leave them on a shared device after sign-out.
+    try {
+      Object.keys(localStorage).filter((k) => k.startsWith("oncoflow.docDraft.")).forEach((k) => localStorage.removeItem(k));
+    } catch { /* storage unavailable — nothing to clear */ }
     setState({ user: null, roles: [], loading: false });
   }
 
-  return <AuthContext.Provider value={{ ...state, login, logout }}>{children}</AuthContext.Provider>;
+  // Swaps in a freshly-returned user without touching roles or the loading flag.
+  function updateUser(user: AuthUser) {
+    setState((prev) => ({ ...prev, user }));
+  }
+
+  return <AuthContext.Provider value={{ ...state, login, logout, updateUser }}>{children}</AuthContext.Provider>;
 }
 
 // Returns the auth context, throwing outside an AuthProvider.
