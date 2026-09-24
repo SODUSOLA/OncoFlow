@@ -1,7 +1,7 @@
 // Shared clinical types and classification color maps, so every consultant screen agrees on what "critical" looks like.
 
 export interface RegimenData {
-  id: string; drugName: string; protocolCode: string; totalCycles: number;
+  id: string; drugName: string; protocolCode: string; diagnosis: string | null; totalCycles: number;
   completedCycles: number; currentCycleNumber: number | null; status: string; startedAt: string;
   cycles: { id: string; cycleNumber: number; scheduledDate: string; status: string }[];
 }

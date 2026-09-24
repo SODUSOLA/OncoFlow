@@ -14,6 +14,7 @@ import {
   type LabDocumentRow, type ActivityEntry, type CaseLockData,
   VITAL_LABELS, VITAL_UNITS, BMI_COLOR, CRCL_COLOR, EGFR_COLOR, TRIGGER_LABEL,
 } from "../lib/clinicalTypes";
+import { PrescribeRegimenModal, type PrescribeRegimenValues } from "../components/PrescribeRegimenModal";
 
 // Rebuilt to the revised guide: BMI/BSA/CrCl/eGFR are core, and every section reads a real endpoint with no client-computed severity.
 
@@ -35,6 +36,7 @@ export default function PatientFilePage() {
   const [activity, setActivity] = useState<ActivityEntry[]>([]);
   const [caseLock, setCaseLock] = useState<CaseLockData | null>(null);
   const [loading, setLoading] = useState(true);
+  const [showPrescribeModal, setShowPrescribeModal] = useState(false);
 
   useEffect(() => {
     if (!patientId) return;
@@ -80,6 +82,14 @@ export default function PatientFilePage() {
     const diff = Date.now() - dob.getTime();
     return Math.floor(diff / (365.25 * 24 * 3600 * 1000));
   }, [patient]);
+
+  // Prescribes a new regimen and re-fetches it so the card reflects what the server actually generated.
+  async function prescribeRegimen(values: PrescribeRegimenValues) {
+    if (!patientId) return;
+    await api.post("/regimen", { patientId, ...values });
+    const r = await api.get<{ regimen: RegimenData | null }>(`/regimen?patientId=${patientId}`).catch(() => ({ regimen: null }));
+    setRegimen(r.regimen);
+  }
 
   if (loading) return <p className="text-admin-body-sm text-admin-text-secondary">Loading…</p>;
   if (!patient) return <p className="text-admin-body-sm text-admin-danger">Patient not found.</p>;
@@ -130,7 +140,7 @@ export default function PatientFilePage() {
       </div>
 
       <div className="grid grid-cols-2 gap-4">
-        <ActiveRegimenCard regimen={regimen} />
+        <ActiveRegimenCard regimen={regimen} onPrescribe={() => setShowPrescribeModal(true)} />
         <ClinicalMetricsCard metrics={metrics} />
       </div>
 
@@ -140,6 +150,14 @@ export default function PatientFilePage() {
         <LabDocumentsPanel documents={documents} />
         <ActivityLogTable entries={activity} />
       </div>
+
+      {showPrescribeModal && (
+        <PrescribeRegimenModal
+          patientName={`${patient.firstName} ${patient.lastName}`}
+          onClose={() => setShowPrescribeModal(false)}
+          onSubmit={prescribeRegimen}
+        />
+      )}
     </div>
   );
 }
@@ -164,13 +182,19 @@ function CaseLockBanner({ lock }: { lock: CaseLockData }) {
 
 // ---- Active Regimen ---------------------------------------------------------------------
 
-// Card showing the active regimen and cycle progress.
-function ActiveRegimenCard({ regimen }: { regimen: RegimenData | null }) {
+// Card showing the active regimen and cycle progress, or a prompt to prescribe one when there isn't one.
+function ActiveRegimenCard({ regimen, onPrescribe }: { regimen: RegimenData | null; onPrescribe: () => void }) {
   if (!regimen) {
     return (
-      <Card className="flex flex-col items-center justify-center gap-2 border-admin-border p-8 text-center">
+      <Card className="flex flex-col items-center justify-center gap-3 border-admin-border p-8 text-center">
         <Syringe className="size-6 text-admin-text-secondary" aria-hidden="true" />
         <p className="text-admin-body-sm text-admin-text-secondary">No active regimen on record.</p>
+        <button
+          onClick={onPrescribe}
+          className="rounded-admin-xs bg-admin-sidebar-cta px-3 py-1.5 text-admin-caption font-semibold text-white hover:bg-admin-sidebar-cta/90"
+        >
+          Prescribe Regimen
+        </button>
       </Card>
     );
   }
@@ -190,10 +214,11 @@ function ActiveRegimenCard({ regimen }: { regimen: RegimenData | null }) {
           {regimen.completedCycles}/{regimen.totalCycles}
         </text>
       </svg>
-      <div>
+      <div className="min-w-0">
         <p className="text-admin-caption font-bold uppercase tracking-wide text-admin-text-secondary">Active Regimen</p>
         <p className="mt-1 text-admin-h4 text-admin-text">{regimen.drugName}</p>
         <p className="text-admin-body-sm text-admin-text-secondary">{regimen.protocolCode}</p>
+        {regimen.diagnosis && <p className="mt-1 text-admin-caption text-admin-text-secondary">{regimen.diagnosis}</p>}
         <span className="mt-2 inline-block rounded-admin-lg bg-admin-warning/15 px-2.5 py-0.5 text-admin-caption font-semibold text-admin-warning">
           {regimen.currentCycleNumber ? `In Progress — Cycle ${regimen.currentCycleNumber}` : regimen.status}
         </span>
