@@ -1,5 +1,5 @@
 import {
-  pgTable, uuid, varchar, text, numeric, integer, boolean, timestamp, date, index, uniqueIndex,
+  pgTable, uuid, varchar, text, numeric, integer, boolean, timestamp, date, index, uniqueIndex, type AnyPgColumn,
 } from "drizzle-orm/pg-core";
 import {
   regimenStatusEnum, regimenCycleStatusEnum, vitalTypeEnum, vitalSourceEnum,
@@ -11,6 +11,7 @@ import { patient } from "../patient/schema.js";
 import { user } from "../auth/schema.js";
 import { meeting } from "../messaging/schema.js";
 import { file } from "../documents/schema.js";
+import { nursingCase } from "../nursing/schema.js";
 
 // Regimen and cycle tables (PATIENT_DATA_MODELS §1).
 
@@ -19,11 +20,15 @@ export const regimen = pgTable("regimen", {
   patientId: uuid("patient_id").notNull().references(() => patient.id),
   drugName: varchar("drug_name", { length: 255 }).notNull(),
   protocolCode: varchar("protocol_code", { length: 100 }).notNull(),
+  // Stated by the prescribing consultant when the regimen is created — the nursing documentation form
+  // reads this read-only rather than letting a nurse type a diagnosis fresh at every visit.
+  diagnosis: text("diagnosis"),
   totalCycles: integer("total_cycles").notNull(),
   cycleIntervalDays: integer("cycle_interval_days").notNull(),
   status: regimenStatusEnum("status").notNull().default("ACTIVE"),
   startedAt: timestamp("started_at").notNull(),
   discontinuedReason: text("discontinued_reason"),
+  prescribedBy: uuid("prescribed_by").references(() => user.id),
   createdAt: timestamp("created_at").notNull().defaultNow(),
   updatedAt: timestamp("updated_at").notNull().defaultNow(),
   isDeleted: boolean("is_deleted").notNull().default(false),
@@ -62,6 +67,10 @@ export const vitalReading = pgTable("vital_reading", {
   source: vitalSourceEnum("source").notNull(),
   recordedBy: uuid("recorded_by").references(() => user.id),
   meetingId: uuid("meeting_id").references(() => meeting.id),
+  // Set for readings a nursing officer records as part of a case's documentation, so a frozen case can refuse
+  // them and reviewers can see exactly which readings belong to a case. Callback reference: nursing/schema
+  // imports this file back.
+  nursingCaseId: uuid("nursing_case_id").references((): AnyPgColumn => nursingCase.id),
   createdAt: timestamp("created_at").notNull().defaultNow(),
   updatedAt: timestamp("updated_at").notNull().defaultNow(),
   isDeleted: boolean("is_deleted").notNull().default(false),

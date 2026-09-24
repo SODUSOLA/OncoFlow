@@ -1,4 +1,4 @@
-import { pgTable, uuid, text, varchar, timestamp } from "drizzle-orm/pg-core";
+import { pgTable, uuid, text, varchar, timestamp, date, time } from "drizzle-orm/pg-core";
 import { nursingCaseStatusEnum, nursingCaseReviewDecisionEnum } from "../../db/enums.js";
 import { patient } from "../patient/schema.js";
 import { user } from "../auth/schema.js";
@@ -15,6 +15,9 @@ export const nursingCase = pgTable("nursing_case", {
   status: nursingCaseStatusEnum("status").notNull().default("STARTED"),
   closedBy: uuid("closed_by").references(() => user.id),
   closedAt: timestamp("closed_at"),
+  // Set once the nurse confirms the patient in front of them matches the profile photo on file. Lives on
+  // the case (not the sheet) so it survives leaving mid-documentation: resuming never repeats verification.
+  identityVerifiedAt: timestamp("identity_verified_at"),
   createdAt: timestamp("created_at").notNull().defaultNow(),
   updatedAt: timestamp("updated_at").notNull().defaultNow(),
   deletedAt: timestamp("deleted_at"),
@@ -31,15 +34,31 @@ export const nursingCaseReview = pgTable("nursing_case_review", {
   createdAt: timestamp("created_at").notNull().defaultNow(),
 });
 
-// Belongs to a case rather than a patient, since it is content within the case.
+// Belongs to a case rather than a patient, since it is content within the case. One row per case: a
+// resubmission after QA sends it back (REQUIREMENTS_INCOMPLETE) updates this row rather than adding another.
 export const nursingDocumentationSheet = pgTable("nursing_documentation_sheet", {
   id: uuid("id").primaryKey().defaultRandom(),
   nursingCaseId: uuid("nursing_case_id").notNull().references(() => nursingCase.id),
   authoredBy: uuid("authored_by").notNull().references(() => user.id),
+  // The patient's UPI as recorded at verification (server-filled from the patient record, no longer typed);
+  // the ID-photo reference is nullable since verification now compares against the profile photo instead of
+  // a fresh capture. Both kept so sheets submitted before this change still read back.
   upiCodeEntered: text("upi_code_entered").notNull(),
-  idPhotoFileId: uuid("id_photo_file_id").notNull().references(() => file.id),
+  idPhotoFileId: uuid("id_photo_file_id").references(() => file.id),
   identityVerifiedAt: timestamp("identity_verified_at").notNull(),
-  fileReference: uuid("file_reference").notNull().references(() => file.id),
+  // Legacy free-form upload from before the structured form replaced it; nullable since no current
+  // submission produces one, kept so already-submitted sheets still read back correctly.
+  fileReference: uuid("file_reference").references(() => file.id),
+  // The structured content from NURSING DOCUMENTATION SHEET (admin's copy) — everything on it that
+  // isn't already its own record elsewhere (vitals go to vital_reading, labs and biometrics to
+  // clinical_metrics_snapshot/nursing_lab_value, medications to drug_usage).
+  diagnosis: text("diagnosis"),
+  managingConsultant: text("managing_consultant"),
+  treatmentDate: date("treatment_date"),
+  infusionStartTime: time("infusion_start_time"),
+  infusionEndTime: time("infusion_end_time"),
+  note: text("note"),
+  nextAppointmentDate: date("next_appointment_date"),
   createdAt: timestamp("created_at").notNull().defaultNow(),
   updatedAt: timestamp("updated_at").notNull().defaultNow(),
   deletedAt: timestamp("deleted_at"),
@@ -52,5 +71,15 @@ export const uploadSecurityIncident = pgTable("upload_security_incident", {
   attemptedBy: uuid("attempted_by").notNull().references(() => user.id),
   fileScanResult: text("file_scan_result").notNull(),
   incidentReference: varchar("incident_reference", { length: 32 }).notNull(),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+});
+
+// A nurse's report that the patient in front of them doesn't match the profile on file. Recorded and sent to
+// Regional Admin rather than just walking away, so a possible wrong-patient event leaves a trail.
+export const identityMismatchReport = pgTable("identity_mismatch_report", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  nursingCaseId: uuid("nursing_case_id").notNull().references(() => nursingCase.id),
+  reportedBy: uuid("reported_by").notNull().references(() => user.id),
+  note: text("note"),
   createdAt: timestamp("created_at").notNull().defaultNow(),
 });

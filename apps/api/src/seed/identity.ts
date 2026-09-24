@@ -86,6 +86,7 @@ const PERMISSIONS: { resource: string; action: string; description: string }[] =
   { resource: "clinicalNote", action: "create", description: "Add a free-text clinical note to a patient's medical record" },
   { resource: "clinicalNote", action: "read", description: "Read a patient's clinical notes" },
   { resource: "regimen", action: "read", description: "Read a patient's active treatment regimen and cycles" },
+  { resource: "regimen", action: "create", description: "Prescribe a new treatment regimen (drug, protocol, diagnosis, cycles) for a patient" },
   { resource: "vital", action: "read", description: "Read a patient's vital-sign readings" },
   { resource: "vital", action: "create", description: "Record a vital-sign reading (e.g. logged during a video consult)" },
   { resource: "clinicalMetrics", action: "read", description: "Read a patient's current BMI/BSA/CrCl snapshot and FBC/E-U-Cr values" },
@@ -222,6 +223,9 @@ export async function seedIdentity() {
     "inventory:read",
     "drugRequest:create", "drugDispatch:update", "drugStock:read", "drugUsage:create", "drugLoss:create",
     "drugReconciliation:create",
+    // The nursing documentation form: vitals and the biometrics/lab panel it submits, and reading back
+    // whether its own submission triggered a case lock.
+    "vital:create", "clinicalMetrics:create", "caseLock:read",
   ]);
 
   // Consulting Oncologist grants: appointment grid, patient file, video room and transcript, and clinical notes.
@@ -233,14 +237,19 @@ export async function seedIdentity() {
     "labRequest:read", "labResult:read",
     "countdownCase:read",
     "clinicalNote:create", "clinicalNote:read",
-    "regimen:read", "vital:read", "vital:create", "clinicalMetrics:read", "labDocument:read", "caseLock:read",
+    // regimen:create — prescribing a new treatment plan (and stating its diagnosis) is a consultant's call.
+    "regimen:read", "regimen:create", "vital:read", "vital:create", "clinicalMetrics:read", "labDocument:read", "caseLock:read",
     "activityLog:read",
   ]);
 
-  // QA Officer grants: reviewing a nursing case as a whole and reading patient context.
+  // QA Officer grants: reviewing a nursing case as a whole, reading the patient context (vitals,
+  // clinical metrics and any active case lock) the submitted documentation sheet drew on, and — for the
+  // patient folder — the patient's prior files/documentation from earlier visitations.
   await grantPermissionsToRole("QUALITY_ASSURANCE_OFFICER", [
     "nursingCase:update",
     "patient:read",
+    "vital:read", "clinicalMetrics:read", "caseLock:read",
+    "file:read",
   ]);
 
   // Every other role still has zero grants — that real RBAC pass is still pending.

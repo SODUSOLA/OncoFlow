@@ -27,6 +27,7 @@ const VITAL_RANGES = [
   { vitalType: "HEART_RATE_BPM" as const, low: "60", high: "100" },
   { vitalType: "TEMPERATURE_C" as const, low: "36.1", high: "37.2" },
   { vitalType: "SPO2_PERCENT" as const, low: "95", high: "100" },
+  { vitalType: "RESPIRATION_RATE" as const, low: "12", high: "20" },
 ];
 
 // Seeds lab analyte references and vital reference ranges once.

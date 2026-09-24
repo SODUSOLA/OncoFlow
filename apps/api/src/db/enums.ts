@@ -101,6 +101,8 @@ export const regimenCycleStatusEnum = pgEnum("regimen_cycle_status", ["SCHEDULED
 export const vitalTypeEnum = pgEnum("vital_type", [
   "WEIGHT_KG", "BLOOD_PRESSURE_SYSTOLIC", "BLOOD_PRESSURE_DIASTOLIC",
   "HEART_RATE_BPM", "TEMPERATURE_C", "SPO2_PERCENT",
+  // Added for the nursing documentation sheet's vitals table (breaths per minute).
+  "RESPIRATION_RATE",
 ]);
 export const vitalSourceEnum = pgEnum("vital_source", ["MANUAL_ENTRY", "VIDEO_CONSULT", "DEVICE_SYNC"]);
 

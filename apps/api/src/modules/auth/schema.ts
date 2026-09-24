@@ -1,5 +1,5 @@
 import {
-  pgTable, uuid, varchar, text, boolean, timestamp, uniqueIndex, index,
+  pgTable, uuid, varchar, text, boolean, timestamp, uniqueIndex, index, type AnyPgColumn,
 } from "drizzle-orm/pg-core";
 import { sql } from "drizzle-orm";
 import {
@@ -7,10 +7,17 @@ import {
 } from "../../db/enums.js";
 import { conversation } from "../messaging/schema.js";
 import { facility } from "../facility/schema.js";
+import { file } from "../documents/schema.js";
 
 export const user = pgTable("user", {
   id: uuid("id").primaryKey().defaultRandom(),
   email: varchar("email", { length: 255 }).notNull(),
+  // Nullable: staff identity was email-only until this was added, and there's no backfill for every
+  // already-registered account — wherever this is displayed, falling back to email is still correct.
+  firstName: varchar("first_name", { length: 128 }),
+  lastName: varchar("last_name", { length: 128 }),
+  // The staff member's own profile image; callback reference because documents/schema imports this file back.
+  profilePictureFileId: uuid("profile_picture_file_id").references((): AnyPgColumn => file.id),
   passwordHash: text("password_hash").notNull(),
   status: userStatusEnum("status").notNull().default("ACTIVE"),
   // Nullable for users not tied to one facility (patients, Super Admin, national roles); set for facility-scoped staff so requirePermissionScoped can compare.

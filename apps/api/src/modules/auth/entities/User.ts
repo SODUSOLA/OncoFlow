@@ -13,6 +13,9 @@ const VALID_TRANSITIONS: Record<UserStatus, UserStatus[]> = {
 export interface UserData {
   id: string;
   email: string;
+  firstName: string | null;
+  lastName: string | null;
+  profilePictureFileId: string | null;
   passwordHash: string;
   status: UserStatus;
   facilityId: string | null;
@@ -37,6 +40,19 @@ export class User {
   }
   get email(): string {
     return this.data.email;
+  }
+  get firstName(): string | null {
+    return this.data.firstName;
+  }
+  get lastName(): string | null {
+    return this.data.lastName;
+  }
+  // Falls back to the email's local part when no name is on record, so a display string is always available.
+  get fullName(): string {
+    if (this.data.firstName || this.data.lastName) {
+      return [this.data.firstName, this.data.lastName].filter(Boolean).join(" ");
+    }
+    return this.data.email.split("@")[0]!;
   }
   get status(): UserStatus {
     return this.data.status;
@@ -100,6 +116,10 @@ export class User {
     return {
       id: this.data.id,
       email: this.data.email,
+      firstName: this.data.firstName,
+      lastName: this.data.lastName,
+      fullName: this.fullName,
+      profilePictureFileId: this.data.profilePictureFileId,
       status: this.data.status,
       facilityId: this.data.facilityId,
       lastLogin: this.data.lastLogin,

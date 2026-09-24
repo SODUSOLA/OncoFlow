@@ -4,25 +4,25 @@ import crypto from "node:crypto";
 import { user, userRole } from "../db/schema.js";
 import { User } from "../modules/auth/index.js";
 
-// Demo login accounts, one per role with one shared password; the dashboard only shows user.email, so identity lives in the address.
+// Demo login accounts, one per role with one shared password.
 const DEMO_PASSWORD = "DemoPass123!";
 
 // PATIENT, SUPER_ADMIN and the national roles aren't tied to one facility; every other role is assigned one round-robin.
-const DEMO_USERS: { email: string; password: string; roleName: string; facilityScoped: boolean }[] = [
-  { email: "admin@oncoflow.dev", password: DEMO_PASSWORD, roleName: "SUPER_ADMIN", facilityScoped: false },
-  { email: "funmilayo.bankole@oncoflow.dev", password: DEMO_PASSWORD, roleName: "REGIONAL_ADMIN", facilityScoped: true },
-  { email: "chukwuemeka.obi@oncoflow.dev", password: DEMO_PASSWORD, roleName: "VIRTUAL_MEDICAL_OFFICER", facilityScoped: true },
-  { email: "adaeze.nwankwo@oncoflow.dev", password: DEMO_PASSWORD, roleName: "CONSULTING_ONCOLOGIST", facilityScoped: true },
-  { email: "babatunde.fashola@oncoflow.dev", password: DEMO_PASSWORD, roleName: "CONSULTING_SURGEON", facilityScoped: true },
-  { email: "halima.yusuf@oncoflow.dev", password: DEMO_PASSWORD, roleName: "CONSULTING_NUTRITIONIST", facilityScoped: true },
-  { email: "ifeoma.chukwu@oncoflow.dev", password: DEMO_PASSWORD, roleName: "CONSULTING_PSYCHO_ONCOLOGIST", facilityScoped: true },
-  { email: "emeka.anyanwu@oncoflow.dev", password: DEMO_PASSWORD, roleName: "STATE_CLINICAL_DIRECTOR", facilityScoped: true },
-  { email: "blessing.okoro@oncoflow.dev", password: DEMO_PASSWORD, roleName: "QUALITY_ASSURANCE_OFFICER", facilityScoped: true },
-  { email: "grace.adeyemi@oncoflow.dev", password: DEMO_PASSWORD, roleName: "ONSITE_NURSING_OFFICER", facilityScoped: true },
-  { email: "olumide.fagbenle@oncoflow.dev", password: DEMO_PASSWORD, roleName: "NATIONAL_CLINICAL_DIRECTOR", facilityScoped: false },
-  { email: "patience.umeh@oncoflow.dev", password: DEMO_PASSWORD, roleName: "STATE_DIRECTOR_OF_NURSING_SERVICES", facilityScoped: true },
-  { email: "comfort.nnamdi@oncoflow.dev", password: DEMO_PASSWORD, roleName: "NATIONAL_DIRECTOR_OF_NURSING_SERVICES", facilityScoped: false },
-  { email: "tolu.adisa@oncoflow.dev", password: DEMO_PASSWORD, roleName: "SCRIBE", facilityScoped: true },
+const DEMO_USERS: { email: string; firstName: string; lastName: string; password: string; roleName: string; facilityScoped: boolean }[] = [
+  { email: "admin@oncoflow.dev", firstName: "System", lastName: "Administrator", password: DEMO_PASSWORD, roleName: "SUPER_ADMIN", facilityScoped: false },
+  { email: "funmilayo.bankole@oncoflow.dev", firstName: "Funmilayo", lastName: "Bankole", password: DEMO_PASSWORD, roleName: "REGIONAL_ADMIN", facilityScoped: true },
+  { email: "chukwuemeka.obi@oncoflow.dev", firstName: "Chukwuemeka", lastName: "Obi", password: DEMO_PASSWORD, roleName: "VIRTUAL_MEDICAL_OFFICER", facilityScoped: true },
+  { email: "adaeze.nwankwo@oncoflow.dev", firstName: "Adaeze", lastName: "Nwankwo", password: DEMO_PASSWORD, roleName: "CONSULTING_ONCOLOGIST", facilityScoped: true },
+  { email: "babatunde.fashola@oncoflow.dev", firstName: "Babatunde", lastName: "Fashola", password: DEMO_PASSWORD, roleName: "CONSULTING_SURGEON", facilityScoped: true },
+  { email: "halima.yusuf@oncoflow.dev", firstName: "Halima", lastName: "Yusuf", password: DEMO_PASSWORD, roleName: "CONSULTING_NUTRITIONIST", facilityScoped: true },
+  { email: "ifeoma.chukwu@oncoflow.dev", firstName: "Ifeoma", lastName: "Chukwu", password: DEMO_PASSWORD, roleName: "CONSULTING_PSYCHO_ONCOLOGIST", facilityScoped: true },
+  { email: "emeka.anyanwu@oncoflow.dev", firstName: "Emeka", lastName: "Anyanwu", password: DEMO_PASSWORD, roleName: "STATE_CLINICAL_DIRECTOR", facilityScoped: true },
+  { email: "blessing.okoro@oncoflow.dev", firstName: "Blessing", lastName: "Okoro", password: DEMO_PASSWORD, roleName: "QUALITY_ASSURANCE_OFFICER", facilityScoped: true },
+  { email: "grace.adeyemi@oncoflow.dev", firstName: "Grace", lastName: "Adeyemi", password: DEMO_PASSWORD, roleName: "ONSITE_NURSING_OFFICER", facilityScoped: true },
+  { email: "olumide.fagbenle@oncoflow.dev", firstName: "Olumide", lastName: "Fagbenle", password: DEMO_PASSWORD, roleName: "NATIONAL_CLINICAL_DIRECTOR", facilityScoped: false },
+  { email: "patience.umeh@oncoflow.dev", firstName: "Patience", lastName: "Umeh", password: DEMO_PASSWORD, roleName: "STATE_DIRECTOR_OF_NURSING_SERVICES", facilityScoped: true },
+  { email: "comfort.nnamdi@oncoflow.dev", firstName: "Comfort", lastName: "Nnamdi", password: DEMO_PASSWORD, roleName: "NATIONAL_DIRECTOR_OF_NURSING_SERVICES", facilityScoped: false },
+  { email: "tolu.adisa@oncoflow.dev", firstName: "Tolu", lastName: "Adisa", password: DEMO_PASSWORD, roleName: "SCRIBE", facilityScoped: true },
 ];
 
 // Seeds a demo staff login per role.
@@ -33,8 +33,8 @@ export async function seedDemoUsers() {
   const pilotFacilityId = facilityRows.find((f) => f.region === "Lagos")?.id ?? facilityRows[0]?.id;
 
   for (const demo of DEMO_USERS) {
-    const existingUser = await db.execute<{ id: string }>(
-      sql`SELECT id FROM "user" WHERE email = ${demo.email} LIMIT 1`,
+    const existingUser = await db.execute<{ id: string; first_name: string | null }>(
+      sql`SELECT id, first_name FROM "user" WHERE email = ${demo.email} LIMIT 1`,
     );
 
     let userId: string;
@@ -49,11 +49,18 @@ export async function seedDemoUsers() {
             ? facilityRows[facilityIndex++ % facilityRows.length]!.id
             : null;
       await db.insert(user).values({
-        id: userId, email: demo.email, passwordHash, status: "ACTIVE", mfaEnabled: false, facilityId,
+        id: userId, email: demo.email, firstName: demo.firstName, lastName: demo.lastName,
+        passwordHash, status: "ACTIVE", mfaEnabled: false, facilityId,
       });
       console.log(`  Created demo user: ${demo.email} (${demo.roleName})`);
     } else {
       userId = existingUser[0]!.id;
+      // Backfills the name onto an account created before firstName/lastName existed, without touching
+      // anything else about it — this seed otherwise never re-runs an existing user.
+      if (!existingUser[0]!.first_name) {
+        await db.update(user).set({ firstName: demo.firstName, lastName: demo.lastName }).where(sql`${user.id} = ${userId}`);
+        console.log(`  Backfilled name for ${demo.email}: ${demo.firstName} ${demo.lastName}`);
+      }
     }
 
     const roleRow = await db.execute<{ id: string }>(
