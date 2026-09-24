@@ -1,5 +1,5 @@
 import { db } from "../../db/index.js";
-import { eq, and, desc, isNull, lte, sql } from "drizzle-orm";
+import { eq, and, desc, isNull, lte, ne, sql } from "drizzle-orm";
 import {
   regimen, regimenCycle, vitalReading, vitalReferenceRange,
   clinicalMetricsSnapshot, nursingLabEntry, nursingLabValue, labAnalyteReference,
@@ -7,6 +7,7 @@ import {
 } from "./schema.js";
 import { user } from "../auth/schema.js";
 import { patient } from "../patient/schema.js";
+import { nursingCase } from "../nursing/schema.js";
 
 // Data access for regimens and their cycles.
 export class RegimenRepository {
@@ -41,10 +42,17 @@ export class RegimenRepository {
         status: regimenCycle.status, drugName: regimen.drugName, protocolCode: regimen.protocolCode,
         patientId: patient.id, firstName: patient.firstName, lastName: patient.lastName,
         uniquePatientId: patient.uniquePatientId, profilePictureFileId: patient.profilePictureFileId,
+        // The live (not yet closed) case on this cycle, if the nurse has started one, so the Schedule can show
+        // where each visitation stands instead of listing everything as merely overdue.
+        caseId: nursingCase.id, caseStatus: nursingCase.status,
+        lastReviewDecision: sql<string | null>`(select r.decision from nursing_case_review r where r.nursing_case_id = ${nursingCase.id} order by r.reviewed_at desc limit 1)`,
       })
       .from(regimenCycle)
       .innerJoin(regimen, eq(regimen.id, regimenCycle.regimenId))
       .innerJoin(patient, eq(patient.id, regimen.patientId))
+      .leftJoin(nursingCase, and(
+        eq(nursingCase.regimenCycleId, regimenCycle.id), ne(nursingCase.status, "CLOSED"), isNull(nursingCase.deletedAt),
+      ))
       .where(and(
         lte(regimenCycle.scheduledDate, throughDate),
         eq(regimenCycle.status, "SCHEDULED"),
@@ -73,6 +81,47 @@ export class RegimenRepository {
       .from(regimenCycle)
       .where(and(eq(regimenCycle.regimenId, regimenId), eq(regimenCycle.isDeleted, false)))
       .orderBy(regimenCycle.cycleNumber);
+  }
+
+  // The regimen a cycle belongs to — the nursing documentation form reads its diagnosis (stated by the
+  // prescribing consultant) through this, rather than the nurse typing one in fresh each visit.
+  async findByCycleId(regimenCycleId: string) {
+    const rows = await db
+      .select({ id: regimen.id, diagnosis: regimen.diagnosis, drugName: regimen.drugName, protocolCode: regimen.protocolCode })
+      .from(regimenCycle)
+      .innerJoin(regimen, eq(regimen.id, regimenCycle.regimenId))
+      .where(and(eq(regimenCycle.id, regimenCycleId), eq(regimenCycle.isDeleted, false), eq(regimen.isDeleted, false)))
+      .limit(1);
+    return rows[0] ?? null;
+  }
+
+  // Marks a cycle administered (its visitation's case was closed by QA).
+  async markCycleCompleted(regimenCycleId: string, administeredBy: string) {
+    const rows = await db
+      .update(regimenCycle)
+      .set({ status: "COMPLETED", administeredDate: new Date().toISOString().slice(0, 10), administeredBy, updatedAt: new Date() })
+      .where(eq(regimenCycle.id, regimenCycleId))
+      .returning();
+    return rows[0] ?? null;
+  }
+
+  // Marks a regimen COMPLETED once none of its cycles are left to give.
+  async completeRegimenIfDone(regimenId: string) {
+    const cycles = await this.findCyclesByRegimen(regimenId);
+    if (cycles.length > 0 && cycles.every((c) => c.status === "COMPLETED" || c.status === "SKIPPED")) {
+      await db.update(regimen).set({ status: "COMPLETED", updatedAt: new Date() }).where(eq(regimen.id, regimenId));
+    }
+  }
+
+  // Inserts a regimen — a consultant prescribing a new treatment plan for a patient.
+  async create(data: typeof regimen.$inferInsert) {
+    const row = await db.insert(regimen).values(data).returning();
+    return row[0]!;
+  }
+
+  // Bulk-inserts a regimen's cycles, generated at creation time from totalCycles/cycleIntervalDays.
+  async createCycles(rows: (typeof regimenCycle.$inferInsert)[]) {
+    return db.insert(regimenCycle).values(rows).returning();
   }
 }
 

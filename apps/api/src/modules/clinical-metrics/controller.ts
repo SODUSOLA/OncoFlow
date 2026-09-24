@@ -1,10 +1,11 @@
 import type { Request, Response } from "express";
 import type { AuthenticatedRequest } from "../../lib/rbac.js";
-import { userHasPermission } from "../../lib/rbac.js";
+import { userHasPermission, userHasRole } from "../../lib/rbac.js";
 import {
   RegimenService, VitalsService, ClinicalMetricsService, LabDocumentService, ActivityLogService, CaseLockService,
 } from "./service.js";
 import { PatientRepository } from "../patient/index.js";
+import { isCycleFrozenByCase, checkNurseCaseWrite, checkNurseCycleWrite, CASE_LOCKED_MESSAGE } from "../nursing/editability.js";
 
 const regimenSvc = new RegimenService();
 const vitalsSvc = new VitalsService();
@@ -39,6 +40,22 @@ export async function getRegimenHandler(req: Request, res: Response) {
     res.json({ regimen: regimenData });
   } catch {
     res.status(500).json({ error: "Internal server error" });
+  }
+}
+
+// A consultant prescribing a new regimen for a patient — requirePermission("regimen", "create") at the
+// route layer gates this to the roles allowed to prescribe treatment.
+export async function createRegimenHandler(req: Request, res: Response) {
+  try {
+    const prescribedBy = (req as AuthenticatedRequest).userId;
+    const { patientId, drugName, protocolCode, diagnosis, totalCycles, cycleIntervalDays, startedAt } = req.body;
+    const result = await regimenSvc.createRegimen({
+      patientId, drugName, protocolCode, diagnosis, totalCycles, cycleIntervalDays, startedAt, prescribedBy,
+    });
+    res.status(201).json(result);
+  } catch (err) {
+    const message = err instanceof Error ? err.message : "Internal server error";
+    res.status(400).json({ error: message });
   }
 }
 
@@ -93,8 +110,15 @@ export async function getVitalTrendHandler(req: Request, res: Response) {
 export async function recordVitalHandler(req: Request, res: Response) {
   try {
     const callerId = (req as AuthenticatedRequest).userId;
-    const { patientId, vitalType, value, source, meetingId } = req.body;
-    const reading = await vitalsSvc.recordReading({ patientId, vitalType, value, source, recordedBy: callerId, meetingId });
+    const { patientId, vitalType, value, source, meetingId, nursingCaseId } = req.body;
+    // A nursing officer's vitals belong to their case, and a frozen (pending QA) case takes none. Other
+    // roles (e.g. a consultant during a video consult) record against a meeting instead.
+    const isNurse = await userHasRole(callerId, "ONSITE_NURSING_OFFICER");
+    if (isNurse) {
+      const refusal = await checkNurseCaseWrite({ callerId, patientId, nursingCaseId });
+      if (refusal) { res.status(refusal.status).json({ error: refusal.message }); return; }
+    }
+    const reading = await vitalsSvc.recordReading({ patientId, vitalType, value, source, recordedBy: callerId, meetingId, nursingCaseId: isNurse ? nursingCaseId : undefined });
     res.status(201).json({ reading });
   } catch {
     res.status(500).json({ error: "Internal server error" });
@@ -118,6 +142,13 @@ export async function recordClinicalMetricsHandler(req: Request, res: Response) 
   try {
     const callerId = (req as AuthenticatedRequest).userId;
     const { patientId, regimenCycleId, weightKg, heightCm, ageYears, sex, labValues, sourceLabDocumentId } = req.body;
+    if (await userHasRole(callerId, "ONSITE_NURSING_OFFICER")) {
+      const refusal = await checkNurseCycleWrite({ callerId, patientId, regimenCycleId });
+      if (refusal) { res.status(refusal.status).json({ error: refusal.message }); return; }
+    } else if (regimenCycleId && (await isCycleFrozenByCase(regimenCycleId))) {
+      res.status(409).json({ error: CASE_LOCKED_MESSAGE });
+      return;
+    }
     const snapshot = await metricsSvc.recordSnapshot({
       patientId, regimenCycleId, recordedBy: callerId, weightKg, heightCm, ageYears, sex, labValues, sourceLabDocumentId,
     });

@@ -4,6 +4,7 @@ import {
   ActivityLogRepository, CaseLockRepository,
 } from "./repository.js";
 import { computeClinicalMetrics, CRCL_CASE_LOCK_THRESHOLD, EGFR_CASE_LOCK_STAGES } from "../../lib/clinicalMetrics.js";
+import { ConflictError } from "../../lib/errors.js";
 
 const regimenRepo = new RegimenRepository();
 const vitalsRepo = new VitalsRepository();
@@ -25,6 +26,7 @@ export class RegimenService {
       id: active.id,
       drugName: active.drugName,
       protocolCode: active.protocolCode,
+      diagnosis: active.diagnosis,
       totalCycles: active.totalCycles,
       completedCycles,
       currentCycleNumber: currentCycle?.cycleNumber ?? null,
@@ -43,9 +45,57 @@ export class RegimenService {
   async listDueCyclesForFacility(facilityId: string, throughDate: string) {
     return regimenRepo.findDueCyclesByFacility(facilityId, throughDate);
   }
+
+  // A cycle's visitation is done (QA closed its case): the cycle leaves the Schedule, and the regimen
+  // itself completes once its last cycle does.
+  async completeCycle(regimenCycleId: string, administeredBy: string) {
+    const cycle = await regimenRepo.markCycleCompleted(regimenCycleId, administeredBy);
+    if (cycle) await regimenRepo.completeRegimenIfDone(cycle.regimenId);
+  }
+
+  // The diagnosis a consultant stated when prescribing the regimen this cycle belongs to — read-only from
+  // the nursing documentation form's side; null if the cycle (or its diagnosis) can't be found.
+  async getDiagnosisForCycle(regimenCycleId: string): Promise<string | null> {
+    const row = await regimenRepo.findByCycleId(regimenCycleId);
+    return row?.diagnosis ?? null;
+  }
+
+  // A consultant prescribing a new regimen for a patient — refuses a second concurrent ACTIVE one, and
+  // generates the regimen's cycles up front (cycle 1 on startedAt, each following one cycleIntervalDays
+  // later), the same shape the Schedule tab and case wizard already expect to find.
+  async createRegimen(data: {
+    patientId: string; drugName: string; protocolCode: string; diagnosis: string;
+    totalCycles: number; cycleIntervalDays: number; startedAt: string; prescribedBy: string;
+  }) {
+    const existingActive = await regimenRepo.findActiveByPatient(data.patientId);
+    if (existingActive) {
+      throw new ConflictError("This patient already has an active regimen — discontinue it before prescribing a new one");
+    }
+
+    const regimenRow = await regimenRepo.create({
+      id: crypto.randomUUID(), patientId: data.patientId, drugName: data.drugName, protocolCode: data.protocolCode,
+      diagnosis: data.diagnosis, totalCycles: data.totalCycles, cycleIntervalDays: data.cycleIntervalDays,
+      status: "ACTIVE", startedAt: new Date(data.startedAt), prescribedBy: data.prescribedBy,
+    });
+
+    const startDate = new Date(data.startedAt);
+    const cycleRows = Array.from({ length: data.totalCycles }, (_, i) => {
+      const scheduledDate = new Date(startDate);
+      scheduledDate.setDate(scheduledDate.getDate() + i * data.cycleIntervalDays);
+      return {
+        id: crypto.randomUUID(), regimenId: regimenRow.id, cycleNumber: i + 1,
+        scheduledDate: scheduledDate.toISOString().slice(0, 10), status: "SCHEDULED" as const,
+      };
+    });
+    const cycles = await regimenRepo.createCycles(cycleRows);
+    return { regimen: regimenRow, cycles };
+  }
 }
 
-const VITAL_TYPES = ["WEIGHT_KG", "BLOOD_PRESSURE_SYSTOLIC", "BLOOD_PRESSURE_DIASTOLIC", "HEART_RATE_BPM", "TEMPERATURE_C", "SPO2_PERCENT"] as const;
+const VITAL_TYPES = [
+  "WEIGHT_KG", "BLOOD_PRESSURE_SYSTOLIC", "BLOOD_PRESSURE_DIASTOLIC",
+  "HEART_RATE_BPM", "TEMPERATURE_C", "SPO2_PERCENT", "RESPIRATION_RATE",
+] as const;
 
 // Business logic for vitals.
 export class VitalsService {
@@ -82,7 +132,7 @@ export class VitalsService {
   }
 
   // Records a vital reading.
-  async recordReading(data: { patientId: string; vitalType: string; value: number; source: string; recordedBy?: string; meetingId?: string }) {
+  async recordReading(data: { patientId: string; vitalType: string; value: number; source: string; recordedBy?: string; meetingId?: string; nursingCaseId?: string }) {
     return vitalsRepo.insertReading({
       id: crypto.randomUUID(),
       patientId: data.patientId,
@@ -92,6 +142,7 @@ export class VitalsService {
       source: data.source as never,
       recordedBy: data.recordedBy ?? null,
       meetingId: data.meetingId ?? null,
+      nursingCaseId: data.nursingCaseId ?? null,
     });
   }
 }
