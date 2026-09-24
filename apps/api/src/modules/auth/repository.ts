@@ -13,6 +13,11 @@ export class UserRepository {
     return row[0] ?? null;
   }
 
+  // Points a user at their profile image file.
+  async setProfilePicture(id: string, fileId: string) {
+    await db.update(user).set({ profilePictureFileId: fileId, updatedAt: new Date() }).where(eq(user.id, id));
+  }
+
   // Finds a non-deleted user by email.
   async findByEmail(email: string) {
     const row = await db

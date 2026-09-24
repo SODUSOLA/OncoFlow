@@ -188,6 +188,16 @@ export async function profileHandler(req: Request, res: Response) {
   }
 }
 
+// Sets the caller's own profile image.
+export async function setProfilePictureHandler(req: Request, res: Response) {
+  try {
+    const userId = (req as AuthenticatedRequest).userId;
+    res.json(await auth.setProfilePicture(userId, String(req.body.fileId)));
+  } catch (err) {
+    res.status(400).json({ error: err instanceof Error ? err.message : "Could not update the profile image" });
+  }
+}
+
 // Always your own sessions — same self-service class as GET /auth/profile, no permission grant.
 export async function listSessionsHandler(req: Request, res: Response) {
   try {

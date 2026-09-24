@@ -11,7 +11,10 @@ export type NotificationType =
   | "CONVERSATION_FEEDBACK"
   | "AVAILABILITY_CHANGED"
   | "APPOINTMENT_SCHEDULED"
-  | "APPOINTMENT_REMINDER";
+  | "APPOINTMENT_REMINDER"
+  | "NURSING_CASE_SUBMITTED"
+  | "NURSING_CASE_REVIEWED"
+  | "IDENTITY_MISMATCH_REPORTED";
 
 const notificationRepo = new NotificationRepository();
 

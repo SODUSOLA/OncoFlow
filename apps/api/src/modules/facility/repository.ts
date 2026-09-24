@@ -42,6 +42,22 @@ export class FacilityRepository {
       .set({ isDeleted: true, deletedAt: new Date(), updatedAt: new Date() })
       .where(eq(facility.id, id));
   }
+
+  // The QUALITY_ASSURANCE_OFFICER assigned to this facility. Oldest assignment wins if a facility somehow
+  // has more than one, so the answer is at least stable rather than arbitrary.
+  async findQaOfficer(facilityId: string): Promise<{ id: string; email: string; firstName: string | null; lastName: string | null } | null> {
+    const rows = await db.execute<{ id: string; email: string; first_name: string | null; last_name: string | null }>(sql`
+      SELECT u.id, u.email, u.first_name, u.last_name FROM "user" u
+      JOIN user_role ur ON ur.user_id = u.id
+      JOIN role r ON r.id = ur.role_id
+      WHERE r.name::text = 'QUALITY_ASSURANCE_OFFICER' AND u.facility_id = ${facilityId}
+      ORDER BY u.created_at
+      LIMIT 1
+    `);
+    const row = rows[0];
+    if (!row) return null;
+    return { id: row.id, email: row.email, firstName: row.first_name, lastName: row.last_name };
+  }
 }
 
 // Data access for departments.

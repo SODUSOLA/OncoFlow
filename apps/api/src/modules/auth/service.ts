@@ -417,6 +417,21 @@ const hmac = crypto.createHmac("sha1", secretBytes).update(data).digest();
     return { user: entity.toSafeJSON(), roles };
   }
 
+  // Sets the caller's own profile image to a file they uploaded, once it has passed the virus scan. Checked
+  // with a direct query rather than the documents module, which would make this a module cycle.
+  async setProfilePicture(userId: string, fileId: string) {
+    const rows = await db.execute<{ uploaded_by: string; virus_scan_status: string; mime_type: string }>(
+      sql`SELECT uploaded_by, virus_scan_status, mime_type FROM file WHERE id = ${fileId} AND is_deleted = false LIMIT 1`,
+    );
+    const f = rows[0];
+    if (!f) throw new Error("File not found");
+    if (f.uploaded_by !== userId) throw new Error("You can only use a file you uploaded");
+    if (!f.mime_type.startsWith("image/")) throw new Error("A profile image must be an image");
+    if (f.virus_scan_status !== "CLEAN") throw new Error("That file hasn't cleared the safety scan");
+    await this.userRepo.setProfilePicture(userId, fileId);
+    return this.getProfile(userId);
+  }
+
   // Revokes all of a user's sessions.
   async invalidateSessions(userId: string) {
     await this.sessionRepo.revokeAllForUser(userId);

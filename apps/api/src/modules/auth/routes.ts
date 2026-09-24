@@ -6,6 +6,7 @@ import {
   enrollMfaHandler,
   verifyMfaHandler,
   profileHandler,
+  setProfilePictureHandler,
   listSessionsHandler,
   revokeSessionHandler,
   verifyEmailHandler,
@@ -130,6 +131,8 @@ router.post("/auth/forgot-password", forgotPasswordRateLimiter, validateBody(for
 router.post("/auth/reset-password", resetPasswordRateLimiter, validateBody(resetPasswordSchema), resetPasswordHandler);
 // Always the caller's own profile, so it needs a session rather than a grant, or PATIENT accounts get 403s on session-recovery checks.
 router.get("/auth/profile", requireAuthenticated(), profileHandler);
+// Your own profile image — same self-service class as reading your profile, so no permission grant.
+router.put("/auth/profile/picture", requireAuthenticated(), validateBody(z.object({ fileId: z.string().uuid() })), setProfilePictureHandler);
 // Consultant picker for the New Consultation flow.
 router.get("/consultants", requirePermission("appointment", "create"), listConsultantsHandler);
 // Self-service session list; ownership of a target session is checked in the handler.
