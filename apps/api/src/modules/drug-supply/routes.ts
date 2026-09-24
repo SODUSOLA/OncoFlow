@@ -6,7 +6,7 @@ import {
   listUsageHandler, reportLossHandler, listLossesHandler, createReconciliationHandler,
   listReconciliationsHandler, resolveReconciliationHandler, alertsHandler,
 } from "./controller.js";
-import { requirePermission } from "../../lib/rbac.js";
+import { requireAuthenticated, requirePermission } from "../../lib/rbac.js";
 import { validateBody, validateParams, validateQuery } from "../../lib/validation.js";
 import { drugLossReasonEnum, drugReconciliationScopeEnum, drugRequestStatusEnum } from "../../db/enums.js";
 
@@ -60,8 +60,8 @@ router.get("/drug-stock/officers", requirePermission("drugAlert", "read"), valid
 
 // Logs a drug used against the caller's case.
 router.post("/drug-usage", requirePermission("drugUsage", "create"), validateBody(usageBody), recordUsageHandler);
-// Lists usage logged against the caller's case.
-router.get("/drug-usage", requirePermission("drugUsage", "create"), validateQuery(usageQuery), listUsageHandler);
+// Lists usage logged against a case — the nurse who owns it, or QA reviewing it; checked in the service.
+router.get("/drug-usage", requireAuthenticated(), validateQuery(usageQuery), listUsageHandler);
 
 // Reports spillage or breakage.
 router.post("/drug-loss-reports", requirePermission("drugLoss", "create"), validateBody(lossBody), reportLossHandler);

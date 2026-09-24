@@ -1,7 +1,10 @@
 import crypto from "node:crypto";
-import { and, eq } from "drizzle-orm";
+import { and, eq, sql } from "drizzle-orm";
 import { db } from "../../db/index.js";
 import { AppError, ConflictError, ForbiddenError, NotFoundError } from "../../lib/errors.js";
+import { userHasPermission } from "../../lib/rbac.js";
+import { isCaseEditable, CASE_LOCKED_MESSAGE } from "../nursing/editability.js";
+import { reviewerMayAccess, OUT_OF_SCOPE_MESSAGE } from "../nursing/reviewerScope.js";
 import { DrugSupplyRepository } from "./repository.js";
 import { endOfLagosDay, lagosToday } from "./dates.js";
 import {
@@ -26,6 +29,22 @@ function assertDistinctLines(lines: Line[]): Line[] {
   if (lines.length === 0) throw badRequest("At least one drug line is required");
   if (new Set(lines.map((l) => l.drugId)).size !== lines.length) throw badRequest("Each drug may appear only once");
   return lines;
+}
+
+// Serialises stock-changing writes for one officer+drug, so two simultaneous logs can't both pass the
+// stock check and jointly overdraw. Held until the surrounding transaction ends.
+async function lockOfficerDrug(tx: Parameters<Parameters<typeof db.transaction>[0]>[0], officerId: string, drugId: string) {
+  await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtext(${officerId + ":" + drugId}))`);
+}
+
+// Refuses to take more out of an officer's hands than the ledger says they hold.
+async function assertInStock(tx: Parameters<Parameters<typeof db.transaction>[0]>[0], officerId: string, drugId: string, quantity: number, what: string) {
+  const onHand = await repo.officerStockForDrug(officerId, drugId, undefined, tx);
+  if (quantity > onHand) {
+    throw new ConflictError(onHand <= 0
+      ? `Out of stock — you have none of this drug to ${what}. Request a delivery or record a count.`
+      : `Only ${onHand} in stock — you can't ${what} ${quantity}.`);
+  }
 }
 
 // Business logic for drug requests, dispatch, stock ledgers, usage, loss and reconciliation.
@@ -162,11 +181,15 @@ export class DrugSupplyService {
     if (!nursingCaseRow) throw new NotFoundError("Nursing case not found");
     if (nursingCaseRow.startedBy !== officerId) throw new ForbiddenError("You can only log usage against your own case");
     if (nursingCaseRow.status === "CLOSED") throw new ConflictError("This case is closed");
+    if (!(await isCaseEditable(nursingCaseId))) throw new ConflictError(CASE_LOCKED_MESSAGE);
     if (!(await repo.findDrug(drugId))) throw new NotFoundError("Drug not found");
     return db.transaction(async (tx) => {
+      await lockOfficerDrug(tx, officerId, drugId);
+      await assertInStock(tx, officerId, drugId, quantity, "administer");
       const usageId = crypto.randomUUID();
       await tx.insert(drugUsage).values({ id: usageId, nursingCaseId, drugId, administeredBy: officerId, quantityUsed: quantity });
-      // Recorded even if it drives stock negative: the drug was administered, and reconciliation is what surfaces the gap.
+      // Stock can't go negative here (checked above): what's on the ledger is what the officer can give.
+      // Reconciliation is what surfaces a gap between the ledger and the physical shelf.
       await tx.insert(drugStockLedgerEntry).values({
         nursingOfficerId: officerId, drugId, quantityDelta: -quantity, reason: "USAGE", referenceId: usageId,
       });
@@ -174,11 +197,17 @@ export class DrugSupplyService {
     });
   }
 
-  // Lists usage logged against a case the caller started.
+  // Lists usage logged against a case — the nurse who started it, or QA reviewing it (nursingCase:update
+  // doubles as "may review any case," the same grant that gates the pending-review queue and its review action).
   async listUsage(nursingCaseId: string, callerId: string) {
     const nursingCaseRow = await repo.findNursingCase(nursingCaseId);
     if (!nursingCaseRow) throw new NotFoundError("Nursing case not found");
-    if (nursingCaseRow.startedBy !== callerId) throw new ForbiddenError("Forbidden");
+    const isOwner = nursingCaseRow.startedBy === callerId;
+    if (!isOwner && !(await userHasPermission(callerId, "nursingCase", "update"))) throw new ForbiddenError("Forbidden");
+    if (!isOwner) {
+      const facilityId = await repo.findCaseFacilityId(nursingCaseId);
+      if (facilityId && !(await reviewerMayAccess(callerId, facilityId))) throw new ForbiddenError(OUT_OF_SCOPE_MESSAGE);
+    }
     return repo.findUsageByCase(nursingCaseId);
   }
 
@@ -187,6 +216,8 @@ export class DrugSupplyService {
     if (!(await repo.findDrug(drugId))) throw new NotFoundError("Drug not found");
     if (reason === "OTHER" && !notes?.trim()) throw badRequest("Please describe what happened");
     return db.transaction(async (tx) => {
+      await lockOfficerDrug(tx, officerId, drugId);
+      await assertInStock(tx, officerId, drugId, quantity, "report as lost");
       const reportId = crypto.randomUUID();
       await tx.insert(drugLossReport).values({
         id: reportId, nursingOfficerId: officerId, drugId, quantityLost: quantity, reason, notes: notes?.trim() || null,

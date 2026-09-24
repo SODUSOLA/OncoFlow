@@ -86,6 +86,13 @@ export class DrugSupplyRepository {
     return rows[0]?.quantity ?? 0;
   }
 
+  // The facility a case's patient belongs to, for reviewer scoping.
+  async findCaseFacilityId(nursingCaseId: string): Promise<string | null> {
+    const rows = await db.execute<{ facility_id: string }>(sql`
+      SELECT p.facility_id FROM nursing_case c JOIN patient p ON p.id = c.patient_id WHERE c.id = ${nursingCaseId} LIMIT 1`);
+    return rows[0]?.facility_id ?? null;
+  }
+
   // Finds a drug that hasn't been soft-deleted.
   async findDrug(drugId: string, executor: DbOrTx = db) {
     const rows = await executor.select().from(drug).where(and(eq(drug.id, drugId), eq(drug.isDeleted, false))).limit(1);

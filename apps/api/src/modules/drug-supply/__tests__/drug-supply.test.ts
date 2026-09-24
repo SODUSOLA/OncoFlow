@@ -248,6 +248,39 @@ describe("usage and loss", () => {
     expect(closed.status).toBe(409);
   });
 
+  it("refuses usage and loss beyond stock on hand, including at zero, and leaves the ledger untouched", async () => {
+    const onHand = await officerStock(officer);
+    const caseId = await createCase(officer.id);
+
+    const tooMany = await request(app).post("/drug-usage").set("Cookie", officer.cookie).send({ nursingCaseId: caseId, drugId, quantity: onHand + 1 });
+    expect(tooMany.status).toBe(409);
+    expect(tooMany.body.error).toContain(onHand > 0 ? `Only ${onHand}` : "Out of stock");
+    const lossTooMany = await request(app).post("/drug-loss-reports").set("Cookie", officer.cookie).send({ drugId, quantity: onHand + 1, reason: "SPILLAGE" });
+    expect(lossTooMany.status).toBe(409);
+    expect(await officerStock(officer)).toBe(onHand);
+
+    // Exactly what's on hand is allowed; after that the officer is at zero and can't log another unit.
+    if (onHand > 0) {
+      const all = await request(app).post("/drug-usage").set("Cookie", officer.cookie).send({ nursingCaseId: caseId, drugId, quantity: onHand });
+      expect(all.status).toBe(201);
+    }
+    expect(await officerStock(officer)).toBe(0);
+    const atZero = await request(app).post("/drug-usage").set("Cookie", officer.cookie).send({ nursingCaseId: caseId, drugId, quantity: 1 });
+    expect(atZero.status).toBe(409);
+    expect(atZero.body.error).toContain("Out of stock");
+  });
+
+  it("stops two simultaneous logs from overdrawing the same stock", async () => {
+    await stockOfficer(5);
+    const onHand = await officerStock(officer);
+    const caseId = await createCase(officer.id);
+    const results = await Promise.all([1, 2, 3].map(() =>
+      request(app).post("/drug-usage").set("Cookie", officer.cookie).send({ nursingCaseId: caseId, drugId, quantity: onHand }),
+    ));
+    expect(results.filter((r) => r.status === 201)).toHaveLength(1);
+    expect(await officerStock(officer)).toBe(0);
+  });
+
   it("records a loss without a case, requires a description for OTHER, and alerts Regional Admin", async () => {
     await stockOfficer(4);
     const before = await officerStock(officer);
