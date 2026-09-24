@@ -9,9 +9,14 @@ import Login from "./pages/Login";
 // Lazy-loaded placeholder dashboards for roles that don't have their own shell yet.
 const vmo = lazy(() => import("./pages/virtual-medical-officer/Dashboard"));
 const scd = lazy(() => import("./pages/state-clinical-director/Dashboard"));
-const qao = lazy(() => import("./pages/quality-assurance-officer/Dashboard"));
 const sdns = lazy(() => import("./pages/state-director-of-nursing-services/Dashboard"));
 const superAdmin = lazy(() => import("./pages/super-admin/Dashboard"));
+
+// Quality Assurance Officer has its own shell too: a pending-review queue and a case review page.
+const QaLayout = lazy(() => import("./pages/quality-assurance-officer/shell/QaLayout").then((m) => ({ default: m.QaLayout })));
+const QaPendingCases = lazy(() => import("./pages/quality-assurance-officer/pages/PendingCasesPage"));
+const QaCaseReview = lazy(() => import("./pages/quality-assurance-officer/pages/CaseReviewPage"));
+const QaPatientFolder = lazy(() => import("./pages/quality-assurance-officer/pages/PatientFolderPage"));
 
 // Regional Admin has its own sidebar and topbar shell with real sub-routes instead of the generic DashboardLayout.
 const RegionalAdminLayout = lazy(() =>
@@ -56,13 +61,13 @@ const NoCaseDetail = lazy(() => import("./pages/onsite-nursing-officer/pages/cas
 const NoPatients = lazy(() => import("./pages/onsite-nursing-officer/pages/PatientsPage"));
 const NoPatientDetail = lazy(() => import("./pages/onsite-nursing-officer/pages/PatientDetailPage"));
 const NoInventory = lazy(() => import("./pages/onsite-nursing-officer/pages/InventoryPage"));
+const NoProfile = lazy(() => import("./pages/onsite-nursing-officer/pages/ProfilePage"));
 const NoSettings = lazy(() => import("./pages/onsite-nursing-officer/pages/SettingsPage"));
 const NoNewCaseWizard = lazy(() => import("./pages/onsite-nursing-officer/wizard/NewCaseWizard"));
 
 const roles = [
   { path: "virtual-medical-officer", component: vmo, label: "Virtual Medical Officer" },
   { path: "state-clinical-director", component: scd, label: "State Clinical Director" },
-  { path: "quality-assurance-officer", component: qao, label: "Quality Assurance Officer" },
   { path: "state-director-of-nursing-services", component: sdns, label: "State Director of Nursing Services" },
   { path: "super-admin", component: superAdmin, label: "Super Admin" },
 ] as const;
@@ -249,8 +254,23 @@ function AppRoutes() {
         <Route path="patients" element={<Suspense fallback={<FullScreenLoading />}><NoPatients /></Suspense>} />
         <Route path="patients/:patientId" element={<Suspense fallback={<FullScreenLoading />}><NoPatientDetail /></Suspense>} />
         <Route path="inventory" element={<Suspense fallback={<FullScreenLoading />}><NoInventory /></Suspense>} />
+        <Route path="profile" element={<Suspense fallback={<FullScreenLoading />}><NoProfile /></Suspense>} />
         <Route path="settings" element={<Suspense fallback={<FullScreenLoading />}><NoSettings /></Suspense>} />
         <Route path="new-case" element={<Suspense fallback={<FullScreenLoading />}><NoNewCaseWizard /></Suspense>} />
+      </Route>
+      <Route
+        path="dashboard/quality-assurance-officer"
+        element={
+          <RequireAuth>
+            <Suspense fallback={<FullScreenLoading />}>
+              <QaLayout />
+            </Suspense>
+          </RequireAuth>
+        }
+      >
+        <Route index element={<Suspense fallback={<FullScreenLoading />}><QaPendingCases /></Suspense>} />
+        <Route path="cases/:caseId" element={<Suspense fallback={<FullScreenLoading />}><QaCaseReview /></Suspense>} />
+        <Route path="patients/:patientId" element={<Suspense fallback={<FullScreenLoading />}><QaPatientFolder /></Suspense>} />
       </Route>
       {roles.map(({ path, component: Component, label }) => (
         <Route
