@@ -9,6 +9,8 @@ import { user, session, role, userRole } from "../../auth/schema.js";
 import { patient } from "../schema.js";
 import { SESSION_COOKIE_NAME } from "../../../lib/session-cookie.js";
 import { seedIdentity } from "../../../seed/identity.js";
+import { regimen, regimenCycle } from "../../clinical-metrics/schema.js";
+import { nursingCase } from "../../nursing/schema.js";
 import type { roleNameEnum } from "../../../db/enums.js";
 
 const app = createApp();
@@ -16,6 +18,7 @@ const app = createApp();
 let testPatientId: string;
 let regionalAdminCookie: string;
 let onsiteNursingOfficerCookie: string;
+let nurseId: string;
 let plainCookie: string;
 
 // Creates a user and returns a valid session cookie for requests.
@@ -60,6 +63,7 @@ beforeAll(async () => {
 
   const nurse = await createSessionCookie();
   onsiteNursingOfficerCookie = nurse.cookie;
+  nurseId = nurse.userId;
   await assignRole(nurse.userId, "ONSITE_NURSING_OFFICER");
 
   const plain = await createSessionCookie();
@@ -82,6 +86,30 @@ describe("POST /patients/:id/call", () => {
   it("returns 502 'not configured' for ONSITE_NURSING_OFFICER too", async () => {
     const res = await request(app).post(`/patients/${testPatientId}/call`).set("Cookie", onsiteNursingOfficerCookie);
     expect(res.status).toBe(502);
+  });
+
+  it("refuses a nursing officer once their case with the patient is closed, but not Regional Admin, and allows again with a new open case", async () => {
+    const regimenId = crypto.randomUUID();
+    await db.insert(regimen).values({ id: regimenId, patientId: testPatientId, drugName: "T", protocolCode: "T", totalCycles: 2, cycleIntervalDays: 7, startedAt: new Date() });
+    const newCycle = async (n: number) => {
+      const id = crypto.randomUUID();
+      await db.insert(regimenCycle).values({ id, regimenId, cycleNumber: n, scheduledDate: new Date().toISOString().slice(0, 10) });
+      return id;
+    };
+    const openCase = crypto.randomUUID();
+    await db.insert(nursingCase).values({ id: openCase, patientId: testPatientId, regimenCycleId: await newCycle(1), startedBy: nurseId, status: "STARTED", startedAt: new Date(Date.now() - 60_000) });
+
+    // Open case: passes the check (reaches the "not configured" vendor stub).
+    expect((await request(app).post(`/patients/${testPatientId}/call`).set("Cookie", onsiteNursingOfficerCookie)).status).toBe(502);
+
+    await db.update(nursingCase).set({ status: "CLOSED", closedAt: new Date() }).where(eq(nursingCase.id, openCase));
+    const blocked = await request(app).post(`/patients/${testPatientId}/call`).set("Cookie", onsiteNursingOfficerCookie);
+    expect(blocked.status).toBe(409);
+    expect(blocked.body.error).toContain("closed");
+    expect((await request(app).post(`/patients/${testPatientId}/call`).set("Cookie", regionalAdminCookie)).status).toBe(502);
+
+    await db.insert(nursingCase).values({ id: crypto.randomUUID(), patientId: testPatientId, regimenCycleId: await newCycle(2), startedBy: nurseId, status: "STARTED" });
+    expect((await request(app).post(`/patients/${testPatientId}/call`).set("Cookie", onsiteNursingOfficerCookie)).status).toBe(502);
   });
 
   it("never includes the patient's phone number in the response body", async () => {

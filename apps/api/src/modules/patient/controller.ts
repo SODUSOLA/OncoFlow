@@ -1,7 +1,8 @@
 import type { Request, Response } from "express";
 import crypto from "node:crypto";
 import type { AuthenticatedRequest } from "../../lib/rbac.js";
-import { userHasPermission } from "../../lib/rbac.js";
+import { userHasPermission, userHasRole } from "../../lib/rbac.js";
+import { isVisitClosedOut, CALL_AFTER_CLOSE_MESSAGE } from "../nursing/callAccess.js";
 import { PatientService } from "./service.js";
 import {
   PatientRepository, AddressRepository, EmergencyContactRepository, WalletRepository,
@@ -395,6 +396,14 @@ export async function callPatientHandler(req: Request, res: Response) {
     const patientRow = await patientRepo.findById(String(id));
     if (!patientRow) {
       res.status(404).json({ error: "Patient not found" });
+      return;
+    }
+
+    // Enforced here, not in the UI: a nursing officer can't call once their case with this patient is closed.
+    // (Regional Admin, who also holds patient:call, isn't tied to a visit.)
+    const callerId = (req as AuthenticatedRequest).userId;
+    if (await userHasRole(callerId, "ONSITE_NURSING_OFFICER") && await isVisitClosedOut(callerId, patientRow.id)) {
+      res.status(409).json({ error: CALL_AFTER_CLOSE_MESSAGE });
       return;
     }
 

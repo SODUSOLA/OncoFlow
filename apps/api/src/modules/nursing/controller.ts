@@ -1,8 +1,12 @@
 import type { Request, Response } from "express";
 import type { AuthenticatedRequest } from "../../lib/rbac.js";
-import { userHasPermission } from "../../lib/rbac.js";
+import { userHasPermission, userHasRole } from "../../lib/rbac.js";
+import { reviewerMayAccess, OUT_OF_SCOPE_MESSAGE } from "./reviewerScope.js";
 import { nursingCaseService } from "./service.js";
 import { AppError } from "../../lib/errors.js";
+import { PatientRepository } from "../patient/index.js";
+
+const patientRepo = new PatientRepository();
 
 // Maps an error to its HTTP status, defaulting to 500.
 function errorStatus(err: unknown): number {
@@ -35,6 +39,11 @@ export async function getCaseHandler(req: Request, res: Response) {
       res.status(403).json({ error: "Forbidden" });
       return;
     }
+    // A reviewer who isn't the owner sees only their own facility's cases.
+    if (!isOwner && !(await reviewerMayAccess(callerId, result.patientFacilityId))) {
+      res.status(403).json({ error: OUT_OF_SCOPE_MESSAGE });
+      return;
+    }
     res.json({ case: result });
   } catch (err) {
     res.status(errorStatus(err)).json({ error: errorMessage(err) });
@@ -52,23 +61,72 @@ export async function listMyCasesHandler(req: Request, res: Response) {
   }
 }
 
-// requirePermission("nursingCase", "update") at the route layer already gates this to QA.
-export async function listPendingReviewHandler(_req: Request, res: Response) {
+// The patient folder's case history — requirePermission("patient", "read") at the route layer already
+// gates this to roles with legitimate clinical access to patients, not just the nurse who opened a case.
+export async function listCasesByPatientHandler(req: Request, res: Response) {
   try {
-    const result = await nursingCaseService.listPendingReview();
+    const patientId = String(req.query.patientId);
+    // A QA officer's patient history is limited to their own facility's patients.
+    const callerId = (req as AuthenticatedRequest).userId;
+    if (await userHasRole(callerId, "QUALITY_ASSURANCE_OFFICER")) {
+      const patientRow = await patientRepo.findById(patientId);
+      if (!patientRow || !(await reviewerMayAccess(callerId, patientRow.facilityId))) {
+        res.status(403).json({ error: OUT_OF_SCOPE_MESSAGE });
+        return;
+      }
+    }
+    const result = await nursingCaseService.listByPatient(patientId);
     res.json({ cases: result });
   } catch (err) {
     res.status(errorStatus(err)).json({ error: errorMessage(err) });
   }
 }
 
-// Submits the documentation sheet for a case.
+// requirePermission("nursingCase", "update") at the route layer already gates this to QA.
+export async function listPendingReviewHandler(req: Request, res: Response) {
+  try {
+    const result = await nursingCaseService.listPendingReview((req as AuthenticatedRequest).userId);
+    res.json({ cases: result });
+  } catch (err) {
+    res.status(errorStatus(err)).json({ error: errorMessage(err) });
+  }
+}
+
+// The nurse confirms the patient matches their profile photo.
+export async function verifyIdentityHandler(req: Request, res: Response) {
+  try {
+    const callerId = (req as AuthenticatedRequest).userId;
+    const result = await nursingCaseService.verifyIdentity(String(req.params.id), callerId);
+    res.json({ case: result });
+  } catch (err) {
+    res.status(errorStatus(err)).json({ error: errorMessage(err) });
+  }
+}
+
+// The nurse reports that the patient doesn't match the profile on file.
+export async function reportMismatchHandler(req: Request, res: Response) {
+  try {
+    const callerId = (req as AuthenticatedRequest).userId;
+    const report = await nursingCaseService.reportIdentityMismatch(String(req.params.id), callerId, req.body.note);
+    res.status(201).json({ report });
+  } catch (err) {
+    res.status(errorStatus(err)).json({ error: errorMessage(err) });
+  }
+}
+
+// Submits the documentation sheet for a case. diagnosis and managingConsultant aren't accepted here —
+// both are resolved server-side (from the cycle's regimen and the patient's facility; see the service),
+// never taken from the client.
 export async function submitDocumentationSheetHandler(req: Request, res: Response) {
   try {
     const callerId = (req as AuthenticatedRequest).userId;
-    const { upiCodeEntered, idPhotoFileId, fileReference } = req.body;
+    const {
+      fileReference,
+      treatmentDate, infusionStartTime, infusionEndTime, note, nextAppointmentDate,
+    } = req.body;
     const result = await nursingCaseService.submitDocumentationSheet(String(req.params.id), callerId, {
-      upiCodeEntered, idPhotoFileId, fileReference,
+      fileReference,
+      treatmentDate, infusionStartTime, infusionEndTime, note, nextAppointmentDate,
     });
     res.status(201).json(result);
   } catch (err) {

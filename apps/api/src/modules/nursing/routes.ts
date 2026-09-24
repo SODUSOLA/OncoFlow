@@ -1,11 +1,11 @@
 import { Router } from "express";
 import { z } from "zod";
 import {
-  startCaseHandler, getCaseHandler, listMyCasesHandler, listPendingReviewHandler,
-  submitDocumentationSheetHandler, reportSecurityIncidentHandler, listSecurityIncidentsHandler, reviewCaseHandler,
+  startCaseHandler, getCaseHandler, listMyCasesHandler, listCasesByPatientHandler, listPendingReviewHandler,
+  submitDocumentationSheetHandler, reportSecurityIncidentHandler, listSecurityIncidentsHandler, reviewCaseHandler, verifyIdentityHandler, reportMismatchHandler,
 } from "./controller.js";
 import { requireAuthenticated, requirePermission, requireRole } from "../../lib/rbac.js";
-import { validateBody, validateParams } from "../../lib/validation.js";
+import { validateBody, validateParams, validateQuery } from "../../lib/validation.js";
 import { nursingCaseReviewDecisionEnum } from "../../db/enums.js";
 
 const startCaseSchema = z.object({
@@ -13,10 +13,20 @@ const startCaseSchema = z.object({
   regimenCycleId: z.string().uuid(),
 });
 const caseIdParamSchema = z.object({ id: z.string().uuid() });
+const dateString = z.string().regex(/^\d{4}-\d{2}-\d{2}$/);
+const timeString = z.string().regex(/^\d{2}:\d{2}(:\d{2})?$/);
 const submitSheetSchema = z.object({
-  upiCodeEntered: z.string().trim().min(1).max(100),
-  idPhotoFileId: z.string().uuid(),
-  fileReference: z.string().uuid(),
+  // Legacy free-form upload from before the structured form; no current caller sends this.
+  fileReference: z.string().uuid().optional(),
+  // diagnosis and managingConsultant are deliberately not accepted here — both are resolved server-side
+  // (from the cycle's regimen and the patient's facility's QA officer; see nursing/service.ts), not typed
+  // by the nurse.
+  // Required: the sheet is the record of the treatment and the date anchors it.
+  treatmentDate: dateString,
+  infusionStartTime: timeString.optional(),
+  infusionEndTime: timeString.optional(),
+  note: z.string().trim().max(4000).optional(),
+  nextAppointmentDate: dateString.optional(),
 });
 const reportIncidentSchema = z.object({
   fileId: z.string().uuid(),
@@ -26,6 +36,9 @@ const reviewSchema = z.object({
   decision: z.enum(nursingCaseReviewDecisionEnum.enumValues),
   reason: z.string().trim().max(2000).optional(),
 });
+const listByPatientQuerySchema = z.object({
+  patientId: z.string().uuid(),
+});
 
 const router = Router();
 
@@ -33,10 +46,20 @@ const router = Router();
 router.post("/nursing-cases", requirePermission("nursingCase", "create"), validateBody(startCaseSchema), startCaseHandler);
 // Lists the caller's own cases.
 router.get("/nursing-cases/mine", requireAuthenticated(), listMyCasesHandler);
+// The patient folder's case history — every case on record for this patient, open to anyone with
+// legitimate clinical access to the patient (patient:read), not just whoever started a given case.
+router.get("/nursing-cases", requirePermission("patient", "read"), validateQuery(listByPatientQuerySchema), listCasesByPatientHandler);
 // Must precede /nursing-cases/:id so the static path isn't swallowed by the param route.
 router.get("/nursing-cases/pending-review", requirePermission("nursingCase", "update"), requireRole("QUALITY_ASSURANCE_OFFICER"), listPendingReviewHandler);
 // Reads one case (own for the nurse, permission for QA).
 router.get("/nursing-cases/:id", requireAuthenticated(), validateParams(caseIdParamSchema), getCaseHandler);
+// Confirms the patient's identity on a case (owner only).
+router.post("/nursing-cases/:id/verify-identity", requireAuthenticated(), validateParams(caseIdParamSchema), verifyIdentityHandler);
+// Reports that the patient doesn't match their profile (owner only); recorded and sent to Regional Admin.
+router.post(
+  "/nursing-cases/:id/report-mismatch", requireAuthenticated(), validateParams(caseIdParamSchema),
+  validateBody(z.object({ note: z.string().trim().max(1000).optional() })), reportMismatchHandler,
+);
 // Submits the documentation sheet for a case.
 router.post(
   "/nursing-cases/:id/documentation-sheet",
