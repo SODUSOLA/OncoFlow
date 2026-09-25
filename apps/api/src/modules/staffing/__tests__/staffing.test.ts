@@ -6,7 +6,7 @@ import { createApp } from "../../../app.js";
 import { db } from "../../../db/index.js";
 import { facility } from "../../facility/schema.js";
 import { user, session, role, userRole } from "../../auth/schema.js";
-import { shiftRequirement } from "../schema.js";
+import { shiftRequirement, shiftAssignment } from "../schema.js";
 import { SESSION_COOKIE_NAME } from "../../../lib/session-cookie.js";
 import { seedIdentity } from "../../../seed/identity.js";
 
@@ -14,6 +14,7 @@ const app = createApp();
 
 let testFacilityId: string;
 let nurseUserId: string;
+let nurseCookie: string;
 let regionalAdminCookie: string;
 let plainCookie: string;
 
@@ -53,6 +54,7 @@ beforeAll(async () => {
 
   const nurse = await createSessionCookie();
   nurseUserId = nurse.userId;
+  nurseCookie = nurse.cookie;
   await db.update(user).set({ facilityId: testFacilityId }).where(eq(user.id, nurseUserId));
   const nursingRoleRow = await db.select().from(role).where(eq(role.name, "ONSITE_NURSING_OFFICER")).limit(1);
   await db.insert(userRole).values({ userId: nurseUserId, roleId: nursingRoleRow[0]!.id });
@@ -117,6 +119,30 @@ describe("POST /staffing/assignments + /staffing/publish", () => {
     expect(monday.assigned).toHaveLength(1);
     expect(monday.assigned[0].userId).toBe(nurseUserId);
     expect(monday.assigned[0].published).toBe(false);
+  });
+
+  it("refuses to roster a nurse at a facility other than their own, and hides legacy cross-support from the nurse", async () => {
+    const otherFacility = (await db.insert(facility).values({
+      id: crypto.randomUUID(), name: "Staffing Other Facility", region: "Test Region", address: "S2 St", status: "ACTIVE",
+    }).returning())[0]!.id;
+    const cross = await request(app).post("/staffing/assignments").set("Cookie", regionalAdminCookie).send({
+      facilityId: otherFacility, weekday: 1, isoYear: 2026, isoWeek: 2, userId: nurseUserId,
+    });
+    expect(cross.status).toBe(409);
+    expect(cross.body.error).toContain("Cross-facility");
+
+    // A row from before the change (written directly) is published but never shown to the nurse.
+    await db.insert(shiftAssignment).values({
+      id: crypto.randomUUID(), facilityId: otherFacility, weekday: 1, isoYear: 2026, isoWeek: 2, userId: nurseUserId,
+      assignedBy: nurseUserId, assignedAt: new Date(), publishedAt: new Date(),
+    });
+    await db.insert(shiftAssignment).values({
+      id: crypto.randomUUID(), facilityId: testFacilityId, weekday: 2, isoYear: 2026, isoWeek: 2, userId: nurseUserId,
+      assignedBy: nurseUserId, assignedAt: new Date(), publishedAt: new Date(),
+    });
+    const mine = await request(app).get("/staffing/mine?isoYear=2026&isoWeek=2").set("Cookie", nurseCookie);
+    expect(mine.status).toBe(200);
+    expect(mine.body.assignments.map((a: { facilityId: string }) => a.facilityId)).toEqual([testFacilityId]);
   });
 
   it("publishing the week marks the draft assignment published", async () => {

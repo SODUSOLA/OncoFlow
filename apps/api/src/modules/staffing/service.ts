@@ -3,11 +3,14 @@ import { db } from "../../db/index.js";
 import { and, eq, inArray } from "drizzle-orm";
 import { user, role, userRole } from "../auth/schema.js";
 import { FacilityRepository } from "../facility/repository.js";
+import { ConflictError, NotFoundError } from "../../lib/errors.js";
 import { ShiftRequirementRepository, ShiftAssignmentRepository } from "./repository.js";
 
 const requirementRepo = new ShiftRequirementRepository();
 const assignmentRepo = new ShiftAssignmentRepository();
 const facilityRepo = new FacilityRepository();
+
+export const CROSS_SUPPORT_MESSAGE = "Cross-facility support is not available: a nurse can only be assigned to their own facility";
 
 // Business logic for weekly nurse staffing.
 export class StaffingService {
@@ -42,8 +45,12 @@ export class StaffingService {
     }));
   }
 
-  // Creates a draft assignment for a nurse.
+  // Creates a draft assignment for a nurse. Cross-support is switched off for now: a nurse can only be rostered
+  // at the facility they belong to, however the request was made (the picker already lists only home nurses).
   async assign(data: { facilityId: string; weekday: number; isoYear: number; isoWeek: number; userId: string; assignedBy: string }) {
+    const [nurse] = await db.select({ facilityId: user.facilityId }).from(user).where(eq(user.id, data.userId)).limit(1);
+    if (!nurse) throw new NotFoundError("Nurse not found");
+    if (nurse.facilityId !== data.facilityId) throw new ConflictError(CROSS_SUPPORT_MESSAGE);
     return assignmentRepo.create({ id: crypto.randomUUID(), ...data, assignedAt: new Date() });
   }
 
@@ -68,13 +75,15 @@ export class StaffingService {
       );
   }
 
-  // The caller's own published assignments with facility names, so cross-support at another facility is obvious.
+  // The caller's own published assignments (at their own facility) with facility names.
   async getMyAssignments(userId: string, isoYear: number, isoWeek: number) {
     const rows = await assignmentRepo.findForUserWeek(userId, isoYear, isoWeek);
+    // Assignments at any facility other than the nurse's own (made before cross-support was switched off) aren't shown.
+    const [self] = await db.select({ facilityId: user.facilityId }).from(user).where(eq(user.id, userId)).limit(1);
     const facilities = await facilityRepo.findAll();
     const facilityById = new Map(facilities.map((f) => [f.id, f]));
     return rows
-      .filter((r) => r.publishedAt !== null)
+      .filter((r) => r.publishedAt !== null && r.facilityId === self?.facilityId)
       .map((r) => ({
         id: r.id, facilityId: r.facilityId, facilityName: facilityById.get(r.facilityId)?.name ?? "Unknown facility",
         weekday: r.weekday,

@@ -77,7 +77,6 @@ export default function SettingsPage() {
         <div className="mt-4 space-y-4">
           <ToggleRow label="SLA Breach Alerts" description="Notify immediately upon inquiry SLA breach." checked={false} />
           <ToggleRow label="Inventory Variances" description="Weekly reconciliation reports." checked={false} />
-          <ToggleRow label="Cross-Support Requests" description="Facility staffing conflict flags." checked={false} />
         </div>
       </Card>
 

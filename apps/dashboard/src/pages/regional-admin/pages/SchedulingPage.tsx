@@ -321,7 +321,7 @@ export default function SchedulingPage() {
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
           <p className="text-admin-h3 text-admin-text">Week {isoWeek} Allocation Console</p>
-          <p className="text-admin-body-sm text-admin-text-secondary">Manage nursing assignments and resolve cross-support conflicts across regions.</p>
+          <p className="text-admin-body-sm text-admin-text-secondary">Assign each facility's own nurses to the shifts it requires. Nurses work at their home facility only.</p>
         </div>
         <div className="flex items-center gap-2">
           <div className="flex rounded-admin-sm border border-admin-border bg-white p-0.5 text-admin-caption font-medium">
@@ -361,7 +361,7 @@ export default function SchedulingPage() {
           </div>
           <p className="mt-2 text-admin-caption text-admin-text-secondary">
             {stats.shortageFacilities > 0
-              ? "Immediate cross-support required to meet clinical safety ratios."
+              ? "Assign more of the facility's own nurses to meet clinical safety ratios."
               : "No shortages this week."}
           </p>
           <button

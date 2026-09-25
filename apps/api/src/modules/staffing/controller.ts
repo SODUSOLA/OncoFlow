@@ -1,5 +1,6 @@
 import type { Request, Response } from "express";
-import { resolveScopeOrDeny } from "../../lib/facility-scope.js";
+import { AppError } from "../../lib/errors.js";
+import { accessibleFacilityIds, resolveScopeOrDeny } from "../../lib/facility-scope.js";
 import type { AuthenticatedRequest } from "../../lib/rbac.js";
 import { StaffingService } from "./service.js";
 
@@ -50,11 +51,17 @@ export async function assignNurseHandler(req: Request, res: Response) {
   try {
     const { facilityId, weekday, isoYear, isoWeek, userId } = req.body;
     const assignedBy = (req as AuthenticatedRequest).userId;
+    // An admin rosters only within their own region.
+    const scope = await accessibleFacilityIds(assignedBy);
+    if (scope && !scope.includes(facilityId)) {
+      res.status(403).json({ error: "Forbidden: facility outside your region" });
+      return;
+    }
     const assignment = await staffingSvc.assign({ facilityId, weekday, isoYear, isoWeek, userId, assignedBy });
     res.status(201).json({ assignment });
   } catch (err) {
     const message = err instanceof Error ? err.message : "Internal server error";
-    res.status(400).json({ error: message });
+    res.status(err instanceof AppError ? err.statusCode : 400).json({ error: message });
   }
 }
 

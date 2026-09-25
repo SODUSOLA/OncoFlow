@@ -1,11 +1,9 @@
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { TriangleAlert, CalendarClock, ChevronRight } from "lucide-react";
+import { ChevronRight } from "lucide-react";
 import { api } from "../../../lib/api";
 import { useAuth } from "../../../lib/auth";
 import { Card } from "../../../components/ui/Card";
-// Shared pure utility with no regional-admin coupling, used by several pages.
-import { getIsoWeek } from "../../regional-admin/lib/isoWeek";
 import { cn } from "../../../lib/utils";
 import type { RegimenCycleRow } from "../lib/types";
 import { CycleStatusBadge } from "../lib/CycleStatusBadge";
@@ -22,57 +20,24 @@ function tomorrowDateString(): string {
   return d.toISOString().slice(0, 10);
 }
 
-// weekday here is 0=Mon..6=Sun (staffing/schema.ts's convention); Date#getDay is 0=Sun..6=Sat.
-function weekdayIndex(date: Date): number {
-  return (date.getDay() + 6) % 7;
-}
-
-interface Assignment { id: string; facilityId: string; facilityName: string; weekday: number }
-
-// Schedule tab: cycles due now (today's and any overdue) plus a look-ahead at tomorrow, and cross-support assignments.
+// Schedule tab: cycles due now (inside the D-1..D+1 visit window) plus a look-ahead at tomorrow.
 export default function SchedulePage() {
   const { user } = useAuth();
   const navigate = useNavigate();
   const [due, setDue] = useState<RegimenCycleRow[]>([]);
   const [tomorrow, setTomorrow] = useState<RegimenCycleRow[]>([]);
-  const [crossSupport, setCrossSupport] = useState<{ facilityName: string; label: string }[]>([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     if (!user?.facilityId) { setLoading(false); return; }
     let cancelled = false;
-    const todayDate = new Date();
-    const tomorrowDate = new Date(Date.now() + 86_400_000);
-    const todayWeek = getIsoWeek(todayDate);
-    const tomorrowWeek = getIsoWeek(tomorrowDate);
-
-    const fetchWeek = (isoYear: number, isoWeek: number) =>
-      api.get<{ assignments: Assignment[] }>(`/staffing/mine?isoYear=${isoYear}&isoWeek=${isoWeek}`).then((d) => d.assignments).catch(() => []);
-
     Promise.all([
       api.get<{ cycles: RegimenCycleRow[] }>(`/regimen-cycles?facilityId=${user.facilityId}&date=${todayDateString()}&due=true`).then((d) => d.cycles).catch(() => []),
       api.get<{ cycles: RegimenCycleRow[] }>(`/regimen-cycles?facilityId=${user.facilityId}&date=${tomorrowDateString()}`).then((d) => d.cycles).catch(() => []),
-      fetchWeek(todayWeek.isoYear, todayWeek.isoWeek),
-      todayWeek.isoYear === tomorrowWeek.isoYear && todayWeek.isoWeek === tomorrowWeek.isoWeek
-        ? Promise.resolve<Assignment[]>([])
-        : fetchWeek(tomorrowWeek.isoYear, tomorrowWeek.isoWeek),
-    ]).then(([dueCycles, tomorrowCycles, thisWeekAssignments, nextWeekAssignments]) => {
+    ]).then(([dueCycles, tomorrowCycles]) => {
       if (cancelled) return;
       setDue(dueCycles);
       setTomorrow(tomorrowCycles);
-      const todayIdx = weekdayIndex(todayDate);
-      const tomorrowIdx = weekdayIndex(tomorrowDate);
-      const cross: { facilityName: string; label: string }[] = [];
-      for (const a of thisWeekAssignments) {
-        if (a.facilityId === user.facilityId) continue;
-        if (a.weekday === todayIdx) cross.push({ facilityName: a.facilityName, label: "today" });
-        if (a.weekday === tomorrowIdx) cross.push({ facilityName: a.facilityName, label: "tomorrow" });
-      }
-      for (const a of nextWeekAssignments) {
-        if (a.facilityId === user.facilityId) continue;
-        if (a.weekday === tomorrowIdx) cross.push({ facilityName: a.facilityName, label: "tomorrow" });
-      }
-      setCrossSupport(cross);
     }).finally(() => { if (!cancelled) setLoading(false); });
 
     return () => { cancelled = true; };
@@ -87,25 +52,6 @@ export default function SchedulePage() {
   return (
     <div className="space-y-4">
       <p className="text-admin-h4 text-admin-text">Schedule</p>
-
-      {loading ? null : crossSupport.length > 0 ? (
-        <Card className="flex items-start gap-2.5 border-admin-warning/40 bg-admin-warning/10 p-3.5">
-          <TriangleAlert className="mt-0.5 size-4 shrink-0 text-admin-warning" aria-hidden="true" />
-          <div>
-            <p className="text-admin-body-sm font-semibold text-admin-text">Cross-support assignment</p>
-            <p className="text-admin-caption text-admin-text-secondary">
-              {crossSupport.map((a, i) => (
-                <span key={i}>{i > 0 && ", "}{a.facilityName} ({a.label})</span>
-              ))} — not your home facility.
-            </p>
-          </div>
-        </Card>
-      ) : (
-        <Card className="flex items-center gap-2.5 border-admin-border bg-admin-card-alt p-3.5">
-          <CalendarClock className="size-4 shrink-0 text-admin-text-secondary" aria-hidden="true" />
-          <p className="text-admin-caption text-admin-text-secondary">No cross-support assignments today or tomorrow.</p>
-        </Card>
-      )}
 
       <div>
         <p className="mb-2 text-admin-caption font-bold uppercase tracking-wide text-admin-text-secondary">
