@@ -7,6 +7,7 @@ import { user } from "../auth/schema.js";
 import { facility } from "../facility/schema.js";
 import { drug } from "../inventory/schema.js";
 import { nursingCase } from "../nursing/schema.js";
+import { file } from "../documents/schema.js";
 
 // A Nursing Officer's request for drugs, sent to Regional Admin; the existing drug table serves as the catalog.
 export const drugRequest = pgTable("drug_request", {
@@ -93,14 +94,18 @@ export const drugUsage = pgTable("drug_usage", {
   deletedAt: timestamp("deleted_at"),
 });
 
-// Stock lost outside any case (spillage, breakage); has no patient context but must alert Regional Admin.
+// A stock incident outside any case (breakage, spoilage, expiry, wastage); has no patient context but must alert Regional Admin and SDNS.
 export const drugLossReport = pgTable("drug_loss_report", {
   id: uuid("id").primaryKey().defaultRandom(),
   nursingOfficerId: uuid("nursing_officer_id").notNull().references(() => user.id),
   drugId: uuid("drug_id").notNull().references(() => drug.id),
   quantityLost: integer("quantity_lost").notNull(),
+  // The incident type (breakage, spoilage, expiry, wastage). Named "reason" for history; see drugLossReasonEnum.
   reason: drugLossReasonEnum("reason").notNull(),
+  // The nurse's written reason — required for every new report; nullable only for older ones.
   notes: text("notes"),
+  // Evidence photo; nullable only for reports filed before photos were required.
+  photoFileId: uuid("photo_file_id").references(() => file.id),
   reportedAt: timestamp("reported_at").notNull().defaultNow(),
   createdAt: timestamp("created_at").notNull().defaultNow(),
   updatedAt: timestamp("updated_at").notNull().defaultNow(),

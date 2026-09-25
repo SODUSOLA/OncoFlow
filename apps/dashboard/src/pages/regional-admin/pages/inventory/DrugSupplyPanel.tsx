@@ -10,7 +10,7 @@ import { CountsPanel } from "./CountsPanel";
 type Tab = "requests" | "officers" | "losses" | "counts";
 const TABS: { id: Tab; label: string }[] = [
   { id: "requests", label: "Requests & dispatch" }, { id: "officers", label: "Officer stock" },
-  { id: "losses", label: "Losses" }, { id: "counts", label: "Counts & variances" },
+  { id: "losses", label: "Incidents" }, { id: "counts", label: "Counts & variances" },
 ];
 
 // Drug supply chain oversight: nursing officers' requests, dispatch, their remaining stock, losses and counts.

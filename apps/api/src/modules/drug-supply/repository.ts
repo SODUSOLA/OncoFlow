@@ -191,6 +191,21 @@ export class DrugSupplyRepository {
       .orderBy(desc(drugUsage.usedAt));
   }
 
+  // Every drug administered to a patient across their cases, newest first (read-only, for the VMO's Medication Triage).
+  async findUsageByPatient(patientId: string, limit: number) {
+    return db
+      .select({
+        id: drugUsage.id, nursingCaseId: drugUsage.nursingCaseId, drugName: drug.name,
+        drugStrength: drug.strength, quantityUsed: drugUsage.quantityUsed, usedAt: drugUsage.usedAt,
+      })
+      .from(drugUsage)
+      .innerJoin(drug, eq(drugUsage.drugId, drug.id))
+      .innerJoin(nursingCase, eq(drugUsage.nursingCaseId, nursingCase.id))
+      .where(and(eq(nursingCase.patientId, patientId), eq(drugUsage.isDeleted, false)))
+      .orderBy(desc(drugUsage.usedAt))
+      .limit(limit);
+  }
+
   // Finds a nursing case by id.
   async findNursingCase(id: string, executor: DbOrTx = db) {
     const rows = await executor
@@ -208,8 +223,9 @@ export class DrugSupplyRepository {
     return db
       .select({
         id: drugLossReport.id, officerId: user.id, officerEmail: user.email, drugId: drug.id, drugName: drug.name,
-        drugStrength: drug.strength, quantityLost: drugLossReport.quantityLost, reason: drugLossReport.reason,
-        notes: drugLossReport.notes, reportedAt: drugLossReport.reportedAt,
+        drugStrength: drug.strength, quantityLost: drugLossReport.quantityLost, incidentType: drugLossReport.reason,
+        reason: drugLossReport.notes, photoFileId: drugLossReport.photoFileId, reportedAt: drugLossReport.reportedAt,
+        officerFacilityId: user.facilityId,
       })
       .from(drugLossReport)
       .innerJoin(user, eq(drugLossReport.nursingOfficerId, user.id))
@@ -217,6 +233,15 @@ export class DrugSupplyRepository {
       .where(and(...where))
       .orderBy(desc(drugLossReport.reportedAt))
       .limit(100);
+  }
+
+  // One loss report with its officer's facility, for the photo route's scope check.
+  async findLossReportById(id: string) {
+    const rows = await db
+      .select({ id: drugLossReport.id, photoFileId: drugLossReport.photoFileId, officerFacilityId: user.facilityId })
+      .from(drugLossReport).innerJoin(user, eq(drugLossReport.nursingOfficerId, user.id))
+      .where(and(eq(drugLossReport.id, id), eq(drugLossReport.isDeleted, false))).limit(1);
+    return rows[0] ?? null;
   }
 
   // Reconciliations for officers in the given facilities (null means all) plus regional ones; optionally only unresolved variances.

@@ -10,6 +10,7 @@ import { patient } from "../../patient/schema.js";
 import { regimen, regimenCycle } from "../../clinical-metrics/schema.js";
 import { nursingCase } from "../../nursing/schema.js";
 import { drug } from "../../inventory/schema.js";
+import { file } from "../../documents/schema.js";
 import { regionalDrugStockLedgerEntry } from "../schema.js";
 import { SESSION_COOKIE_NAME } from "../../../lib/session-cookie.js";
 import { seedIdentity } from "../../../seed/identity.js";
@@ -23,6 +24,8 @@ let officer: { id: string; cookie: string };
 let otherOfficer: { id: string; cookie: string };
 let admin: { id: string; cookie: string };
 let outsideAdmin: { id: string; cookie: string };
+let sdns: { id: string; cookie: string };
+let outsideSdns: { id: string; cookie: string };
 
 // Creates a user with the given role and facility, returning a valid session cookie.
 async function createUser(roleName: string, facility_: string): Promise<{ id: string; cookie: string }> {
@@ -44,6 +47,16 @@ async function createFacility(region: string): Promise<string> {
     id: crypto.randomUUID(), name: `Drug Supply Facility ${crypto.randomUUID().slice(0, 6)}`, region, address: "DS St", status: "ACTIVE",
   }).returning();
   return rows[0]!.id;
+}
+
+// Inserts an evidence photo uploaded by the user, CLEAN unless told otherwise, and returns its id.
+async function createPhoto(uploadedBy: string, opts: { scan?: "CLEAN" | "PENDING"; mimeType?: string } = {}): Promise<string> {
+  const id = crypto.randomUUID();
+  await db.insert(file).values({
+    id, uploadedBy, storageKey: `test/${id}`, mimeType: opts.mimeType ?? "image/jpeg",
+    virusScanStatus: opts.scan ?? "CLEAN", fileHash: crypto.randomUUID(),
+  });
+  return id;
 }
 
 // Adds procurement stock for the test drug to the regional ledger.
@@ -107,7 +120,10 @@ beforeAll(async () => {
   officer = await createUser("ONSITE_NURSING_OFFICER", facilityId);
   otherOfficer = await createUser("ONSITE_NURSING_OFFICER", facilityId);
   admin = await createUser("REGIONAL_ADMIN", facilityId);
-  outsideAdmin = await createUser("REGIONAL_ADMIN", await createFacility(`${REGION} Elsewhere`));
+  const elsewhere = await createFacility(`${REGION} Elsewhere`);
+  outsideAdmin = await createUser("REGIONAL_ADMIN", elsewhere);
+  sdns = await createUser("STATE_DIRECTOR_OF_NURSING_SERVICES", facilityId);
+  outsideSdns = await createUser("STATE_DIRECTOR_OF_NURSING_SERVICES", elsewhere);
 });
 
 afterAll(async () => {
@@ -255,7 +271,7 @@ describe("usage and loss", () => {
     const tooMany = await request(app).post("/drug-usage").set("Cookie", officer.cookie).send({ nursingCaseId: caseId, drugId, quantity: onHand + 1 });
     expect(tooMany.status).toBe(409);
     expect(tooMany.body.error).toContain(onHand > 0 ? `Only ${onHand}` : "Out of stock");
-    const lossTooMany = await request(app).post("/drug-loss-reports").set("Cookie", officer.cookie).send({ drugId, quantity: onHand + 1, reason: "SPILLAGE" });
+    const lossTooMany = await request(app).post("/drug-loss-reports").set("Cookie", officer.cookie).send({ drugId, quantity: onHand + 1, incidentType: "SPOILAGE", reason: "Fridge failed overnight", photoFileId: await createPhoto(officer.id) });
     expect(lossTooMany.status).toBe(409);
     expect(await officerStock(officer)).toBe(onHand);
 
@@ -281,20 +297,50 @@ describe("usage and loss", () => {
     expect(await officerStock(officer)).toBe(0);
   });
 
-  it("records a loss without a case, requires a description for OTHER, and alerts Regional Admin", async () => {
-    await stockOfficer(4);
+  it("records an incident with type, reason and photo, and shows it to Regional Admin and SDNS in the region only", async () => {
+    await stockOfficer(9); // 6 are reported lost below; the rest keeps later tests' expectations intact
     const before = await officerStock(officer);
-    const vague = await request(app).post("/drug-loss-reports").set("Cookie", officer.cookie).send({ drugId, quantity: 1, reason: "OTHER" });
-    expect(vague.status).toBe(400);
+    const photoFileId = await createPhoto(officer.id);
+    const base = { drugId, quantity: 2, incidentType: "BREAKAGE", reason: "Vial dropped while unpacking", photoFileId };
+    const post = (body: Record<string, unknown>) => request(app).post("/drug-loss-reports").set("Cookie", officer.cookie).send(body);
 
-    const lost = await request(app).post("/drug-loss-reports").set("Cookie", officer.cookie).send({ drugId, quantity: 2, reason: "SPILLAGE" });
+    // Type, reason and photo are all required; legacy types aren't accepted for new reports.
+    expect((await post({ ...base, incidentType: undefined })).status).toBe(400);
+    expect((await post({ ...base, incidentType: "SPILLAGE" })).status).toBe(400);
+    expect((await post({ ...base, incidentType: "OTHER" })).status).toBe(400);
+    expect((await post({ ...base, reason: " " })).status).toBe(400);
+    expect((await post({ ...base, photoFileId: undefined })).status).toBe(400);
+    // The photo has to be the officer's own, a clean image.
+    expect((await post({ ...base, photoFileId: await createPhoto(otherOfficer.id) })).status).toBe(403);
+    expect((await post({ ...base, photoFileId: await createPhoto(officer.id, { scan: "PENDING" }) })).status).toBe(409);
+    expect((await post({ ...base, photoFileId: await createPhoto(officer.id, { mimeType: "application/pdf" }) })).status).toBe(400);
+    expect(await officerStock(officer)).toBe(before);
+
+    for (const incidentType of ["BREAKAGE", "SPOILAGE", "EXPIRY", "WASTAGE"]) {
+      const ok = await post({ ...base, incidentType, quantity: 1, photoFileId: await createPhoto(officer.id) });
+      expect(ok.status, incidentType).toBe(201);
+    }
+    const lost = await post(base);
     expect(lost.status).toBe(201);
-    expect(await officerStock(officer)).toBe(before - 2);
+    expect(await officerStock(officer)).toBe(before - 6);
 
     const alerts = await request(app).get("/drug-alerts").set("Cookie", admin.cookie);
     expect(alerts.body.losses.some((l: { id: string }) => l.id === lost.body.id)).toBe(true);
     const outside = await request(app).get("/drug-alerts").set("Cookie", outsideAdmin.cookie);
     expect(outside.body.losses.some((l: { id: string }) => l.id === lost.body.id)).toBe(false);
+
+    // SDNS reads the same reports (with type, reason and photo reference), scoped to their region.
+    for (const [who, expected] of [[admin, true], [sdns, true], [outsideSdns, false]] as const) {
+      const list = await request(app).get("/drug-loss-reports").set("Cookie", who.cookie);
+      expect(list.status).toBe(200);
+      const row = list.body.losses.find((l: { id: string }) => l.id === lost.body.id);
+      expect(!!row).toBe(expected);
+      if (row) expect(row).toMatchObject({ incidentType: "BREAKAGE", reason: "Vial dropped while unpacking", photoFileId });
+    }
+    // The photo route is behind the same region check (the signed URL itself needs storage configured).
+    expect((await request(app).get(`/drug-loss-reports/${lost.body.id}/photo`).set("Cookie", outsideSdns.cookie)).status).toBe(403);
+    expect((await request(app).get(`/drug-loss-reports/${lost.body.id}/photo`).set("Cookie", officer.cookie)).status).toBe(403);
+    expect([403, 404]).not.toContain((await request(app).get(`/drug-loss-reports/${lost.body.id}/photo`).set("Cookie", sdns.cookie)).status);
   });
 });
 

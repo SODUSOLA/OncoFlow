@@ -36,6 +36,15 @@ export function requestStatusClass(r: DrugRequest): string {
   return "bg-admin-sidebar-cta/10 text-admin-sidebar-cta";
 }
 
-export const LOSS_REASON_LABEL: Record<"SPILLAGE" | "BREAKAGE" | "OTHER", string> = {
-  SPILLAGE: "Spillage", BREAKAGE: "Breakage", OTHER: "Other",
+// SPILLAGE and OTHER only exist on reports filed before the four incident types; new reports use NEW_INCIDENT_TYPES.
+export type IncidentType = "BREAKAGE" | "SPOILAGE" | "EXPIRY" | "WASTAGE" | "SPILLAGE" | "OTHER";
+export const INCIDENT_TYPE_LABEL: Record<IncidentType, string> = {
+  BREAKAGE: "Breakage", SPOILAGE: "Spoilage", EXPIRY: "Expiry", WASTAGE: "Wastage", SPILLAGE: "Spillage (legacy)", OTHER: "Other (legacy)",
 };
+export const NEW_INCIDENT_TYPES: IncidentType[] = ["BREAKAGE", "SPOILAGE", "EXPIRY", "WASTAGE"];
+
+// One stock incident as GET /drug-loss-reports returns it.
+export interface IncidentReport {
+  id: string; officerEmail: string; drugName: string; drugStrength: string; quantityLost: number;
+  incidentType: IncidentType; reason: string | null; photoFileId: string | null; reportedAt: string;
+}

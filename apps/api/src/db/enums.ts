@@ -147,5 +147,7 @@ export const drugRequestStatusEnum = pgEnum("drug_request_status", ["REQUESTED",
 export const drugDispatchStatusEnum = pgEnum("drug_dispatch_status", ["IN_TRANSIT", "DELIVERED"]);
 export const drugLedgerReasonEnum = pgEnum("drug_ledger_reason", ["DELIVERY", "USAGE", "LOSS", "ADJUSTMENT"]);
 export const regionalDrugLedgerReasonEnum = pgEnum("regional_drug_ledger_reason", ["PROCUREMENT", "DISPATCH", "ADJUSTMENT"]);
-export const drugLossReasonEnum = pgEnum("drug_loss_reason", ["SPILLAGE", "BREAKAGE", "OTHER"]);
+// The incident type of a drug loss report. SPILLAGE and OTHER are legacy values (reports filed before the
+// four incident types existed) and are no longer accepted for new reports; the column keeps its old name.
+export const drugLossReasonEnum = pgEnum("drug_loss_reason", ["SPILLAGE", "BREAKAGE", "OTHER", "SPOILAGE", "EXPIRY", "WASTAGE"]);
 export const drugReconciliationScopeEnum = pgEnum("drug_reconciliation_scope", ["REGIONAL", "NURSING_OFFICER"]);

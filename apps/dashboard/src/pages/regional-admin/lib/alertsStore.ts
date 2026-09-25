@@ -188,7 +188,7 @@ async function inquiryAlerts(): Promise<RegionAlert[]> {
 
 interface DrugAlertsResponse {
   lowStock: { scope: "REGIONAL" | "NURSING_OFFICER"; drugId: string; drugName: string; drugStrength: string; quantity: number; reorderThreshold: number; officerId?: string; officerEmail?: string }[];
-  losses: { id: string; officerEmail: string; drugName: string; quantityLost: number; reason: string; reportedAt: string }[];
+  losses: { id: string; officerEmail: string; drugName: string; quantityLost: number; incidentType: string; reportedAt: string }[];
   variances: { id: string; scope: "REGIONAL" | "NURSING_OFFICER"; officerEmail: string | null; drugName: string; variance: number; periodEnd: string }[];
 }
 
@@ -208,7 +208,7 @@ async function drugAlerts(): Promise<RegionAlert[]> {
     id: `drug-loss-${l.id}`,
     source: "drug", severity: "warning", badge: "DRUG LOSS",
     title: `${l.quantityLost} × ${l.drugName} lost`,
-    detail: `${l.officerEmail} reported ${l.reason.toLowerCase()}, ${new Date(l.reportedAt).toLocaleString()}.`,
+    detail: `${l.officerEmail} reported ${l.incidentType.toLowerCase()}, ${new Date(l.reportedAt).toLocaleString()}.`,
     actionLabel: "View Losses", actionTo: to,
   }));
   const variances: RegionAlert[] = data.variances.map((v) => ({

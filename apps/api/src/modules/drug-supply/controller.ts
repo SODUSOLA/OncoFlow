@@ -3,6 +3,9 @@ import { userHasPermission, type AuthenticatedRequest } from "../../lib/rbac.js"
 import { accessibleFacilityIds } from "../../lib/facility-scope.js";
 import { AppError } from "../../lib/errors.js";
 import { drugSupplyService } from "./service.js";
+import { FileService } from "../documents/index.js";
+
+const fileSvc = new FileService();
 
 // Maps an error to its HTTP status, defaulting to 500.
 function errorStatus(err: unknown): number {
@@ -118,8 +121,8 @@ export async function listUsageHandler(req: Request, res: Response) {
 // Reports spillage or breakage outside any case.
 export async function reportLossHandler(req: Request, res: Response) {
   try {
-    const { drugId, quantity, reason, notes } = req.body;
-    const id = await drugSupplyService.reportLoss(callerId(req), drugId, quantity, reason, notes);
+    const { drugId, quantity, incidentType, reason, photoFileId } = req.body;
+    const id = await drugSupplyService.reportLoss(callerId(req), drugId, quantity, incidentType, reason, photoFileId);
     res.status(201).json({ id });
   } catch (err) { fail(res, err); }
 }
@@ -128,6 +131,16 @@ export async function reportLossHandler(req: Request, res: Response) {
 export async function listLossesHandler(req: Request, res: Response) {
   try {
     res.json({ losses: await drugSupplyService.listLosses(await accessibleFacilityIds(callerId(req))) });
+  } catch (err) { fail(res, err); }
+}
+
+// Redirects to a short-lived signed URL for a loss report's photo (region-scoped; never a public link).
+export async function lossPhotoHandler(req: Request, res: Response) {
+  try {
+    const fileId = await drugSupplyService.lossPhotoFileId(String(req.params.id), await accessibleFacilityIds(callerId(req)));
+    const { file } = await fileSvc.findById(fileId);
+    res.set("Cache-Control", "no-store");
+    res.redirect(await fileSvc.getSignedUrl(file));
   } catch (err) { fail(res, err); }
 }
 

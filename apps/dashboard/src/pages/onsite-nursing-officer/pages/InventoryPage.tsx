@@ -13,7 +13,7 @@ import { CountForm } from "./inventory/CountForm";
 
 type Panel = "request" | "usage" | "loss" | "count";
 const PANELS: { id: Panel; label: string }[] = [
-  { id: "request", label: "Request" }, { id: "usage", label: "Usage" }, { id: "loss", label: "Loss" }, { id: "count", label: "Count" },
+  { id: "request", label: "Request" }, { id: "usage", label: "Usage" }, { id: "loss", label: "Incident" }, { id: "count", label: "Count" },
 ];
 
 // A delivery Regional Admin has dispatched, which credits the officer's stock only once they confirm physical receipt.

@@ -3,7 +3,7 @@ import { z } from "zod";
 import {
   createRequestHandler, listMyRequestsHandler, listRequestsHandler, cancelRequestHandler, dispatchHandler,
   acknowledgeHandler, myStockHandler, regionalStockHandler, officersStockHandler, recordUsageHandler,
-  listUsageHandler, reportLossHandler, listLossesHandler, createReconciliationHandler,
+  listUsageHandler, reportLossHandler, listLossesHandler, lossPhotoHandler, createReconciliationHandler,
   listReconciliationsHandler, resolveReconciliationHandler, alertsHandler,
 } from "./controller.js";
 import { requireAuthenticated, requirePermission } from "../../lib/rbac.js";
@@ -20,9 +20,13 @@ const listRequestsQuery = z.object({ status: z.enum(drugRequestStatusEnum.enumVa
 const officersStockQuery = z.object({ asOf: dateString.optional() });
 const usageBody = z.object({ nursingCaseId: z.string().uuid(), drugId: z.string().uuid(), quantity });
 const usageQuery = z.object({ nursingCaseId: z.string().uuid() });
+// New reports take one of the four incident types; the legacy SPILLAGE/OTHER values only exist on old rows.
+const INCIDENT_TYPES = ["BREAKAGE", "SPOILAGE", "EXPIRY", "WASTAGE"] as const satisfies readonly (typeof drugLossReasonEnum.enumValues)[number][];
 const lossBody = z.object({
   drugId: z.string().uuid(), quantity,
-  reason: z.enum(drugLossReasonEnum.enumValues), notes: z.string().trim().max(1000).optional(),
+  incidentType: z.enum(INCIDENT_TYPES),
+  reason: z.string().trim().min(3, "Please say what happened").max(1000),
+  photoFileId: z.string().uuid(),
 });
 const reconciliationBody = z.object({
   scope: z.enum(drugReconciliationScopeEnum.enumValues),
@@ -67,6 +71,9 @@ router.get("/drug-usage", requireAuthenticated(), validateQuery(usageQuery), lis
 router.post("/drug-loss-reports", requirePermission("drugLoss", "create"), validateBody(lossBody), reportLossHandler);
 // Loss reports from the admin's region.
 router.get("/drug-loss-reports", requirePermission("drugLoss", "read"), listLossesHandler);
+// The evidence photo for one report — behind drugLoss:read and the caller's region, since the admins who read
+// reports don't hold the general file:read grant.
+router.get("/drug-loss-reports/:id/photo", requirePermission("drugLoss", "read"), validateParams(idParam), lossPhotoHandler);
 
 // Records a physical count against the ledger.
 router.post("/drug-reconciliations", requirePermission("drugReconciliation", "create"), validateBody(reconciliationBody), createReconciliationHandler);

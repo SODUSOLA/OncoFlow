@@ -6,6 +6,7 @@ import { userHasPermission } from "../../lib/rbac.js";
 import { isCaseEditable, CASE_LOCKED_MESSAGE } from "../nursing/editability.js";
 import { reviewerMayAccess, OUT_OF_SCOPE_MESSAGE } from "../nursing/reviewerScope.js";
 import { DrugSupplyRepository } from "./repository.js";
+import { FileRepository } from "../documents/index.js";
 import { endOfLagosDay, lagosToday } from "./dates.js";
 import {
   drugRequest, drugRequestLine, drugDispatch, drugDispatchLine, drugStockLedgerEntry,
@@ -13,6 +14,7 @@ import {
 } from "./schema.js";
 
 const repo = new DrugSupplyRepository();
+const fileRepo = new FileRepository();
 
 // Days of loss reports that still count as a live alert for Regional Admin.
 const LOSS_ALERT_DAYS = 7;
@@ -211,16 +213,26 @@ export class DrugSupplyService {
     return repo.findUsageByCase(nursingCaseId);
   }
 
-  // Records spillage or breakage outside any case, debiting the officer's ledger atomically.
-  async reportLoss(officerId: string, drugId: string, quantity: number, reason: "SPILLAGE" | "BREAKAGE" | "OTHER", notes?: string) {
+  // Drugs a patient has received across cases; access is decided by the caller (the VMO folder gate).
+  async listUsageForPatient(patientId: string, limit = 50) {
+    return repo.findUsageByPatient(patientId, limit);
+  }
+
+  // Records an incident (breakage, spoilage, expiry or wastage) outside any case, debiting the officer's ledger
+  // atomically. The written reason and a photo are both required: they're the evidence Regional Admin and SDNS see.
+  async reportLoss(officerId: string, drugId: string, quantity: number, incidentType: "BREAKAGE" | "SPOILAGE" | "EXPIRY" | "WASTAGE", reason: string, photoFileId: string) {
     if (!(await repo.findDrug(drugId))) throw new NotFoundError("Drug not found");
-    if (reason === "OTHER" && !notes?.trim()) throw badRequest("Please describe what happened");
+    const photo = await fileRepo.findById(photoFileId);
+    if (!photo) throw new NotFoundError("Photo not found");
+    if (photo.uploadedBy !== officerId) throw new ForbiddenError("The photo was not uploaded by you");
+    if (!photo.mimeType.startsWith("image/")) throw badRequest("The evidence must be a photo");
+    if (photo.virusScanStatus !== "CLEAN") throw new ConflictError(`The photo has not cleared the safety scan (status: ${photo.virusScanStatus})`);
     return db.transaction(async (tx) => {
       await lockOfficerDrug(tx, officerId, drugId);
       await assertInStock(tx, officerId, drugId, quantity, "report as lost");
       const reportId = crypto.randomUUID();
       await tx.insert(drugLossReport).values({
-        id: reportId, nursingOfficerId: officerId, drugId, quantityLost: quantity, reason, notes: notes?.trim() || null,
+        id: reportId, nursingOfficerId: officerId, drugId, quantityLost: quantity, reason: incidentType, notes: reason.trim(), photoFileId,
       });
       await tx.insert(drugStockLedgerEntry).values({
         nursingOfficerId: officerId, drugId, quantityDelta: -quantity, reason: "LOSS", referenceId: reportId,
@@ -251,6 +263,15 @@ export class DrugSupplyService {
   // Loss reports from officers in scope.
   async listLosses(facilityIds: string[] | null) {
     return repo.findLossReports(facilityIds);
+  }
+
+  // The evidence photo's file id for a loss report the caller may see (their region), or throws.
+  async lossPhotoFileId(reportId: string, facilityIds: string[] | null): Promise<string> {
+    const report = await repo.findLossReportById(reportId);
+    if (!report) throw new NotFoundError("Loss report not found");
+    if (facilityIds && (!report.officerFacilityId || !facilityIds.includes(report.officerFacilityId))) throw new ForbiddenError("This report belongs to a different region");
+    if (!report.photoFileId) throw new NotFoundError("This report has no photo");
+    return report.photoFileId;
   }
 
   // Records a physical count against the ledger, snapshotting the expected quantity as of the period end.

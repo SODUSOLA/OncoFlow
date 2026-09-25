@@ -107,7 +107,7 @@ const PERMISSIONS: { resource: string; action: string; description: string }[] =
   { resource: "drugStock", action: "read", description: "Read one's own drug stock (Nursing Officer)" },
   { resource: "drugUsage", action: "create", description: "Log a drug administered against one's own nursing case" },
   { resource: "drugLoss", action: "create", description: "Report spillage or breakage of drugs in one's own stock" },
-  { resource: "drugLoss", action: "read", description: "Read drug loss reports for one's region (Regional Admin)" },
+  { resource: "drugLoss", action: "read", description: "Read drug loss/incident reports for one's region (Regional Admin, SDNS)" },
   { resource: "drugReconciliation", action: "create", description: "Record a physical stock count (officers: own stock only)" },
   { resource: "drugReconciliation", action: "read", description: "Read stock reconciliations and their variances" },
   { resource: "drugReconciliation", action: "update", description: "Resolve a reconciliation variance and count any officer's or regional stock (Regional Admin)" },
@@ -253,6 +253,9 @@ export async function seedIdentity() {
     "vital:read", "clinicalMetrics:read", "caseLock:read",
     "file:read",
   ]);
+
+  // SDNS sees the region's stock incidents (breakage, spoilage, expiry, wastage) alongside Regional Admin.
+  await grantPermissionsToRole("STATE_DIRECTOR_OF_NURSING_SERVICES", ["drugLoss:read"]);
 
   // Every other role still has zero grants — that real RBAC pass is still pending.
 
