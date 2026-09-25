@@ -96,6 +96,7 @@ const PERMISSIONS: { resource: string; action: string; description: string }[] =
   { resource: "activityLog", action: "read", description: "Read a patient's clinical activity log (union of clinical notes and lab documents)" },
   { resource: "availability", action: "read", description: "Read another consultant's availability blocks (Regional Admin scheduling a New Consultation)" },
   { resource: "nursingCase", action: "create", description: "Start a nursing case for a patient's regimen cycle visitation" },
+  { resource: "nursingCase", action: "read", description: "Watch nursing cases and their live progress across the caller's region" },
   { resource: "nursingCase", action: "update", description: "Review a nursing case's documentation and record a QA decision (QA Officer only)" },
   { resource: "securityIncident", action: "read", description: "Read upload-security-incident reports (rejected/infected file uploads)" },
   // Drug supply chain (ONCOFLOW_DRUG_RECONCILIATION_WORKFLOW.md): ownership is enforced in the controllers on top of these grants.
@@ -198,6 +199,7 @@ export async function seedIdentity() {
     "staffing:read", "staffing:update",
     "inventory:read", "inventory:update",
     "transferRequest:create", "transferRequest:read",
+    "nursingCase:read",
     "audit:read",
     // Lets Regional Admin see rejected-upload incidents in its alert aggregator.
     "securityIncident:read",

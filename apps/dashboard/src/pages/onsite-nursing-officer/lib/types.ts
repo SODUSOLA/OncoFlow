@@ -30,6 +30,9 @@ export interface NursingCase {
   closedAt: string | null;
   // Set once the nurse confirms the patient matches their profile photo — resuming skips verification when present.
   identityVerifiedAt?: string | null;
+  // Stamped live by the Start / End Infusion buttons.
+  infusionStartedAt?: string | null;
+  infusionEndedAt?: string | null;
 }
 
 // GET /nursing-cases/mine's actual shape: the case joined to its patient's name and MRN, so a case card can

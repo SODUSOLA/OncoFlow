@@ -1,6 +1,8 @@
 import { db } from "../../db/index.js";
-import { eq, and, desc, isNull, ne, gte } from "drizzle-orm";
-import { nursingCase, nursingCaseReview, nursingDocumentationSheet, uploadSecurityIncident, identityMismatchReport } from "./schema.js";
+import { eq, and, desc, isNull, ne, gte, or, inArray, sql, asc } from "drizzle-orm";
+import { nursingCase, nursingCaseReview, nursingDocumentationSheet, uploadSecurityIncident, identityMismatchReport, nursingCaseEvent } from "./schema.js";
+import { nursingCaseEventTypeEnum } from "../../db/enums.js";
+import { facility } from "../facility/schema.js";
 import { patient } from "../patient/schema.js";
 import { regimenCycle, clinicalMetricsSnapshot } from "../clinical-metrics/schema.js";
 import { user } from "../auth/schema.js";
@@ -22,6 +24,7 @@ export class NursingCaseRepository {
         id: nursingCase.id, patientId: nursingCase.patientId, regimenCycleId: nursingCase.regimenCycleId,
         startedBy: nursingCase.startedBy, startedAt: nursingCase.startedAt, status: nursingCase.status,
         closedBy: nursingCase.closedBy, closedAt: nursingCase.closedAt, identityVerifiedAt: nursingCase.identityVerifiedAt,
+        infusionStartedAt: nursingCase.infusionStartedAt, infusionEndedAt: nursingCase.infusionEndedAt,
         patientFirstName: patient.firstName, patientLastName: patient.lastName, patientUniqueId: patient.uniquePatientId,
         patientFacilityId: patient.facilityId,
         patientDob: patient.dob, patientGender: patient.gender, patientProfilePictureFileId: patient.profilePictureFileId,
@@ -98,6 +101,11 @@ export class NursingCaseRepository {
         facilityId ? eq(patient.facilityId, facilityId) : undefined,
       ))
       .orderBy(nursingCase.startedAt);
+  }
+
+  // The live board's rows, delegated to the event repository's join over cases.
+  async listLive(facilityIds: string[] | null) {
+    return new NursingCaseEventRepository().findLiveBoard(facilityIds);
   }
 
   // Inserts a case.
@@ -190,5 +198,54 @@ export class CaseMetricsRepository {
         gte(clinicalMetricsSnapshot.recordedAt, since),
       )).limit(1);
     return rows[0] ?? null;
+  }
+}
+
+export type CaseEventType = (typeof nursingCaseEventTypeEnum.enumValues)[number];
+
+// Data access for the append-only case event log and the admin's live board over it.
+export class NursingCaseEventRepository {
+  // Appends one milestone to a case's log.
+  async record(nursingCaseId: string, eventType: CaseEventType, actorId: string) {
+    await db.insert(nursingCaseEvent).values({ id: crypto.randomUUID(), nursingCaseId, eventType, actorId });
+  }
+
+  // A case's milestones, oldest first.
+  async findByCase(nursingCaseId: string) {
+    return db.select().from(nursingCaseEvent).where(eq(nursingCaseEvent.nursingCaseId, nursingCaseId)).orderBy(asc(nursingCaseEvent.occurredAt));
+  }
+
+  // Milestones for many cases at once (the live board), oldest first.
+  async findByCases(caseIds: string[]) {
+    if (caseIds.length === 0) return [];
+    return db.select().from(nursingCaseEvent).where(inArray(nursingCaseEvent.nursingCaseId, caseIds)).orderBy(asc(nursingCaseEvent.occurredAt));
+  }
+
+  // Cases live now (not closed) plus those closed today (Lagos), across the given facilities (null = all).
+  async findLiveBoard(facilityIds: string[] | null) {
+    return db
+      .select({
+        id: nursingCase.id, status: nursingCase.status, startedAt: nursingCase.startedAt, closedAt: nursingCase.closedAt,
+        identityVerifiedAt: nursingCase.identityVerifiedAt,
+        infusionStartedAt: nursingCase.infusionStartedAt, infusionEndedAt: nursingCase.infusionEndedAt,
+        patientId: patient.id, patientFirstName: patient.firstName, patientLastName: patient.lastName,
+        patientUniqueId: patient.uniquePatientId, facilityId: patient.facilityId, facilityName: facility.name,
+        cycleNumber: regimenCycle.cycleNumber,
+        nurseEmail: user.email, nurseFirstName: user.firstName, nurseLastName: user.lastName,
+      })
+      .from(nursingCase)
+      .innerJoin(patient, eq(patient.id, nursingCase.patientId))
+      .innerJoin(facility, eq(facility.id, patient.facilityId))
+      .innerJoin(regimenCycle, eq(regimenCycle.id, nursingCase.regimenCycleId))
+      .innerJoin(user, eq(user.id, nursingCase.startedBy))
+      .where(and(
+        isNull(nursingCase.deletedAt),
+        or(
+          ne(nursingCase.status, "CLOSED"),
+          sql`(${nursingCase.closedAt} at time zone 'Africa/Lagos')::date = (now() at time zone 'Africa/Lagos')::date`,
+        ),
+        facilityIds ? inArray(patient.facilityId, facilityIds) : undefined,
+      ))
+      .orderBy(desc(nursingCase.startedAt));
   }
 }

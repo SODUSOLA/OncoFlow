@@ -31,8 +31,6 @@ export interface DocumentationFormValues {
   // (stated by the prescribing consultant) and Managing Consultant from the patient's facility's QA
   // officer (see DocumentationForm's own fetches), so neither is part of this editable-values shape.
   treatmentDate: string;
-  infusionStart: string;
-  infusionEnd: string;
   note: string;
   nextAppointmentDate: string;
   sex: "MALE" | "FEMALE";
@@ -53,12 +51,11 @@ function todayDateString(): string {
 // labs still start blank, since a stale earlier reading shouldn't be resubmitted as if just taken.
 export function emptyDocumentationForm(
   patientGender: string,
-  previousSheet?: { treatmentDate: string | null; infusionStartTime: string | null; infusionEndTime: string | null; note: string | null; nextAppointmentDate: string | null } | null,
+  previousSheet?: { treatmentDate: string | null; note: string | null; nextAppointmentDate: string | null } | null,
 ): DocumentationFormValues {
   return {
     treatmentDate: previousSheet?.treatmentDate ?? todayDateString(),
-    // time inputs want HH:MM; the API stores HH:MM:SS.
-    infusionStart: previousSheet?.infusionStartTime?.slice(0, 5) ?? "", infusionEnd: previousSheet?.infusionEndTime?.slice(0, 5) ?? "", note: previousSheet?.note ?? "",
+    note: previousSheet?.note ?? "",
     nextAppointmentDate: previousSheet?.nextAppointmentDate ?? "",
     sex: patientGender.trim().toLowerCase().startsWith("f") ? "FEMALE" : "MALE",
     weightKg: "", heightM: "", vitals: {}, labs: {},

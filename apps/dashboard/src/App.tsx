@@ -31,6 +31,7 @@ const RaBilling = lazy(() => import("./pages/regional-admin/pages/BillingPage"))
 const RaInventory = lazy(() => import("./pages/regional-admin/pages/InventoryPage"));
 const RaGeneralInquiry = lazy(() => import("./pages/regional-admin/pages/GeneralInquiryPage"));
 const RaNotifications = lazy(() => import("./pages/regional-admin/pages/NotificationCenterPage"));
+const RaCaseBoard = lazy(() => import("./pages/regional-admin/pages/CaseBoardPage"));
 const RaSettings = lazy(() => import("./pages/regional-admin/pages/SettingsPage"));
 const RaSecurityIncidents = lazy(() => import("./pages/regional-admin/pages/SecurityIncidentsPage"));
 const RaComingSoon = lazy(() =>
@@ -156,6 +157,7 @@ function AppRoutes() {
         <Route path="billing" element={<Suspense fallback={<FullScreenLoading />}><RaBilling /></Suspense>} />
         <Route path="inventory" element={<Suspense fallback={<FullScreenLoading />}><RaInventory /></Suspense>} />
         <Route path="inquiry" element={<Suspense fallback={<FullScreenLoading />}><RaGeneralInquiry /></Suspense>} />
+        <Route path="case-board" element={<Suspense fallback={<FullScreenLoading />}><RaCaseBoard /></Suspense>} />
         <Route path="notifications" element={<Suspense fallback={<FullScreenLoading />}><RaNotifications /></Suspense>} />
         <Route path="settings" element={<Suspense fallback={<FullScreenLoading />}><RaSettings /></Suspense>} />
         <Route path="security-incidents" element={<Suspense fallback={<FullScreenLoading />}><RaSecurityIncidents /></Suspense>} />

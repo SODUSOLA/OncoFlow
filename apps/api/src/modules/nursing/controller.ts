@@ -173,3 +173,32 @@ export async function reviewCaseHandler(req: Request, res: Response) {
     res.status(errorStatus(err)).json({ error: errorMessage(err) });
   }
 }
+
+// The nurse's live Start Infusion button.
+export async function startInfusionHandler(req: Request, res: Response) {
+  try {
+    const result = await nursingCaseService.startInfusion(String(req.params.id), (req as AuthenticatedRequest).userId);
+    res.json({ case: result });
+  } catch (err) {
+    res.status(errorStatus(err)).json({ error: errorMessage(err) });
+  }
+}
+
+// The nurse's live End Infusion button.
+export async function endInfusionHandler(req: Request, res: Response) {
+  try {
+    const result = await nursingCaseService.endInfusion(String(req.params.id), (req as AuthenticatedRequest).userId);
+    res.json({ case: result });
+  } catch (err) {
+    res.status(errorStatus(err)).json({ error: errorMessage(err) });
+  }
+}
+
+// Regional Admin's live board (route-gated on nursingCase:monitor; scoped to the caller's region in the service).
+export async function listLiveBoardHandler(req: Request, res: Response) {
+  try {
+    res.json({ cases: await nursingCaseService.listLiveBoard((req as AuthenticatedRequest).userId) });
+  } catch (err) {
+    res.status(errorStatus(err)).json({ error: errorMessage(err) });
+  }
+}

@@ -3,6 +3,7 @@ import { z } from "zod";
 import {
   startCaseHandler, getCaseHandler, listMyCasesHandler, listCasesByPatientHandler, listPendingReviewHandler,
   submitDocumentationSheetHandler, reportSecurityIncidentHandler, listSecurityIncidentsHandler, reviewCaseHandler, verifyIdentityHandler, reportMismatchHandler,
+  startInfusionHandler, endInfusionHandler, listLiveBoardHandler,
 } from "./controller.js";
 import { requireAuthenticated, requirePermission, requireRole } from "../../lib/rbac.js";
 import { validateBody, validateParams, validateQuery } from "../../lib/validation.js";
@@ -14,7 +15,6 @@ const startCaseSchema = z.object({
 });
 const caseIdParamSchema = z.object({ id: z.string().uuid() });
 const dateString = z.string().regex(/^\d{4}-\d{2}-\d{2}$/);
-const timeString = z.string().regex(/^\d{2}:\d{2}(:\d{2})?$/);
 const submitSheetSchema = z.object({
   // Legacy free-form upload from before the structured form; no current caller sends this.
   fileReference: z.string().uuid().optional(),
@@ -23,8 +23,6 @@ const submitSheetSchema = z.object({
   // by the nurse.
   // Required: the sheet is the record of the treatment and the date anchors it.
   treatmentDate: dateString,
-  infusionStartTime: timeString.optional(),
-  infusionEndTime: timeString.optional(),
   note: z.string().trim().max(4000).optional(),
   nextAppointmentDate: dateString.optional(),
 });
@@ -51,10 +49,15 @@ router.get("/nursing-cases/mine", requireAuthenticated(), listMyCasesHandler);
 router.get("/nursing-cases", requirePermission("patient", "read"), validateQuery(listByPatientQuerySchema), listCasesByPatientHandler);
 // Must precede /nursing-cases/:id so the static path isn't swallowed by the param route.
 router.get("/nursing-cases/pending-review", requirePermission("nursingCase", "update"), requireRole("QUALITY_ASSURANCE_OFFICER"), listPendingReviewHandler);
+// Regional Admin's live board of running cases. Static path, so it precedes /nursing-cases/:id.
+router.get("/nursing-cases/live", requirePermission("nursingCase", "read"), listLiveBoardHandler);
 // Reads one case (own for the nurse, permission for QA).
 router.get("/nursing-cases/:id", requireAuthenticated(), validateParams(caseIdParamSchema), getCaseHandler);
 // Confirms the patient's identity on a case (owner only).
 router.post("/nursing-cases/:id/verify-identity", requireAuthenticated(), validateParams(caseIdParamSchema), verifyIdentityHandler);
+// The nurse's live Start / End Infusion buttons (owner only; times are stamped server-side).
+router.post("/nursing-cases/:id/infusion/start", requireAuthenticated(), validateParams(caseIdParamSchema), startInfusionHandler);
+router.post("/nursing-cases/:id/infusion/end", requireAuthenticated(), validateParams(caseIdParamSchema), endInfusionHandler);
 // Reports that the patient doesn't match their profile (owner only); recorded and sent to Regional Admin.
 router.post(
   "/nursing-cases/:id/report-mismatch", requireAuthenticated(), validateParams(caseIdParamSchema),

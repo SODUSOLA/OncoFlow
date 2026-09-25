@@ -1,5 +1,5 @@
-import { pgTable, uuid, text, varchar, timestamp, date, time } from "drizzle-orm/pg-core";
-import { nursingCaseStatusEnum, nursingCaseReviewDecisionEnum } from "../../db/enums.js";
+import { pgTable, uuid, text, varchar, timestamp, date, time, index } from "drizzle-orm/pg-core";
+import { nursingCaseStatusEnum, nursingCaseReviewDecisionEnum, nursingCaseEventTypeEnum } from "../../db/enums.js";
 import { patient } from "../patient/schema.js";
 import { user } from "../auth/schema.js";
 import { regimenCycle } from "../clinical-metrics/schema.js";
@@ -18,10 +18,26 @@ export const nursingCase = pgTable("nursing_case", {
   // Set once the nurse confirms the patient in front of them matches the profile photo on file. Lives on
   // the case (not the sheet) so it survives leaving mid-documentation: resuming never repeats verification.
   identityVerifiedAt: timestamp("identity_verified_at"),
+  // Stamped live by the nurse's Start/End Infusion buttons (not typed afterwards); the documentation sheet's
+  // infusion times are derived from these at submission.
+  infusionStartedAt: timestamp("infusion_started_at"),
+  infusionEndedAt: timestamp("infusion_ended_at"),
   createdAt: timestamp("created_at").notNull().defaultNow(),
   updatedAt: timestamp("updated_at").notNull().defaultNow(),
   deletedAt: timestamp("deleted_at"),
 });
+
+// [append-only] What happened during a case and when, so Regional Admin can watch a visitation as it unfolds.
+export const nursingCaseEvent = pgTable("nursing_case_event", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  nursingCaseId: uuid("nursing_case_id").notNull().references(() => nursingCase.id),
+  eventType: nursingCaseEventTypeEnum("event_type").notNull(),
+  actorId: uuid("actor_id").notNull().references(() => user.id),
+  occurredAt: timestamp("occurred_at").notNull().defaultNow(),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+}, (t) => ({
+  caseIdx: index("nursing_case_event_case_idx").on(t.nursingCaseId, t.occurredAt),
+}));
 
 export const nursingCaseReview = pgTable("nursing_case_review", {
   id: uuid("id").primaryKey().defaultRandom(),

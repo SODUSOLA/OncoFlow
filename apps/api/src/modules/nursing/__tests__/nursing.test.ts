@@ -108,10 +108,12 @@ beforeAll(async () => {
 describe("documentation sheet submission", () => {
   it("accepts the structured form fields and moves the case to PENDING_QA_REVIEW", async () => {
     const { caseId, patientId } = await startCase();
-    
+    // Infusion times come from the live buttons, not the form.
+    expect((await request(app).post(`/nursing-cases/${caseId}/infusion/start`).set("Cookie", nurse.cookie)).status).toBe(200);
+    expect((await request(app).post(`/nursing-cases/${caseId}/infusion/end`).set("Cookie", nurse.cookie)).status).toBe(200);
+
     const res = await postSheet(nurse.cookie, caseId, {
       treatmentDate: new Date().toISOString().slice(0, 10),
-      infusionStartTime: "09:00", infusionEndTime: "11:30",
       note: "Tolerated well, no adverse reaction.",
       nextAppointmentDate: new Date(Date.now() + 21 * 86_400_000).toISOString().slice(0, 10),
     });
@@ -120,8 +122,10 @@ describe("documentation sheet submission", () => {
     // diagnosis comes from the cycle's regimen and managingConsultant from the facility's QA officer —
     // qa has no firstName/lastName in this fixture, so it falls back to the email's local part.
     expect(res.body.documentationSheet).toMatchObject({
-      diagnosis: "Breast cancer, stage II", managingConsultant: qa.email.split("@")[0], infusionStartTime: "09:00:00",
+      diagnosis: "Breast cancer, stage II", managingConsultant: qa.email.split("@")[0],
     });
+    expect(res.body.documentationSheet.infusionStartTime).toMatch(/^\d{2}:\d{2}/);
+    expect(res.body.documentationSheet.infusionEndTime).toMatch(/^\d{2}:\d{2}/);
     expect(res.body.documentationSheet.fileReference).toBeNull();
 
     const fetched = await request(app).get(`/nursing-cases/${caseId}`).set("Cookie", nurse.cookie);
@@ -221,7 +225,7 @@ describe("documentation sheet submission", () => {
 });
 
 describe("server-side completeness and write guards", () => {
-  it("refuses a sheet without biometrics/labs, a treatment date, or with bad infusion times", async () => {
+  it("refuses a sheet without biometrics/labs, a treatment date, or with an infusion still running", async () => {
     const { caseId, patientId, cycleId } = await startCase(false);
     await request(app).post(`/nursing-cases/${caseId}/verify-identity`).set("Cookie", nurse.cookie);
 
@@ -232,9 +236,13 @@ describe("server-side completeness and write guards", () => {
     await recordMetrics(nurse.cookie, patientId, cycleId);
     const noDate = await request(app).post(`/nursing-cases/${caseId}/documentation-sheet`).set("Cookie", nurse.cookie).send({});
     expect(noDate.status).toBe(400);
-    expect((await postSheet(nurse.cookie, caseId, { infusionStartTime: "10:00" })).status).toBe(409);
-    expect((await postSheet(nurse.cookie, caseId, { infusionStartTime: "11:00", infusionEndTime: "10:00" })).status).toBe(409);
-    expect((await postSheet(nurse.cookie, caseId, { infusionStartTime: "10:00", infusionEndTime: "11:00" })).status).toBe(201);
+    // A started-but-unfinished infusion blocks submission; ending it unblocks.
+    await request(app).post(`/nursing-cases/${caseId}/infusion/start`).set("Cookie", nurse.cookie);
+    const running = await postSheet(nurse.cookie, caseId);
+    expect(running.status).toBe(409);
+    expect(running.body.error).toContain("End the infusion");
+    await request(app).post(`/nursing-cases/${caseId}/infusion/end`).set("Cookie", nurse.cookie);
+    expect((await postSheet(nurse.cookie, caseId)).status).toBe(201);
   });
 
   it("rejects implausible or incomplete biometrics/labs", async () => {
@@ -320,7 +328,7 @@ describe("QA review and resubmission", () => {
     expect(stale.status).toBe(409);
     await recordMetrics(nurse.cookie, patientId, cycleId);
     const resubmit = await postSheet(nurse.cookie, caseId, {
-      note: "Second pass", infusionStartTime: "10:00", infusionEndTime: "12:00",
+      note: "Second pass",
     });
     expect(resubmit.status).toBe(201);
     expect(resubmit.body.documentationSheet.id).toBe(sheetId);
@@ -404,5 +412,63 @@ describe("drug usage visibility for review", () => {
 
     const strangerRead = await request(app).get(`/drug-usage?nursingCaseId=${caseId}`).set("Cookie", otherNurse.cookie);
     expect(strangerRead.status).toBe(403);
+  });
+});
+
+describe("live infusion buttons and the admin live board", () => {
+  it("stamps infusion start then end once each, in order, owner only, and only while editable", async () => {
+    const { caseId } = await startCase();
+    const start = (cookie: string) => request(app).post(`/nursing-cases/${caseId}/infusion/start`).set("Cookie", cookie);
+    const end = (cookie: string) => request(app).post(`/nursing-cases/${caseId}/infusion/end`).set("Cookie", cookie);
+
+    expect((await end(nurse.cookie)).status).toBe(409); // can't end before starting
+    expect((await start(otherNurse.cookie)).status).toBe(403);
+    const started = await start(nurse.cookie);
+    expect(started.status).toBe(200);
+    expect(started.body.case.infusionStartedAt).toBeTruthy();
+    expect((await start(nurse.cookie)).status).toBe(409); // no restart / back-dating
+    // A resumed case reads the stamp back, so the form shows the infusion as already running.
+    const reread = await request(app).get(`/nursing-cases/${caseId}`).set("Cookie", nurse.cookie);
+    expect(reread.body.case.infusionStartedAt).toBeTruthy();
+    expect((await end(nurse.cookie)).status).toBe(200);
+    expect((await end(nurse.cookie)).status).toBe(409);
+
+    await postSheet(nurse.cookie, caseId);
+    expect((await start(nurse.cookie)).status).toBe(409); // frozen once submitted
+  });
+
+  it("refuses to start the infusion before identity is verified", async () => {
+    const { caseId } = await startCase(false);
+    const res = await request(app).post(`/nursing-cases/${caseId}/infusion/start`).set("Cookie", nurse.cookie);
+    expect(res.status).toBe(409);
+  });
+
+  it("shows Regional Admin the live stage and milestone timeline of cases in their region only", async () => {
+    const admin = await createUser("REGIONAL_ADMIN", facilityId);
+    const { caseId } = await startCase();
+    const board = async () => (await request(app).get("/nursing-cases/live").set("Cookie", admin.cookie)).body.cases as Array<{ id: string; stage: string; timeline: Array<{ eventType: string }> }>;
+    const find = async () => (await board()).find((c) => c.id === caseId);
+
+    expect((await find())?.stage).toBe("IDENTITY_VERIFIED");
+    await request(app).post(`/nursing-cases/${caseId}/infusion/start`).set("Cookie", nurse.cookie);
+    expect((await find())?.stage).toBe("INFUSION_IN_PROGRESS");
+    await request(app).post(`/nursing-cases/${caseId}/infusion/end`).set("Cookie", nurse.cookie);
+    expect((await find())?.stage).toBe("INFUSION_COMPLETED");
+    await postSheet(nurse.cookie, caseId);
+    expect((await find())?.stage).toBe("AWAITING_QA_REVIEW");
+    await request(app).post(`/nursing-cases/${caseId}/review`).set("Cookie", qa.cookie).send({ decision: "REQUIREMENTS_INCOMPLETE", reason: "Fix it" });
+    expect((await find())?.stage).toBe("SENT_BACK_BY_QA");
+    expect((await find())?.timeline.map((e) => e.eventType)).toEqual([
+      "CASE_STARTED", "IDENTITY_VERIFIED", "INFUSION_STARTED", "INFUSION_ENDED", "SUBMITTED_FOR_QA", "SENT_BACK_BY_QA",
+    ]);
+
+    // A Regional Admin in another region sees none of it, and a nurse can't read the board at all.
+    const otherRegionFacility = (await db.insert(facility).values({
+      id: crypto.randomUUID(), name: `Other Region ${crypto.randomUUID().slice(0, 6)}`, region: "Elsewhere Region", address: "X St", status: "ACTIVE",
+    }).returning())[0]!;
+    const outsider = await createUser("REGIONAL_ADMIN", otherRegionFacility.id);
+    const outsiderBoard = await request(app).get("/nursing-cases/live").set("Cookie", outsider.cookie);
+    expect(outsiderBoard.body.cases.find((c: { id: string }) => c.id === caseId)).toBeUndefined();
+    expect((await request(app).get("/nursing-cases/live").set("Cookie", nurse.cookie)).status).toBe(403);
   });
 });

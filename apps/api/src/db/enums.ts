@@ -136,6 +136,11 @@ export const caseLockResolutionEnum = pgEnum("case_lock_resolution", ["APPROVED_
 
 // Nursing case lifecycle: STARTED by the nurse, PENDING_QA_REVIEW once the sheet is submitted, CLOSED when QA records REQUIREMENTS_MET.
 export const nursingCaseStatusEnum = pgEnum("nursing_case_status", ["STARTED", "PENDING_QA_REVIEW", "CLOSED"]);
+// The milestones of one physical visitation, in the order the admin's live board reads them.
+export const nursingCaseEventTypeEnum = pgEnum("nursing_case_event_type", [
+  "CASE_STARTED", "IDENTITY_VERIFIED", "IDENTITY_MISMATCH_REPORTED", "INFUSION_STARTED", "INFUSION_ENDED",
+  "SUBMITTED_FOR_QA", "SENT_BACK_BY_QA", "CLOSED_BY_QA",
+]);
 export const nursingCaseReviewDecisionEnum = pgEnum("nursing_case_review_decision", ["REQUIREMENTS_INCOMPLETE", "REQUIREMENTS_MET"]);
 // Drug supply chain: request → dispatch → acknowledge, with stock held as two append-only ledgers.
 export const drugRequestStatusEnum = pgEnum("drug_request_status", ["REQUESTED", "DISPATCHED", "DELIVERED", "CANCELLED"]);

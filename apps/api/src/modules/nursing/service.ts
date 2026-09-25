@@ -3,7 +3,7 @@ import { sql } from "drizzle-orm";
 import { db } from "../../db/index.js";
 import {
   NursingCaseRepository, NursingCaseReviewRepository, NursingDocumentationSheetRepository, UploadSecurityIncidentRepository,
-  IdentityMismatchReportRepository, CaseMetricsRepository,
+  IdentityMismatchReportRepository, CaseMetricsRepository, NursingCaseEventRepository, type CaseEventType,
 } from "./repository.js";
 import { FileRepository } from "../documents/index.js";
 import { PatientRepository } from "../patient/index.js";
@@ -12,6 +12,7 @@ import { RegimenService } from "../clinical-metrics/index.js";
 import { notificationService } from "../notification/index.js";
 import { ConflictError, ForbiddenError, NotFoundError } from "../../lib/errors.js";
 import { isCaseEditable, CASE_LOCKED_MESSAGE } from "./editability.js";
+import { accessibleFacilityIds } from "../../lib/facility-scope.js";
 import { reviewerFacilityId, reviewerMayAccess, OUT_OF_SCOPE_MESSAGE } from "./reviewerScope.js";
 
 const caseRepo = new NursingCaseRepository();
@@ -20,6 +21,7 @@ const sheetRepo = new NursingDocumentationSheetRepository();
 const incidentRepo = new UploadSecurityIncidentRepository();
 const mismatchRepo = new IdentityMismatchReportRepository();
 const caseMetricsRepo = new CaseMetricsRepository();
+const eventRepo = new NursingCaseEventRepository();
 const fileRepo = new FileRepository();
 const patientRepo = new PatientRepository();
 const facilityRepo = new FacilityRepository();
@@ -31,6 +33,25 @@ function staffFullName(row: { email: string; firstName: string | null; lastName:
   if (!row) return null;
   if (row.firstName || row.lastName) return [row.firstName, row.lastName].filter(Boolean).join(" ");
   return row.email.split("@")[0]!;
+}
+
+// "HH:MM" on the Lagos clock, the form the documentation sheet's time columns hold.
+function lagosTime(d: Date): string {
+  return new Intl.DateTimeFormat("en-GB", { timeZone: "Africa/Lagos", hour: "2-digit", minute: "2-digit", hour12: false }).format(d);
+}
+
+// Where a case stands right now, read off its latest milestone (falling back to the row for cases that predate the log).
+function deriveStage(
+  status: "STARTED" | "PENDING_QA_REVIEW" | "CLOSED", latest: string | null,
+  row: { identityVerifiedAt: Date | null; infusionStartedAt: Date | null; infusionEndedAt: Date | null },
+): string {
+  if (status === "CLOSED") return "CLOSED";
+  if (status === "PENDING_QA_REVIEW") return latest === "SENT_BACK_BY_QA" ? "SENT_BACK_BY_QA" : "AWAITING_QA_REVIEW";
+  if (row.infusionEndedAt) return "INFUSION_COMPLETED";
+  if (row.infusionStartedAt) return "INFUSION_IN_PROGRESS";
+  if (latest === "IDENTITY_MISMATCH_REPORTED") return "IDENTITY_MISMATCH_REPORTED";
+  if (row.identityVerifiedAt) return "IDENTITY_VERIFIED";
+  return "CASE_STARTED";
 }
 
 // Generates a display reference such as "#8842-X" for a security incident.
@@ -76,6 +97,7 @@ export class NursingCaseService {
     const row = await caseRepo.create({
       id: crypto.randomUUID(), patientId, regimenCycleId, startedBy, status: "STARTED",
     });
+    await eventRepo.record(row.id, "CASE_STARTED", startedBy);
     return row;
   }
 
@@ -111,6 +133,7 @@ export class NursingCaseService {
     if (caseRow.startedBy !== callerId) throw new ForbiddenError("You can only report on your own case");
     if (caseRow.status === "CLOSED") throw new ConflictError("This case is already closed");
     const report = await mismatchRepo.create({ id: crypto.randomUUID(), nursingCaseId: caseId, reportedBy: callerId, note: note?.trim() || null });
+    await eventRepo.record(caseId, "IDENTITY_MISMATCH_REPORTED", callerId);
     const patientRow = await patientRepo.findById(caseRow.patientId);
     if (patientRow) await notifyAdminsOfMismatch(patientRow.facilityId);
     return report;
@@ -130,7 +153,55 @@ export class NursingCaseService {
     if (caseRow.status === "CLOSED") throw new ConflictError("This case is already closed");
     if (!(await isCaseEditable(caseId))) throw new ConflictError(CASE_LOCKED_MESSAGE);
     if (caseRow.identityVerifiedAt) return caseRow;
-    return (await caseRepo.update(caseId, { identityVerifiedAt: new Date() }))!;
+    const verified = (await caseRepo.update(caseId, { identityVerifiedAt: new Date() }))!;
+    await eventRepo.record(caseId, "IDENTITY_VERIFIED", callerId);
+    return verified;
+  }
+
+  // The nurse pressing Start Infusion: stamps the live time once, so it can't be back-dated or restarted.
+  async startInfusion(caseId: string, callerId: string) {
+    const caseRow = await this.ownOpenCase(caseId, callerId);
+    if (!caseRow.identityVerifiedAt) throw new ConflictError("Verify the patient's identity before starting the infusion");
+    if (caseRow.infusionStartedAt) throw new ConflictError("The infusion has already been started");
+    const updated = (await caseRepo.update(caseId, { infusionStartedAt: new Date() }))!;
+    await eventRepo.record(caseId, "INFUSION_STARTED", callerId);
+    return updated;
+  }
+
+  // The nurse pressing End Infusion; only after a start, and only once.
+  async endInfusion(caseId: string, callerId: string) {
+    const caseRow = await this.ownOpenCase(caseId, callerId);
+    if (!caseRow.infusionStartedAt) throw new ConflictError("Start the infusion before ending it");
+    if (caseRow.infusionEndedAt) throw new ConflictError("The infusion has already been ended");
+    const updated = (await caseRepo.update(caseId, { infusionEndedAt: new Date() }))!;
+    await eventRepo.record(caseId, "INFUSION_ENDED", callerId);
+    return updated;
+  }
+
+  // The caller's own case, still editable — the precondition for every live action the nurse takes.
+  private async ownOpenCase(caseId: string, callerId: string) {
+    const caseRow = await caseRepo.findById(caseId);
+    if (!caseRow) throw new NotFoundError("Nursing case not found");
+    if (caseRow.startedBy !== callerId) throw new ForbiddenError("You can only act on your own case");
+    if (caseRow.status === "CLOSED") throw new ConflictError("This case is already closed");
+    if (!(await isCaseEditable(caseId))) throw new ConflictError(CASE_LOCKED_MESSAGE);
+    return caseRow;
+  }
+
+  // The admin's live board: every case in the caller's region that's still running or closed today, each with
+  // its current stage and milestone timeline. Regional scope only — a Regional Admin never sees another region.
+  async listLiveBoard(callerId: string) {
+    const rows = await caseRepo.listLive(await accessibleFacilityIds(callerId));
+    const events = await eventRepo.findByCases(rows.map((r) => r.id));
+    return rows.map((r) => {
+      const timeline = events.filter((e) => e.nursingCaseId === r.id).map((e) => ({ eventType: e.eventType, occurredAt: e.occurredAt }));
+      return {
+        ...r,
+        nurseName: staffFullName({ email: r.nurseEmail, firstName: r.nurseFirstName, lastName: r.nurseLastName }),
+        stage: deriveStage(r.status, timeline.at(-1)?.eventType ?? null, r),
+        timeline,
+      };
+    });
   }
 
   // Steps 3-5 collapse into one call once identity is verified and the documentation form is filled in,
@@ -142,7 +213,7 @@ export class NursingCaseService {
     data: {
       fileReference?: string;
       treatmentDate?: string;
-      infusionStartTime?: string; infusionEndTime?: string; note?: string; nextAppointmentDate?: string;
+      note?: string; nextAppointmentDate?: string;
     },
   ) {
     const caseRow = await caseRepo.findById(caseId);
@@ -176,11 +247,10 @@ export class NursingCaseService {
     // a treatment date, sane infusion times, and biometrics + labs (weight, height, creatinine — the snapshot
     // can't exist without them) recorded for this visitation since the case opened or QA last sent it back.
     if (!data.treatmentDate) throw new ConflictError("A treatment date is required");
-    if ((data.infusionStartTime && !data.infusionEndTime) || (!data.infusionStartTime && data.infusionEndTime)) {
-      throw new ConflictError("Enter both infusion start and end times, or neither");
-    }
-    if (data.infusionStartTime && data.infusionEndTime && data.infusionEndTime.slice(0, 5) <= data.infusionStartTime.slice(0, 5)) {
-      throw new ConflictError("Infusion end must be after infusion start");
+    // Infusion times come from the live Start/End buttons, not the form: a started infusion has to be ended
+    // before the sheet can go to QA, and the sheet records exactly what the buttons stamped.
+    if (caseRow.infusionStartedAt && !caseRow.infusionEndedAt) {
+      throw new ConflictError("End the infusion before submitting the documentation");
     }
     const [latestReview] = await reviewRepo.findByCase(caseId);
     const since = latestReview && latestReview.reviewedAt > caseRow.startedAt ? latestReview.reviewedAt : caseRow.startedAt;
@@ -192,8 +262,9 @@ export class NursingCaseService {
       upiCodeEntered: patientRow?.uniquePatientId ?? "", idPhotoFileId: null, identityVerifiedAt: caseRow.identityVerifiedAt,
       fileReference: data.fileReference ?? null,
       diagnosis, managingConsultant: staffFullName(qaOfficer),
-      treatmentDate: data.treatmentDate ?? null, infusionStartTime: data.infusionStartTime ?? null,
-      infusionEndTime: data.infusionEndTime ?? null, note: data.note?.trim() || null,
+      treatmentDate: data.treatmentDate ?? null,
+      infusionStartTime: caseRow.infusionStartedAt ? lagosTime(caseRow.infusionStartedAt) : null,
+      infusionEndTime: caseRow.infusionEndedAt ? lagosTime(caseRow.infusionEndedAt) : null, note: data.note?.trim() || null,
       nextAppointmentDate: data.nextAppointmentDate ?? null,
     };
     const existing = await sheetRepo.findByCase(caseId);
@@ -204,6 +275,7 @@ export class NursingCaseService {
     const updated = caseRow.status === "STARTED"
       ? (await caseRepo.update(caseId, { status: "PENDING_QA_REVIEW" }))!
       : caseRow;
+    await eventRepo.record(caseId, "SUBMITTED_FOR_QA", callerId);
     await notifyQaOfSubmission(patientRow?.facilityId ?? "");
     return { case: updated, documentationSheet: sheet };
   }
@@ -251,6 +323,7 @@ export class NursingCaseService {
       // The visitation is done, so its cycle leaves the nurse's Schedule (which lists only SCHEDULED cycles).
       await regimenSvc.completeCycle(caseRow.regimenCycleId, caseRow.startedBy);
     }
+    await eventRepo.record(caseId, decision === "REQUIREMENTS_MET" ? "CLOSED_BY_QA" : "SENT_BACK_BY_QA", reviewedBy);
     // Either decision is news the nurse needs: closed means done, incomplete means there's more to fix.
     await notificationService.create({ recipientId: caseRow.startedBy, type: "NURSING_CASE_REVIEWED" }).catch(() => {});
     return { case: updatedCase, review };

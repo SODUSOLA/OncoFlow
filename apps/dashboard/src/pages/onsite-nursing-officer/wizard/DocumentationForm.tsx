@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { ChevronLeft, ClipboardList, Eye, Lock, TriangleAlert, ShieldCheck } from "lucide-react";
+import { ChevronLeft, ClipboardList, Eye, Lock, TriangleAlert, ShieldCheck, Timer } from "lucide-react";
 import { api } from "../../../lib/api";
 import { useAuth } from "../../../lib/auth";
 import type { Patient } from "../../../lib/types";
@@ -56,6 +56,10 @@ export function DocumentationForm({ nursingCase, patient, cycleNumber, previousS
     } catch { /* unreadable draft — start fresh */ }
     return emptyDocumentationForm(patient.gender, previousSheet);
   });
+  // Stamped by the server when the nurse presses Start/End Infusion — never typed.
+  const [infusion, setInfusion] = useState<{ startedAt: string | null; endedAt: string | null }>({
+    startedAt: nursingCase.infusionStartedAt ?? null, endedAt: nursingCase.infusionEndedAt ?? null,
+  });
   const [interlockChecked, setInterlockChecked] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -105,8 +109,8 @@ export function DocumentationForm({ nursingCase, patient, cycleNumber, previousS
   // Weight, height and creatinine are what BMI/BSA/CrCl/eGFR are computed from — everything else on the
   // sheet is informational, but these three have to be real numbers before the metrics endpoint can run.
   // Mirrors what the API enforces (bounds included), so the button is only live when a submit can succeed.
-  const infusionOk = (!values.infusionStart && !values.infusionEnd)
-    || (!!values.infusionStart && !!values.infusionEnd && values.infusionEnd > values.infusionStart);
+  // A started infusion has to be ended before the sheet can go to QA (the server enforces the same).
+  const infusionOk = !(infusion.startedAt && !infusion.endedAt);
   const readyForPreview = weightKg >= 1 && weightKg <= 500
     && heightM * 100 >= 30 && heightM * 100 <= 260
     && !!creatinine && Number(creatinine) > 0
@@ -138,7 +142,6 @@ export function DocumentationForm({ nursingCase, patient, cycleNumber, previousS
           // diagnosis and managingConsultant aren't sent — the server resolves both (from the cycle's
           // regimen and the patient's facility's QA officer).
           treatmentDate: values.treatmentDate || undefined,
-          infusionStartTime: values.infusionStart || undefined, infusionEndTime: values.infusionEnd || undefined,
           note: values.note || undefined, nextAppointmentDate: values.nextAppointmentDate || undefined,
         },
       );
@@ -161,7 +164,7 @@ export function DocumentationForm({ nursingCase, patient, cycleNumber, previousS
           <PreviewRow label="Cycle Count" value={String(cycleNumber)} />
           <PreviewRow label="Diagnosis" value={regimen === undefined ? "Looking up…" : regimen?.diagnosis ?? "No diagnosis on record for this regimen"} />
           <PreviewRow label="Managing Consultant (QA Officer)" value={qaOfficer === undefined ? "Looking up…" : qaOfficer?.fullName ?? "No QA officer assigned to this facility"} />
-          <PreviewRow label="Infusion Time" value={values.infusionStart || values.infusionEnd ? `${values.infusionStart || "—"} – ${values.infusionEnd || "—"}` : "—"} />
+          <PreviewRow label="Infusion Time" value={infusion.startedAt || infusion.endedAt ? `${fmtTime(infusion.startedAt)} – ${fmtTime(infusion.endedAt)}` : "—"} />
         </Card>
 
         <Card className="space-y-2 border-admin-border p-4">
@@ -239,16 +242,10 @@ export function DocumentationForm({ nursingCase, patient, cycleNumber, previousS
             <input value={cycleNumber} disabled className="mt-0.5 w-full rounded-admin-sm border border-admin-border bg-admin-disabled px-2.5 py-1.5 text-admin-body-sm text-admin-text-secondary" />
           </div>
         </div>
-        <div className="grid grid-cols-2 gap-3">
-          <div>
-            <label className="text-admin-caption text-admin-text-secondary">Infusion Start</label>
-            <input type="time" value={values.infusionStart} onChange={(e) => set("infusionStart", e.target.value)} className="mt-0.5 w-full rounded-admin-sm border border-admin-border px-2.5 py-1.5 text-admin-body-sm" />
-          </div>
-          <div>
-            <label className="text-admin-caption text-admin-text-secondary">Infusion End</label>
-            <input type="time" value={values.infusionEnd} onChange={(e) => set("infusionEnd", e.target.value)} className="mt-0.5 w-full rounded-admin-sm border border-admin-border px-2.5 py-1.5 text-admin-body-sm" />
-          </div>
-        </div>
+        <InfusionControls
+          caseId={nursingCase.id} startedAt={infusion.startedAt} endedAt={infusion.endedAt}
+          onChange={(startedAt, endedAt) => setInfusion({ startedAt, endedAt })}
+        />
         <div>
           <label className="text-admin-caption text-admin-text-secondary">Diagnosis (from the patient's regimen)</label>
           <div className="mt-0.5 rounded-admin-sm border border-admin-border bg-admin-disabled px-2.5 py-1.5 text-admin-body-sm text-admin-text-secondary">
@@ -318,9 +315,56 @@ export function DocumentationForm({ nursingCase, patient, cycleNumber, previousS
       </Button>
       {!readyForPreview && (
         <p className="text-center text-admin-micro text-admin-text-secondary">
-          {!infusionOk ? "Enter both infusion times, with the end after the start." : "A treatment date, plausible weight and height, and creatinine are required before previewing."}
+          {!infusionOk ? "End the infusion before continuing." : "A treatment date, plausible weight and height, and creatinine are required before previewing."}
         </p>
       )}
+    </div>
+  );
+}
+
+// "HH:MM" from an ISO timestamp, or a dash.
+function fmtTime(iso: string | null): string {
+  return iso ? new Date(iso).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", hour12: false }) : "—";
+}
+
+// The live Start / End Infusion buttons. The server stamps the time, so it can't be back-dated, and a case
+// can only move Start → End once each; the admin's live board reads these same milestones.
+function InfusionControls({ caseId, startedAt, endedAt, onChange }: {
+  caseId: string; startedAt: string | null; endedAt: string | null; onChange: (startedAt: string | null, endedAt: string | null) => void;
+}) {
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
+
+  async function press(action: "start" | "end") {
+    setBusy(true);
+    setErr(null);
+    try {
+      const res = await api.post<{ case: { infusionStartedAt: string | null; infusionEndedAt: string | null } }>(`/nursing-cases/${caseId}/infusion/${action}`);
+      onChange(res.case.infusionStartedAt, res.case.infusionEndedAt);
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : "Could not record — try again");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <div className="rounded-admin-sm border border-admin-border p-3">
+      <div className="flex items-center justify-between">
+        <p className="flex items-center gap-1.5 text-admin-caption font-semibold text-admin-text"><Timer className="size-3.5" aria-hidden="true" /> Infusion</p>
+        <p className="text-admin-micro text-admin-text-secondary">
+          {endedAt ? `${fmtTime(startedAt)} – ${fmtTime(endedAt)}` : startedAt ? `Started ${fmtTime(startedAt)}` : "Not started"}
+        </p>
+      </div>
+      {!endedAt && (
+        <Button
+          type="button" size="sm" disabled={busy} onClick={() => press(startedAt ? "end" : "start")}
+          className="mt-2 w-full rounded-admin-xs bg-admin-sidebar-cta hover:bg-admin-sidebar-cta/90"
+        >
+          {startedAt ? "End Infusion" : "Start Infusion"}
+        </Button>
+      )}
+      {err && <p className="mt-1.5 text-admin-micro text-admin-danger">{err}</p>}
     </div>
   );
 }
