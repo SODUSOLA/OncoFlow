@@ -63,6 +63,26 @@ export class UserRepository {
   }
 }
 
+// Non-patient accounts registered to the given facilities (null = all), with their roles, newest first.
+export async function findStaffByFacilities(facilityIds: string[] | null) {
+  if (facilityIds && facilityIds.length === 0) return [];
+  return db.execute<{
+    id: string; email: string; first_name: string | null; last_name: string | null; status: string;
+    facility_id: string | null; facility_name: string | null; created_at: Date; role_name: string;
+  }>(sql`
+    SELECT u.id, u.email, u.first_name, u.last_name, u.status::text AS status, u.facility_id, f.name AS facility_name,
+           u.created_at, r.name::text AS role_name
+    FROM "user" u
+    JOIN user_role ur ON ur.user_id = u.id
+    JOIN role r ON r.id = ur.role_id
+    LEFT JOIN facility f ON f.id = u.facility_id
+    WHERE u.is_deleted = false AND r.name::text <> 'PATIENT'
+      ${facilityIds ? sql`AND u.facility_id IN (${sql.join(facilityIds.map((id) => sql`${id}`), sql`, `)})` : sql``}
+    ORDER BY u.created_at DESC
+    LIMIT 200
+  `);
+}
+
 // Data access for roles.
 export class RoleRepository {
   // Finds a role by id.

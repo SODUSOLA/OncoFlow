@@ -96,6 +96,8 @@ const PERMISSIONS: { resource: string; action: string; description: string }[] =
   { resource: "activityLog", action: "read", description: "Read a patient's clinical activity log (union of clinical notes and lab documents)" },
   { resource: "availability", action: "read", description: "Read another consultant's availability blocks (Regional Admin scheduling a New Consultation)" },
   { resource: "nursingCase", action: "create", description: "Start a nursing case for a patient's regimen cycle visitation" },
+  { resource: "staffAccount", action: "create", description: "Provision a staff account inside one's region (Regional Admin); grants no lock/unlock authority" },
+  { resource: "staffAccount", action: "read", description: "List the staff accounts in one's region (Regional Admin)" },
   { resource: "nursingCase", action: "read", description: "Watch nursing cases and their live progress across the caller's region" },
   { resource: "nursingCase", action: "update", description: "Review a nursing case's documentation and record a QA decision (QA Officer only)" },
   { resource: "securityIncident", action: "read", description: "Read upload-security-incident reports (rejected/infected file uploads)" },
@@ -200,6 +202,7 @@ export async function seedIdentity() {
     "inventory:read", "inventory:update",
     "transferRequest:create", "transferRequest:read",
     "nursingCase:read",
+    "staffAccount:create", "staffAccount:read",
     "audit:read",
     // Lets Regional Admin see rejected-upload incidents in its alert aggregator.
     "securityIncident:read",
@@ -255,7 +258,8 @@ export async function seedIdentity() {
   ]);
 
   // SDNS sees the region's stock incidents (breakage, spoilage, expiry, wastage) alongside Regional Admin.
-  await grantPermissionsToRole("STATE_DIRECTOR_OF_NURSING_SERVICES", ["drugLoss:read"]);
+  // It also watches nurse case activity, read-only (the same live board Regional Admin sees).
+  await grantPermissionsToRole("STATE_DIRECTOR_OF_NURSING_SERVICES", ["drugLoss:read", "nursingCase:read"]);
 
   // Every other role still has zero grants — that real RBAC pass is still pending.
 

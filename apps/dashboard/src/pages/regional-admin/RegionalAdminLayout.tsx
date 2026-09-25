@@ -2,7 +2,7 @@ import { useState } from "react";
 import { Outlet, useLocation, useNavigate } from "react-router-dom";
 import {
   LayoutGrid, Search, CalendarClock, CalendarRange, Receipt, Package, MessageSquare,
-  BookOpen, FileBarChart, Activity,
+  BookOpen, FileBarChart, Activity, UserPlus,
 } from "lucide-react";
 import { useAuth } from "../../lib/auth";
 import { useRegionScope } from "./lib/useRegionScope";
@@ -20,6 +20,7 @@ const NAV_ITEMS = [
   { to: "/dashboard/regional-admin/countdown", label: "7-Day Countdown", icon: CalendarClock, end: false, title: "7-Day Pre-Chemo Countdown" },
   { to: "/dashboard/regional-admin/billing", label: "Billing", icon: Receipt, end: false, title: "Invoice Generator" },
   { to: "/dashboard/regional-admin/case-board", label: "Physical Case Board", icon: Activity, end: false, title: "Physical Case Board" },
+  { to: "/dashboard/regional-admin/staff-accounts", label: "Staff Accounts", icon: UserPlus, end: false, title: "Staff Accounts" },
   { to: "/dashboard/regional-admin/inventory", label: "Inventory", icon: Package, end: false, title: "Movements & Reconciliation" },
   { to: "/dashboard/regional-admin/inquiry", label: "Inquiry Chat", icon: MessageSquare, end: false, title: "Inquiry Chat Inbox" },
 ] as const;

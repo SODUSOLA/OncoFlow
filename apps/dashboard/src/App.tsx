@@ -5,6 +5,7 @@ import { DashboardLayout } from "./components/DashboardLayout";
 import { AuthProvider, useAuth } from "./lib/auth";
 import { dashboardPathForRoles, hasStaffAccess } from "./lib/roleRouting";
 import Login from "./pages/Login";
+import SetPassword from "./pages/SetPassword";
 
 // Lazy-loaded placeholder dashboards for roles that don't have their own shell yet.
 const vmo = lazy(() => import("./pages/virtual-medical-officer/Dashboard"));
@@ -32,6 +33,7 @@ const RaInventory = lazy(() => import("./pages/regional-admin/pages/InventoryPag
 const RaGeneralInquiry = lazy(() => import("./pages/regional-admin/pages/GeneralInquiryPage"));
 const RaNotifications = lazy(() => import("./pages/regional-admin/pages/NotificationCenterPage"));
 const RaCaseBoard = lazy(() => import("./pages/regional-admin/pages/CaseBoardPage"));
+const RaStaffAccounts = lazy(() => import("./pages/regional-admin/pages/StaffAccountsPage"));
 const RaSettings = lazy(() => import("./pages/regional-admin/pages/SettingsPage"));
 const RaSecurityIncidents = lazy(() => import("./pages/regional-admin/pages/SecurityIncidentsPage"));
 const RaComingSoon = lazy(() =>
@@ -139,6 +141,7 @@ function AppRoutes() {
     <Routes>
       <Route path="/" element={<RootRedirect />} />
       <Route path="/login" element={<Login />} />
+      <Route path="/reset-password" element={<SetPassword />} />
       <Route path="/no-dashboard" element={<RequireAuth><NoDashboard /></RequireAuth>} />
       <Route
         path="dashboard/regional-admin"
@@ -157,6 +160,7 @@ function AppRoutes() {
         <Route path="billing" element={<Suspense fallback={<FullScreenLoading />}><RaBilling /></Suspense>} />
         <Route path="inventory" element={<Suspense fallback={<FullScreenLoading />}><RaInventory /></Suspense>} />
         <Route path="inquiry" element={<Suspense fallback={<FullScreenLoading />}><RaGeneralInquiry /></Suspense>} />
+        <Route path="staff-accounts" element={<Suspense fallback={<FullScreenLoading />}><RaStaffAccounts /></Suspense>} />
         <Route path="case-board" element={<Suspense fallback={<FullScreenLoading />}><RaCaseBoard /></Suspense>} />
         <Route path="notifications" element={<Suspense fallback={<FullScreenLoading />}><RaNotifications /></Suspense>} />
         <Route path="settings" element={<Suspense fallback={<FullScreenLoading />}><RaSettings /></Suspense>} />

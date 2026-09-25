@@ -22,6 +22,7 @@ import {
 } from "../patient/index.js";
 import { sendVerificationEmail } from "./services/VerificationEmailService.js";
 import { sendPasswordResetEmail } from "./services/PasswordResetEmailService.js";
+import { sendStaffInviteEmail } from "./services/StaffInviteEmailService.js";
 
 const BASE32_ALPHABET = "ABCDEFGHIJKLMNOPQRSTUVWXYZ234567";
 
@@ -67,6 +68,16 @@ const SESSION_DURATION_MS = 7 * 24 * 60 * 60 * 1000;
 const EMAIL_VERIFICATION_TOKEN_TTL_MS = 10 * 60 * 1000;
 // Reset links are shorter-lived than verification codes because they directly grant account takeover.
 const PASSWORD_RESET_TOKEN_TTL_MS = 60 * 60 * 1000;
+// A staff invite gives the new hire time to get to it, unlike a reset someone just asked for.
+const STAFF_INVITE_TTL_MS = 72 * 60 * 60 * 1000;
+
+// The roles a Regional Admin may create: the staff who work inside a facility. Roles above or beside the admin
+// (SUPER_ADMIN, other admins, state/national directors) and PATIENT (self-registration) are never provisioned here.
+export const PROVISIONABLE_ROLES = [
+  "ONSITE_NURSING_OFFICER", "QUALITY_ASSURANCE_OFFICER", "VIRTUAL_MEDICAL_OFFICER",
+  "CONSULTING_ONCOLOGIST", "CONSULTING_SURGEON", "CONSULTING_NUTRITIONIST", "CONSULTING_PSYCHO_ONCOLOGIST", "SCRIBE",
+] as const;
+export type ProvisionableRole = (typeof PROVISIONABLE_ROLES)[number];
 
 // Business logic for registration, email verification, password reset, login, sessions and MFA.
 export class AuthService {
@@ -145,6 +156,41 @@ export class AuthService {
     });
 
     return new User(userRow);
+  }
+
+  // Regional Admin creating a staff account: no password is chosen — the account starts with an unusable one and
+  // the new hire gets an invite link to set their own. Provisioning is the only power here; the admin gets no
+  // way to lock, unlock or impersonate the account afterwards.
+  async provisionStaff(
+    actorId: string,
+    data: { email: string; firstName: string; lastName: string; role: ProvisionableRole; facilityId: string },
+    ip?: string,
+  ) {
+    const email = data.email.trim().toLowerCase();
+    if (await this.userRepo.findByEmail(email)) throw new Error("Email already registered");
+    const roleRow = await this.roleRepo.findByName(data.role);
+    if (!roleRow) throw new Error(`${data.role} role not seeded`);
+
+    const userRow = await this.userRepo.create({
+      id: crypto.randomUUID(), email, firstName: data.firstName.trim(), lastName: data.lastName.trim(),
+      passwordHash: await User.hashPassword(crypto.randomBytes(32).toString("hex")),
+      status: "ACTIVE", mfaEnabled: false, facilityId: data.facilityId,
+    });
+    await this.userRoleRepo.assign(userRow.id, roleRow.id);
+
+    const rawToken = crypto.randomBytes(32).toString("hex");
+    await this.passwordResetTokenRepo.create({
+      id: crypto.randomUUID(), userId: userRow.id,
+      tokenHash: crypto.createHash("sha256").update(rawToken).digest("hex"),
+      expiresAt: new Date(Date.now() + STAFF_INVITE_TTL_MS),
+    });
+    let inviteSent = true;
+    await sendStaffInviteEmail(email, rawToken, data.role.replace(/_/g, " ").toLowerCase()).catch((err) => {
+      inviteSent = false;
+      console.error(`Staff invite email failed for user ${userRow.id}:`, err);
+    });
+    await safeAuditLog({ actorId, action: "CREATE", resource: "staffAccount", resourceId: userRow.id, result: "ALLOWED", ip });
+    return { user: new User(userRow), inviteSent };
   }
 
   // Verifies the emailed code, marks the email verified and attempts patient auto-registration.

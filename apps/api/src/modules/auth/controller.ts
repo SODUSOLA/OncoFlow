@@ -1,7 +1,8 @@
 import type { Request, Response } from "express";
 import type { AuthenticatedRequest } from "../../lib/rbac.js";
-import { AuthService } from "./service.js";
-import { SessionRepository, UserRepository } from "./repository.js";
+import { AuthService, PROVISIONABLE_ROLES, type ProvisionableRole } from "./service.js";
+import { accessibleFacilityIds } from "../../lib/facility-scope.js";
+import { SessionRepository, UserRepository, findStaffByFacilities } from "./repository.js";
 import { SESSION_COOKIE_NAME, getSessionCookieOptions, getClearSessionCookieOptions } from "../../lib/session-cookie.js";
 
 const auth = new AuthService();
@@ -14,6 +15,49 @@ export async function listConsultantsHandler(req: Request, res: Response) {
     const facilityId = typeof req.query.facilityId === "string" ? req.query.facilityId : undefined;
     const rows = await userRepo.findConsultants(facilityId);
     res.json({ consultants: rows.map((r) => ({ id: r.id, email: r.email, facilityId: r.facility_id, roleName: r.role_name })) });
+  } catch {
+    res.status(500).json({ error: "Internal server error" });
+  }
+}
+
+// Regional Admin provisions a staff account inside their own region (route-gated on staffAccount:create).
+export async function provisionStaffHandler(req: Request, res: Response) {
+  try {
+    const callerId = (req as AuthenticatedRequest).userId;
+    const { email, firstName, lastName, role, facilityId } = req.body as {
+      email: string; firstName: string; lastName: string; role: ProvisionableRole; facilityId: string;
+    };
+    if (!PROVISIONABLE_ROLES.includes(role)) {
+      res.status(400).json({ error: "That role can't be provisioned here" });
+      return;
+    }
+    const scope = await accessibleFacilityIds(callerId);
+    if (scope && !scope.includes(facilityId)) {
+      res.status(403).json({ error: "Forbidden: facility outside your region" });
+      return;
+    }
+    const { user, inviteSent } = await auth.provisionStaff(callerId, { email, firstName, lastName, role, facilityId }, req.ip);
+    res.status(201).json({ user: user.toSafeJSON(), role, inviteSent });
+  } catch (err) {
+    const message = err instanceof Error ? err.message : "Internal server error";
+    res.status(message === "Email already registered" ? 409 : 400).json({ error: message });
+  }
+}
+
+// Lists the staff accounts in the caller's region (route-gated on staffAccount:read).
+export async function listStaffHandler(req: Request, res: Response) {
+  try {
+    const rows = await findStaffByFacilities(await accessibleFacilityIds((req as AuthenticatedRequest).userId));
+    const byId = new Map<string, { id: string; email: string; fullName: string; status: string; facilityId: string | null; facilityName: string | null; createdAt: Date; roles: string[] }>();
+    for (const r of rows) {
+      const entry = byId.get(r.id) ?? {
+        id: r.id, email: r.email, status: r.status, facilityId: r.facility_id, facilityName: r.facility_name, createdAt: r.created_at, roles: [],
+        fullName: r.first_name || r.last_name ? [r.first_name, r.last_name].filter(Boolean).join(" ") : r.email.split("@")[0]!,
+      };
+      entry.roles.push(r.role_name);
+      byId.set(r.id, entry);
+    }
+    res.json({ staff: [...byId.values()] });
   } catch {
     res.status(500).json({ error: "Internal server error" });
   }

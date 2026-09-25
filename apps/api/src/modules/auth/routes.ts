@@ -14,6 +14,8 @@ import {
   forgotPasswordHandler,
   resetPasswordHandler,
   listConsultantsHandler,
+  provisionStaffHandler,
+  listStaffHandler,
 } from "./controller.js";
 import { requireAuthenticated, requirePermission, type AuthenticatedRequest } from "../../lib/rbac.js";
 import { validateBody, validateParams } from "../../lib/validation.js";
@@ -51,6 +53,14 @@ const verifyEmailSchema = z.object({
 
 const forgotPasswordSchema = z.object({
   email: z.string().trim().email(),
+});
+
+const provisionStaffSchema = z.object({
+  email: z.string().trim().email().max(255),
+  firstName: z.string().trim().min(1).max(128),
+  lastName: z.string().trim().min(1).max(128),
+  role: z.string(),
+  facilityId: z.string().uuid(),
 });
 
 const resetPasswordSchema = z.object({
@@ -134,6 +144,10 @@ router.get("/auth/profile", requireAuthenticated(), profileHandler);
 // Your own profile image — same self-service class as reading your profile, so no permission grant.
 router.put("/auth/profile/picture", requireAuthenticated(), validateBody(z.object({ fileId: z.string().uuid() })), setProfilePictureHandler);
 // Consultant picker for the New Consultation flow.
+// Regional Admin provisions staff inside their region; the new hire sets their own password from the invite.
+router.post("/staff-accounts", requirePermission("staffAccount", "create"), validateBody(provisionStaffSchema), provisionStaffHandler);
+// Staff accounts in the caller's region (read-only: no lock/unlock powers are granted with this).
+router.get("/staff-accounts", requirePermission("staffAccount", "read"), listStaffHandler);
 router.get("/consultants", requirePermission("appointment", "create"), listConsultantsHandler);
 // Self-service session list; ownership of a target session is checked in the handler.
 router.get("/auth/sessions", requireAuthenticated(), listSessionsHandler);
