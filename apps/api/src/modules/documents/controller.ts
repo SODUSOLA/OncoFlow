@@ -4,6 +4,7 @@ import { userHasPermission } from "../../lib/rbac.js";
 import { FileService } from "./service.js";
 // Cross-module read to check whether a file's patient is the caller's own record before falling back to staff grants.
 import { PatientRepository } from "../patient/index.js";
+import { nurseMayReadPatient, OUTSIDE_VISIT_WINDOW_MESSAGE } from "../nursing/visitWindow.js";
 import { config } from "../../config.js";
 
 const fileSvc = new FileService();
@@ -134,6 +135,10 @@ export async function listPatientFilesHandler(req: Request, res: Response) {
     const isSelf = await callerOwnsPatient(callerId, patientId);
     if (!isSelf && !(await userHasPermission(callerId, "file", "read"))) {
       res.status(403).json({ error: "Forbidden" });
+      return;
+    }
+    if (!isSelf && !(await nurseMayReadPatient(callerId, patientId))) {
+      res.status(403).json({ error: OUTSIDE_VISIT_WINDOW_MESSAGE });
       return;
     }
 

@@ -5,6 +5,7 @@ import {
   RegimenService, VitalsService, ClinicalMetricsService, LabDocumentService, ActivityLogService, CaseLockService,
 } from "./service.js";
 import { PatientRepository } from "../patient/index.js";
+import { nurseMayReadPatient, nurseVisiblePatientIds, lagosDayOffset, VISIT_WINDOW_DAYS, OUTSIDE_VISIT_WINDOW_MESSAGE } from "../nursing/visitWindow.js";
 import { isCycleFrozenByCase, checkNurseCaseWrite, checkNurseCycleWrite, CASE_LOCKED_MESSAGE } from "../nursing/editability.js";
 
 const regimenSvc = new RegimenService();
@@ -26,7 +27,12 @@ async function authorizeRead(req: Request, res: Response, resource: string, pati
   const callerId = (req as AuthenticatedRequest).userId;
   const isSelf = await callerOwnsPatient(callerId, patientId);
   if (isSelf) return true;
-  if (await userHasPermission(callerId, resource, "read")) return true;
+  if (await userHasPermission(callerId, resource, "read")) {
+    // A nursing officer reads a patient's clinical data only inside the visit window.
+    if (await nurseMayReadPatient(callerId, patientId)) return true;
+    res.status(403).json({ error: OUTSIDE_VISIT_WINDOW_MESSAGE });
+    return false;
+  }
   res.status(403).json({ error: "Forbidden" });
   return false;
 }
@@ -74,6 +80,19 @@ export async function listRegimenCyclesHandler(req: Request, res: Response) {
     const cycles = req.query.due === "true"
       ? await regimenSvc.listDueCyclesForFacility(facilityId, date)
       : await regimenSvc.listCyclesForFacilityAndDate(facilityId, date);
+    // A nursing officer's schedule shows only patients inside the visit window (backlog older than that is not theirs to open).
+    const callerId = (req as AuthenticatedRequest).userId;
+    if (await userHasRole(callerId, "ONSITE_NURSING_OFFICER")) {
+      const visible = await nurseVisiblePatientIds(callerId);
+      const [from, to] = [lagosDayOffset(-VISIT_WINDOW_DAYS), lagosDayOffset(VISIT_WINDOW_DAYS)];
+      // Per cycle, not just per patient: a stale cycle for a patient who also has one in the window stays hidden,
+      // unless the nurse already has a live case on it.
+      res.json({
+        cycles: cycles.filter((c: { patientId: string; scheduledDate: string; caseId?: string | null }) =>
+          visible.has(c.patientId) && ((c.scheduledDate >= from && c.scheduledDate <= to) || !!c.caseId)),
+      });
+      return;
+    }
     res.json({ cycles });
   } catch {
     res.status(500).json({ error: "Internal server error" });

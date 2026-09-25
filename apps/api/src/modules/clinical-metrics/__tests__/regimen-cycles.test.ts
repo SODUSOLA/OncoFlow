@@ -68,8 +68,10 @@ describe("GET /regimen-cycles", () => {
     expect(ids.every((id: string) => res.body.cycles.find((c: { id: string }) => c.id === id).scheduledDate === days(0))).toBe(true);
   });
 
-  it("with due=true includes today's and overdue SCHEDULED cycles, never future or resolved ones", async () => {
-    const overdueId = await createCycle(days(-3));
+  it("with due=true includes today's and yesterday's SCHEDULED cycles, never future, resolved or beyond-the-window ones", async () => {
+    // A nurse's schedule is limited to the D-1..D+1 visit window, so a cycle missed three days ago drops out.
+    const staleId = await createCycle(days(-3));
+    const overdueId = await createCycle(days(-1));
     const todayId = await createCycle(days(0));
     const completedId = await createCycle(days(-1), "COMPLETED");
     const skippedId = await createCycle(days(-1), "SKIPPED");
@@ -83,6 +85,7 @@ describe("GET /regimen-cycles", () => {
     expect(ids).not.toContain(completedId);
     expect(ids).not.toContain(skippedId);
     expect(ids).not.toContain(futureId);
+    expect(ids).not.toContain(staleId);
 
     // Oldest overdue first, so a nurse clears the backlog before today's.
     const overdueIndex = ids.indexOf(overdueId);

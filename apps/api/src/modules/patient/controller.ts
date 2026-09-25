@@ -3,6 +3,7 @@ import crypto from "node:crypto";
 import type { AuthenticatedRequest } from "../../lib/rbac.js";
 import { userHasPermission, userHasRole } from "../../lib/rbac.js";
 import { isVisitClosedOut, CALL_AFTER_CLOSE_MESSAGE } from "../nursing/callAccess.js";
+import { nurseMayReadPatient, nurseVisiblePatientIds, OUTSIDE_VISIT_WINDOW_MESSAGE } from "../nursing/visitWindow.js";
 import { PatientService } from "./service.js";
 import {
   PatientRepository, AddressRepository, EmergencyContactRepository, WalletRepository,
@@ -112,6 +113,10 @@ export async function getPatientHandler(req: Request, res: Response) {
       res.status(403).json({ error: "Forbidden" });
       return;
     }
+    if (!isSelf && !(await nurseMayReadPatient(callerId, patientRow.id))) {
+      res.status(403).json({ error: OUTSIDE_VISIT_WINDOW_MESSAGE });
+      return;
+    }
 
     const entity = new Patient(patientRow);
     const addresses = await addressRepo.findByPatient(patientRow.id);
@@ -145,11 +150,14 @@ export async function searchPatientsHandler(req: Request, res: Response) {
       ? await patientRepo.findAll()
       : await patientRepo.findByFacilityIds(scope.facilityIds);
 
-    let filtered = patients;
+    // A nursing officer's search only surfaces patients inside their visit window.
+    const callerId = (req as AuthenticatedRequest).userId;
+    const visible = await userHasRole(callerId, "ONSITE_NURSING_OFFICER") ? await nurseVisiblePatientIds(callerId) : null;
+    let filtered = visible ? patients.filter((p) => visible.has(p.id)) : patients;
     if (q) {
       const query = q.toLowerCase();
       // No phone matching, since searching by phone would let staff probe for a patient's number.
-      filtered = patients.filter(
+      filtered = filtered.filter(
         (p) =>
           p.firstName.toLowerCase().includes(query) ||
           p.lastName.toLowerCase().includes(query) ||
@@ -371,6 +379,10 @@ export async function getPatientTimelineHandler(req: Request, res: Response) {
     const isSelf = patientRow.userId !== null && patientRow.userId === callerId;
     if (!isSelf && !(await userHasPermission(callerId, "patient", "read"))) {
       res.status(403).json({ error: "Forbidden" });
+      return;
+    }
+    if (!isSelf && !(await nurseMayReadPatient(callerId, patientRow.id))) {
+      res.status(403).json({ error: OUTSIDE_VISIT_WINDOW_MESSAGE });
       return;
     }
 

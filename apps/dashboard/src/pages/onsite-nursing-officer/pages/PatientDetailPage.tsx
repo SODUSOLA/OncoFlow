@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import {
-  ChevronLeft, Phone, Plus, FileCheck2, Clock3, CheckCircle2, ChevronRight, FileText, ExternalLink, History,
+  ChevronLeft, Phone, Plus, FileCheck2, Clock3, CheckCircle2, ChevronRight, FileText, Lock, ExternalLink, History,
 } from "lucide-react";
 import { api } from "../../../lib/api";
 import { useAuth } from "../../../lib/auth";
@@ -34,13 +34,18 @@ export default function PatientDetailPage() {
   const [lastTreatment, setLastTreatment] = useState<NursingCaseDetail | null>(null);
   const [files, setFiles] = useState<FileRecord[]>([]);
   const [loading, setLoading] = useState(true);
+  // Why the patient couldn't be opened (e.g. outside the nurse's D-1 to D+1 visit window), straight from the API.
+  const [loadError, setLoadError] = useState<string | null>(null);
 
   useEffect(() => {
     if (!patientId) return;
     let cancelled = false;
     const today = new Date().toISOString().slice(0, 10);
     Promise.all([
-      api.get<{ patient: Patient }>(`/patients/${patientId}`).then((d) => d.patient).catch(() => null),
+      api.get<{ patient: Patient }>(`/patients/${patientId}`).then((d) => d.patient).catch((e: Error) => {
+        if (!cancelled) setLoadError(e.message);
+        return null;
+      }),
       api.get<{ cases: PatientCaseHistoryEntry[] }>(`/nursing-cases?patientId=${patientId}`).then((d) => d.cases).catch(() => []),
       api.get<{ files: FileRecord[] }>(`/files?patientId=${patientId}`).then((d) => d.files).catch(() => []),
       user?.facilityId
@@ -66,7 +71,27 @@ export default function PatientDetailPage() {
   }, [patientId, user?.facilityId]);
 
   if (loading) return <p className="text-admin-body-sm text-admin-text-secondary">Loading…</p>;
-  if (!patient) return <p className="text-admin-body-sm text-admin-danger">Patient not found.</p>;
+  if (!patient) {
+    return (
+      <div className="space-y-4">
+        <button onClick={() => navigate("/dashboard/onsite-nursing-officer/patients")} className="flex items-center gap-1 text-admin-caption text-admin-text-secondary">
+          <ChevronLeft className="size-3.5" aria-hidden="true" /> Back to Patients
+        </button>
+        <Card className="flex items-start gap-3 border-admin-border bg-admin-card-alt p-4">
+          <Lock className="mt-0.5 size-4 shrink-0 text-admin-text-secondary" aria-hidden="true" />
+          <div>
+            <p className="text-admin-body-sm font-semibold text-admin-text">Patient not available</p>
+            <p className="mt-1 text-admin-body-sm text-admin-text-secondary">
+              {loadError ?? "This patient could not be found."}
+            </p>
+            <p className="mt-2 text-admin-caption text-admin-text-secondary">
+              You can open a patient from the day before to the day after their scheduled visit, or while your case with them is open.
+            </p>
+          </div>
+        </Card>
+      </div>
+    );
+  }
 
   const age = Math.floor((Date.now() - new Date(patient.dob).getTime()) / (365.25 * 24 * 3600 * 1000));
   const openCase = cases.find((c) => c.status !== "CLOSED") ?? null;

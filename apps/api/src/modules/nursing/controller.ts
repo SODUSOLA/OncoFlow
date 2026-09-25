@@ -1,3 +1,4 @@
+import { nurseMayReadPatient, OUTSIDE_VISIT_WINDOW_MESSAGE } from "./visitWindow.js";
 import type { Request, Response } from "express";
 import type { AuthenticatedRequest } from "../../lib/rbac.js";
 import { userHasPermission, userHasRole } from "../../lib/rbac.js";
@@ -75,6 +76,10 @@ export async function listCasesByPatientHandler(req: Request, res: Response) {
         return;
       }
     }
+    if (!(await nurseMayReadPatient(callerId, patientId))) {
+      res.status(403).json({ error: OUTSIDE_VISIT_WINDOW_MESSAGE });
+      return;
+    }
     const result = await nursingCaseService.listByPatient(patientId);
     res.json({ cases: result });
   } catch (err) {
@@ -122,11 +127,11 @@ export async function submitDocumentationSheetHandler(req: Request, res: Respons
     const callerId = (req as AuthenticatedRequest).userId;
     const {
       fileReference,
-      treatmentDate, infusionStartTime, infusionEndTime, note, nextAppointmentDate,
+      treatmentDate, note, nextAppointmentDate,
     } = req.body;
     const result = await nursingCaseService.submitDocumentationSheet(String(req.params.id), callerId, {
       fileReference,
-      treatmentDate, infusionStartTime, infusionEndTime, note, nextAppointmentDate,
+      treatmentDate, note, nextAppointmentDate,
     });
     res.status(201).json(result);
   } catch (err) {
