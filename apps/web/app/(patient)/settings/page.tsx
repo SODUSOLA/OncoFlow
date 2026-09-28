@@ -2,13 +2,14 @@
 
 import { useEffect, useState, useCallback } from "react";
 import { useRouter } from "next/navigation";
-import { ArrowLeft, Bell, Fingerprint, ShieldCheck, CreditCard, Monitor, Smartphone, LogOut } from "lucide-react";
+import { ArrowLeft, Bell, Fingerprint, CreditCard, Monitor, Smartphone, LogOut } from "lucide-react";
 import { Card } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
 import { Badge } from "@/components/ui/Badge";
 import { api } from "@/lib/api";
 import type { AuthSession } from "@/lib/types";
 import { invalidateMyPatient } from "@/lib/useMyPatient";
+import { MfaSettingsCard } from "@/components/auth/MfaSettingsCard";
 
 // Disabled settings row for a feature that isn't built yet.
 function ComingSoonRow({ icon: Icon, label, description }: { icon: typeof Bell; label: string; description: string }) {
@@ -113,9 +114,10 @@ export default function SettingsPage() {
       <Card className="divide-y divide-neutral-100 py-0">
         <ComingSoonRow icon={Bell} label="Notifications" description="Appointment and billing alerts" />
         <ComingSoonRow icon={Fingerprint} label="Biometric Login" description="Sign in with Face ID / Touch ID" />
-        <ComingSoonRow icon={ShieldCheck} label="Multi-Factor Authentication" description="Extra verification at sign-in" />
         <ComingSoonRow icon={CreditCard} label="Payment Methods" description="Manage saved payment methods" />
       </Card>
+
+      <MfaSettingsCard />
 
       <div>
         <h2 className="mb-3 text-base font-bold text-neutral-900">Active Sessions</h2>
