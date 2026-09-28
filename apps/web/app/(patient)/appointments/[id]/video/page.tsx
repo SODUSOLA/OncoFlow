@@ -2,21 +2,34 @@
 
 import { useEffect, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
-import { ArrowLeft, Video, Clock, CircleCheck, CircleOff } from "lucide-react";
+import { ArrowLeft, Video, Clock, CircleOff } from "lucide-react";
 import { Card } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
 import { api } from "@/lib/api";
 import { useCountdown } from "@/lib/useCountdown";
+import { useMyPatient } from "@/lib/useMyPatient";
+import { useDailyCall } from "@/lib/useDailyCall";
+import { RemoteVideoTile } from "@/components/video/RemoteVideoTile";
+import { LocalVideoPiP } from "@/components/video/LocalVideoPiP";
+import { VideoHUD } from "@/components/video/VideoHUD";
+import { ControlBar } from "@/components/video/ControlBar";
 import type { Appointment, Meeting } from "@/lib/types";
 
-// Video consultation page that joins the patient into their scheduled room.
+// Video consultation page. Joins the patient into their scheduled Daily room through the same role-scoped
+// token endpoint (POST /meetings/:meetingId/token) the staff dashboard's consultant video room uses — not a
+// raw, unauthenticated room link, which a token-gated room would refuse anyway.
 export default function VideoConsultationPage() {
   const params = useParams<{ id: string }>();
   const router = useRouter();
+  const { patient } = useMyPatient();
   const [appointment, setAppointment] = useState<Appointment | null>(null);
   const [meeting, setMeeting] = useState<Meeting | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+
+  const [tokenInfo, setTokenInfo] = useState<{ token: string; roomUrl: string } | null>(null);
+  const [joining, setJoining] = useState(false);
+  const [joinError, setJoinError] = useState<string | null>(null);
 
   useEffect(() => {
     (async () => {
@@ -38,6 +51,31 @@ export default function VideoConsultationPage() {
   }, [params.id]);
 
   const countdown = useCountdown(appointment?.scheduledAt ?? null);
+  const userName = patient ? `${patient.firstName} ${patient.lastName}`.trim() : "Patient";
+  const call = useDailyCall(tokenInfo?.roomUrl ?? null, tokenInfo?.token ?? null, userName);
+
+  // Requests a role-scoped join token for this meeting and starts the call. A deliberate tap (not an
+  // auto-join on page load) since joining asks the browser for camera/mic permission.
+  async function joinCall() {
+    if (!meeting) return;
+    setJoining(true);
+    setJoinError(null);
+    try {
+      const tok = await api.post<{ token: string; roomUrl: string }>(`/meetings/${meeting.id}/token`, { userName });
+      setTokenInfo({ token: tok.token, roomUrl: tok.roomUrl });
+    } catch (err) {
+      setJoinError(err instanceof Error ? err.message : "Could not obtain a call token");
+    } finally {
+      setJoining(false);
+    }
+  }
+
+  // Leaving only ends the patient's own participation — POST /meetings/:id/end (which closes the meeting for
+  // everyone) is reserved for the assigned consultant, per the API's own authorization rule.
+  function leaveCall() {
+    call.leave();
+    setTokenInfo(null);
+  }
 
   if (loading) {
     return <p className="p-6 text-center text-sm text-neutral-400">Loading…</p>;
@@ -47,9 +85,41 @@ export default function VideoConsultationPage() {
     return <p className="p-6 text-center text-sm text-critical">{error ?? "Appointment not found"}</p>;
   }
 
-  const hostReady = meeting?.status === "IN_PROGRESS";
   const ended = meeting?.status === "ENDED" || appointment.status === "COMPLETED";
 
+  // In-call: the embedded video UI (once a token has been issued and the call object is connecting or joined).
+  if (tokenInfo && call.status !== "left") {
+    return (
+      <div className="flex h-dvh flex-col bg-neutral-950 p-3 sm:p-4">
+        <div className="relative min-h-0 flex-1 rounded-2xl">
+          <RemoteVideoTile participant={call.remoteParticipants[0] ?? null} />
+          <VideoHUD status={call.status} durationSec={call.durationSec} />
+          <LocalVideoPiP videoTrack={call.localVideoTrack} />
+          <ControlBar
+            audioOn={call.localAudioOn}
+            videoOn={call.localVideoOn}
+            onToggleAudio={call.toggleAudio}
+            onToggleVideo={call.toggleVideo}
+            onLeave={leaveCall}
+          />
+          {call.status === "joining" && (
+            <div className="absolute inset-0 flex items-center justify-center rounded-2xl bg-neutral-950/70 text-sm text-white">
+              Connecting to the call…
+            </div>
+          )}
+          {call.status === "error" && (
+            <div className="absolute inset-0 flex flex-col items-center justify-center gap-2 rounded-2xl bg-neutral-950/85 px-8 text-center text-sm text-white">
+              <p className="font-semibold">Call connection failed</p>
+              <p className="text-white/70">{call.error}</p>
+              <Button className="mt-2" onClick={() => setTokenInfo(null)}>Back</Button>
+            </div>
+          )}
+        </div>
+      </div>
+    );
+  }
+
+  // Pre-join screen (also shown again after leaving, so rejoining a still-open room needs no back-navigation).
   return (
     <div className="space-y-5 p-4">
       <div className="flex items-center gap-3">
@@ -84,37 +154,26 @@ export default function VideoConsultationPage() {
             <p className="text-sm font-semibold text-neutral-600">Room not set up yet</p>
             <p className="text-xs text-neutral-400">Your care team will provision the video room before your appointment.</p>
           </div>
-        ) : hostReady ? (
-          <div className="mt-5 flex flex-col items-center gap-3">
-            <div className="flex size-14 items-center justify-center rounded-full bg-teal-bg text-teal">
-              <CircleCheck className="size-6" aria-hidden="true" />
-            </div>
-            <p className="text-sm font-semibold text-teal">Your care team is ready</p>
-            <Button
-              className="w-full"
-              href={`https://${meeting.roomId}.daily.co`}
-              onClick={(e) => {
-                e.preventDefault();
-                window.open(`https://${meeting.roomId}.daily.co`, "_blank", "noreferrer");
-              }}
-            >
-              <Video className="size-4" aria-hidden="true" /> Join Call
-            </Button>
-          </div>
         ) : (
           <div className="mt-5 flex flex-col items-center gap-3">
-            <div className="flex size-14 items-center justify-center rounded-full bg-amber-bg text-amber">
-              <Clock className="size-6" aria-hidden="true" />
+            <div className="flex size-14 items-center justify-center rounded-full bg-teal-bg text-teal">
+              <Video className="size-6" aria-hidden="true" />
             </div>
-            <p className="text-sm font-semibold text-neutral-700">Waiting for your care team to join</p>
             {!countdown.isPast && (
-              <p className="font-mono text-2xl font-bold text-amber">
-                {String(countdown.days * 24 + countdown.hours).padStart(2, "0")}:{String(countdown.minutes).padStart(2, "0")}:{String(countdown.seconds).padStart(2, "0")}
-              </p>
+              <div className="flex items-center gap-1.5 text-amber">
+                <Clock className="size-4" aria-hidden="true" />
+                <p className="font-mono text-lg font-bold">
+                  {String(countdown.days * 24 + countdown.hours).padStart(2, "0")}:{String(countdown.minutes).padStart(2, "0")}:{String(countdown.seconds).padStart(2, "0")}
+                </p>
+              </div>
             )}
+            <Button className="w-full" loading={joining} onClick={joinCall}>
+              <Video className="size-4" aria-hidden="true" /> Join Call
+            </Button>
             <p className="text-xs text-neutral-400">
-              You&apos;ll be able to join as soon as your care team starts the call.
+              You can join early and wait — your care team will appear as soon as they connect.
             </p>
+            {joinError && <p className="text-xs text-critical">{joinError}</p>}
           </div>
         )}
       </Card>
