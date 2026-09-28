@@ -3,7 +3,7 @@ import { sql } from "drizzle-orm";
 import { db } from "../../db/index.js";
 import {
   NursingCaseRepository, NursingCaseReviewRepository, NursingDocumentationSheetRepository, UploadSecurityIncidentRepository,
-  IdentityMismatchReportRepository, CaseMetricsRepository, NursingCaseEventRepository, type CaseEventType,
+  IdentityMismatchReportRepository, CaseMetricsRepository, NursingCaseEventRepository,
 } from "./repository.js";
 import { FileRepository } from "../documents/index.js";
 import { PatientRepository } from "../patient/index.js";

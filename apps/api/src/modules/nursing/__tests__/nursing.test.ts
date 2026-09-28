@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeAll } from "vitest";
 import request from "supertest";
-import { eq } from "drizzle-orm";
+import { eq, sql } from "drizzle-orm";
 import crypto from "node:crypto";
 import { createApp } from "../../../app.js";
 import { db } from "../../../db/index.js";
@@ -9,6 +9,7 @@ import { user, session, role, userRole } from "../../auth/schema.js";
 import { patient } from "../../patient/schema.js";
 import { regimen, regimenCycle } from "../../clinical-metrics/schema.js";
 import { file } from "../../documents/schema.js";
+import { nursingCase } from "../schema.js";
 import { SESSION_COOKIE_NAME } from "../../../lib/session-cookie.js";
 import { seedIdentity } from "../../../seed/identity.js";
 
@@ -441,6 +442,28 @@ describe("live infusion buttons and the admin live board", () => {
     const { caseId } = await startCase(false);
     const res = await request(app).post(`/nursing-cases/${caseId}/infusion/start`).set("Cookie", nurse.cookie);
     expect(res.status).toBe(409);
+  });
+
+  it("classifies a naive UTC closed_at against the correct Lagos calendar date (regression)", async () => {
+    // closed_at is a naive `timestamp` column storing UTC wall-clock digits. 2026-01-15T23:30 UTC is already
+    // 2026-01-16 00:30 in Lagos (UTC+1) — the exact case a single `AT TIME ZONE 'Africa/Lagos'` on a naive
+    // column gets backwards (it treats the naive value as *already* Lagos-local and converts it to UTC,
+    // instead of labelling it UTC first). This pins the fixed two-step conversion with a fixed instant, so the
+    // assertion never depends on what time the suite happens to run.
+    const admin = await createUser("REGIONAL_ADMIN", facilityId);
+    const { caseId } = await startCase();
+    await request(app).post(`/nursing-cases/${caseId}/documentation-sheet`).set("Cookie", nurse.cookie).send({ treatmentDate: today() });
+    await request(app).post(`/nursing-cases/${caseId}/review`).set("Cookie", qa.cookie).send({ decision: "REQUIREMENTS_MET" });
+    await db.execute(sql`UPDATE nursing_case SET closed_at = ${"2026-01-15 23:30:00"}::timestamp WHERE id = ${caseId}`);
+
+    const [row] = await db.execute<{ correct_date: string; buggy_date: string }>(sql`
+      SELECT
+        (closed_at at time zone 'UTC' at time zone 'Africa/Lagos')::date as correct_date,
+        (closed_at at time zone 'Africa/Lagos')::date as buggy_date
+      FROM nursing_case WHERE id = ${caseId}
+    `);
+    expect(String(row!.correct_date)).toBe("2026-01-16");
+    expect(String(row!.buggy_date)).toBe("2026-01-15");
   });
 
   it("shows Regional Admin the live stage and milestone timeline of cases in their region only", async () => {

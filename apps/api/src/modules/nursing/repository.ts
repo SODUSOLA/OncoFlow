@@ -242,7 +242,10 @@ export class NursingCaseEventRepository {
         isNull(nursingCase.deletedAt),
         or(
           ne(nursingCase.status, "CLOSED"),
-          sql`(${nursingCase.closedAt} at time zone 'Africa/Lagos')::date = (now() at time zone 'Africa/Lagos')::date`,
+          // closed_at is a naive timestamp storing UTC digits (like every other timestamp column here), so it must
+          // first be labelled UTC (naive → timestamptz) before converting to Lagos local for the date comparison —
+          // a single `AT TIME ZONE 'Africa/Lagos'` on a naive column runs the conversion backwards.
+          sql`(${nursingCase.closedAt} at time zone 'UTC' at time zone 'Africa/Lagos')::date = (now() at time zone 'Africa/Lagos')::date`,
         ),
         facilityIds ? inArray(patient.facilityId, facilityIds) : undefined,
       ))
