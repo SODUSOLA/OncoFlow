@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
+import { useSearchParams } from "react-router-dom";
 import { ArrowUpDown, CircleCheck, Clock3, Send as SendIcon, TriangleAlert, User, Users as UsersIcon } from "lucide-react";
 import { api } from "../../../lib/api";
 import type { CountdownCase, Patient, PublicInquiry, PublicInquiryMessage } from "../../../lib/types";
@@ -300,7 +301,9 @@ function CategoryPill({ linked }: { linked: boolean }) {
 export default function GeneralInquiryPage() {
   const [inquiries, setInquiries] = useState<PublicInquiry[]>([]);
   const [summaries, setSummaries] = useState<Record<string, ThreadSummary>>({});
-  const [selectedId, setSelectedId] = useState<string | null>(null);
+  // The overview's inquiry queue deep-links here with ?id= so a clicked visitor opens straight into their thread.
+  const [searchParams] = useSearchParams();
+  const [selectedId, setSelectedId] = useState<string | null>(searchParams.get("id"));
   const [urgentFirst, setUrgentFirst] = useState(true);
   const [now, setNow] = useState(() => Date.now());
 

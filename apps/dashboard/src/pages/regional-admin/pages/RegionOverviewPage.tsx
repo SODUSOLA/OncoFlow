@@ -1,10 +1,11 @@
-import { useEffect, useMemo, useState } from "react";
+import { Fragment, useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import { api } from "../../../lib/api";
 import type { CountdownCase, Invoice, Patient, PublicInquiry } from "../../../lib/types";
 import { Card } from "../../../components/ui/Card";
 import { Button } from "../../../components/ui/Button";
 import { useRegionScope } from "../lib/useRegionScope";
+import { CallPatientButton } from "../components/CallPatientButton";
 
 // Formats kobo as a naira string.
 function koboToNaira(k: number) {
@@ -38,6 +39,7 @@ export default function RegionOverviewPage() {
   const [invoices, setInvoices] = useState<Invoice[]>([]);
   const [inquiries, setInquiries] = useState<PublicInquiry[]>([]);
   const [stock, setStock] = useState<StockOverview | null>(null);
+  const [chasingId, setChasingId] = useState<string | null>(null);
 
   useEffect(() => {
     api.get<{ cases: CountdownCase[] }>("/countdown-cases?scope=overview").then((d) => setCases(d.cases)).catch(() => {});
@@ -113,8 +115,9 @@ export default function RegionOverviewPage() {
           {escalated.length === 0 ? (
             <div className="p-8 text-center text-sm text-gray-400">No escalations in region</div>
           ) : (
+            <div className="max-h-[320px] overflow-y-auto">
             <table className="w-full text-sm">
-              <thead className="text-left text-xs text-gray-400">
+              <thead className="sticky top-0 bg-white text-left text-xs text-gray-400">
                 <tr>
                   <th className="px-5 py-2 font-medium">Case</th>
                   <th className="px-5 py-2 font-medium">Facility</th>
@@ -127,20 +130,47 @@ export default function RegionOverviewPage() {
                 {escalated.map((c) => {
                   const patient = patientById.get(c.patientId);
                   const facility = patient ? facilityById.get(patient.facilityId) : undefined;
+                  const chasing = chasingId === c.id;
                   return (
-                    <tr key={c.id}>
-                      <td className="px-5 py-3 font-mono text-xs text-gray-700">{c.id.slice(0, 8).toUpperCase()}</td>
-                      <td className="px-5 py-3 text-gray-700">{facility?.name ?? "—"}</td>
-                      <td className="px-5 py-3 text-gray-500">Day {c.currentDay}</td>
-                      <td className="px-5 py-3 text-red-600">{blockedOn(c)}</td>
-                      <td className="px-5 py-3 text-right">
-                        <Button size="sm" variant="outline">Chase</Button>
-                      </td>
-                    </tr>
+                    <Fragment key={c.id}>
+                      <tr>
+                        <td className="px-5 py-3 font-mono text-xs text-gray-700">{c.id.slice(0, 8).toUpperCase()}</td>
+                        <td className="px-5 py-3 text-gray-700">{facility?.name ?? "—"}</td>
+                        <td className="px-5 py-3 text-gray-500">Day {c.currentDay}</td>
+                        <td className="px-5 py-3 text-red-600">{blockedOn(c)}</td>
+                        <td className="px-5 py-3 text-right">
+                          <Button size="sm" variant="outline" aria-expanded={chasing} onClick={() => setChasingId(chasing ? null : c.id)}>
+                            {chasing ? "Close" : "Chase"}
+                          </Button>
+                        </td>
+                      </tr>
+                      {chasing && (
+                        <tr className="bg-gray-50">
+                          <td colSpan={5} className="px-5 py-3">
+                            <div className="flex flex-wrap items-center justify-between gap-3">
+                              <div className="text-sm">
+                                <p className="font-medium text-gray-800">
+                                  {patient ? `${patient.firstName} ${patient.lastName}` : "Unknown patient"}
+                                  {patient && <span className="ml-2 font-mono text-xs font-normal text-gray-500">{patient.uniquePatientId}</span>}
+                                </p>
+                                <p className="text-xs text-gray-500">Waiting on: {blockedOn(c)}</p>
+                              </div>
+                              <div className="flex items-start gap-2">
+                                {patient && <CallPatientButton patientId={patient.id} />}
+                                <Link to="/dashboard/regional-admin/countdown">
+                                  <Button size="sm" variant="ghost">Open board</Button>
+                                </Link>
+                              </div>
+                            </div>
+                          </td>
+                        </tr>
+                      )}
+                    </Fragment>
                   );
                 })}
               </tbody>
             </table>
+            </div>
           )}
         </Card>
 
@@ -151,13 +181,13 @@ export default function RegionOverviewPage() {
           </div>
           <div className="flex-1 divide-y divide-gray-50">
             {inquiries.filter((i) => i.status === "OPEN").slice(0, 4).map((inq) => (
-              <div key={inq.id} className="flex items-start justify-between gap-2 px-5 py-3">
+              <Link key={inq.id} to={`/dashboard/regional-admin/inquiry?id=${inq.id}`} className="flex items-start justify-between gap-2 px-5 py-3 hover:bg-gray-50">
                 <div className="min-w-0">
                   <p className="truncate text-sm font-medium text-gray-800">{inq.name}</p>
                   <p className="truncate text-xs text-gray-400">{[inq.email, inq.phone].filter(Boolean).join(" · ") || "No contact given"}</p>
                 </div>
                 <span className="shrink-0 text-xs text-gray-400">{timeAgo(inq.updatedAt)}</span>
-              </div>
+              </Link>
             ))}
             {inquiries.filter((i) => i.status === "OPEN").length === 0 && (
               <p className="px-5 py-6 text-center text-sm text-gray-400">No open inquiries</p>
@@ -178,7 +208,7 @@ export default function RegionOverviewPage() {
           <code className="rounded bg-gray-100 px-1 py-0.5 text-[11px]">region</code> = <code className="rounded bg-gray-100 px-1 py-0.5 text-[11px]">{region ?? "—"}</code>.
           Records outside the region are not shown here.
         </p>
-        <div className="mt-4 grid grid-cols-4 gap-3">
+        <div className="mt-4 grid max-h-[320px] grid-cols-4 gap-3 overflow-y-auto">
           {facilities.map((f) => {
             const inRegion = facilityIdsInRegion.has(f.id);
             return (
