@@ -361,6 +361,27 @@ export async function getWalletHandler(req: Request, res: Response) {
   }
 }
 
+// Lets a patient switch automatic wallet deduction on or off for their own wallet; staff cannot change it on a patient's behalf.
+export async function setAutoDeductHandler(req: Request, res: Response) {
+  try {
+    const callerId = (req as AuthenticatedRequest).userId;
+    const patientRow = await patientRepo.findByUserId(callerId);
+    if (!patientRow) {
+      res.status(404).json({ error: "No patient record is linked to this account" });
+      return;
+    }
+    const w = await walletRepo.findByPatient(patientRow.id);
+    if (!w) {
+      res.status(404).json({ error: "Wallet not found" });
+      return;
+    }
+    const updated = await walletRepo.setAutoDeduct(w.id, Boolean(req.body.enabled));
+    res.json({ wallet: new Wallet(updated).toJSON() });
+  } catch {
+    res.status(500).json({ error: "Internal server error" });
+  }
+}
+
 // Exposes TimelineService, which had no HTTP route; it only reads, and recording entries is separate follow-up work.
 export async function getPatientTimelineHandler(req: Request, res: Response) {
   try {

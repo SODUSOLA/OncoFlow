@@ -89,6 +89,8 @@ export const wallet = pgTable("wallet", {
   patientId: uuid("patient_id").notNull().references(() => patient.id),
   // No DB default because a literal 0n breaks drizzle-kit snapshot diffing; every insert sets it explicitly.
   balanceKobo: bigint("balance_kobo", { mode: "bigint" }).notNull(),
+  // Patient opt-in: invoices issued while this is on are paid from the wallet automatically when the balance covers them.
+  autoDeductEnabled: boolean("auto_deduct_enabled").notNull().default(false),
   createdAt: timestamp("created_at").notNull().defaultNow(),
   updatedAt: timestamp("updated_at").notNull().defaultNow(),
 }, (t) => ({

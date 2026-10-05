@@ -1,0 +1,1 @@
+ALTER TABLE "wallet" ADD COLUMN "auto_deduct_enabled" boolean DEFAULT false NOT NULL;

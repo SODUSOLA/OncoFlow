@@ -2,6 +2,7 @@ export interface WalletData {
   id: string;
   patientId: string;
   balanceKobo: bigint;
+  autoDeductEnabled?: boolean;
 }
 
 // Domain entity for a patient's wallet.
@@ -14,6 +15,6 @@ export class Wallet {
 
   // Serializes the wallet, with the bigint balance as a string.
   toJSON() {
-    return { id: this.data.id, patientId: this.data.patientId, balanceKobo: this.data.balanceKobo.toString() };
+    return { id: this.data.id, patientId: this.data.patientId, balanceKobo: this.data.balanceKobo.toString(), autoDeductEnabled: this.data.autoDeductEnabled ?? false };
   }
 }

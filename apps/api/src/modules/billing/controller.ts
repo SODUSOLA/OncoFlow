@@ -9,6 +9,7 @@ import { ServiceClassification, Tariff } from "./entities/ServiceClassification.
 import { WalletTransaction } from "./entities/WalletTransaction.js";
 // Cross-module read to check whether an invoice's patient is the caller's own record before falling back to staff grants.
 import { PatientRepository, WalletRepository } from "../patient/index.js";
+import { SubscriptionService } from "./services/SubscriptionService.js";
 
 const invoiceSvc = new InvoiceService();
 const invoiceRepo = new InvoiceRepository();
@@ -18,6 +19,7 @@ const tariffRepo = new TariffRepository();
 const walletTransactionRepo = new WalletTransactionRepository();
 const patientRepo = new PatientRepository();
 const walletRepo = new WalletRepository();
+const subscriptionSvc = new SubscriptionService();
 
 // True when the patient record belongs to the caller.
 async function callerOwnsPatient(callerId: string, patientId: string): Promise<boolean> {
@@ -110,7 +112,7 @@ export async function listInvoicesHandler(req: Request, res: Response) {
 // Sends a draft invoice to the patient.
 export async function sendInvoiceHandler(req: Request, res: Response) {
   try {
-    const result = await invoiceSvc.sendInvoice(String(req.params.id));
+    const result = await invoiceSvc.sendInvoiceWithAutoDeduct(String(req.params.id));
     res.json(result);
   } catch (err) {
     const message = err instanceof Error ? err.message : "Internal server error";
@@ -215,5 +217,38 @@ export async function listWalletTransactionsHandler(req: Request, res: Response)
     res.json({ transactions: rows.map((row) => new WalletTransaction(row).toJSON()) });
   } catch {
     res.status(500).json({ error: "Internal server error" });
+  }
+}
+
+// Returns the caller's own membership state and the term prices.
+export async function getSubscriptionHandler(req: Request, res: Response) {
+  try {
+    const patientRow = await patientRepo.findByUserId((req as AuthenticatedRequest).userId);
+    if (!patientRow) {
+      res.status(404).json({ error: "No patient record is linked to this account" });
+      return;
+    }
+    res.json(await subscriptionSvc.current(patientRow.id));
+  } catch {
+    res.status(500).json({ error: "Internal server error" });
+  }
+}
+
+// Subscribes or renews the caller's own membership from their wallet; an uncovered fee returns 402 with the unpaid invoice.
+export async function subscribeHandler(req: Request, res: Response) {
+  try {
+    const patientRow = await patientRepo.findByUserId((req as AuthenticatedRequest).userId);
+    if (!patientRow) {
+      res.status(404).json({ error: "No patient record is linked to this account" });
+      return;
+    }
+    const result = await subscriptionSvc.subscribe(patientRow.id, req.body.billingCycle);
+    if (!result.paid) {
+      res.status(402).json({ error: "Insufficient wallet balance", invoice: result.invoice });
+      return;
+    }
+    res.status(201).json(result);
+  } catch (err) {
+    res.status(400).json({ error: err instanceof Error ? err.message : "Internal server error" });
   }
 }

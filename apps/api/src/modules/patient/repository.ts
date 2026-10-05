@@ -166,6 +166,16 @@ export class WalletRepository {
     return row[0]!;
   }
 
+  // Turns the patient's automatic wallet deduction on or off.
+  async setAutoDeduct(id: string, enabled: boolean) {
+    const row = await db
+      .update(wallet)
+      .set({ autoDeductEnabled: enabled, updatedAt: new Date() })
+      .where(eq(wallet.id, id))
+      .returning();
+    return row[0]!;
+  }
+
   // Sets a wallet's balance.
   async updateBalance(id: string, balanceKobo: bigint) {
     const row = await db

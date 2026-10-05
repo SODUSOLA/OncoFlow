@@ -3,6 +3,7 @@ import {
   createInvoiceHandler, getInvoiceHandler, listInvoicesHandler,
   sendInvoiceHandler, payInvoiceHandler, voidInvoiceHandler,
   listClassificationsHandler, listWalletTransactionsHandler, listTariffsHandler,
+  getSubscriptionHandler, subscribeHandler,
 } from "./controller.js";
 import { requirePermission, requireAuthenticated } from "../../lib/rbac.js";
 import { validateBody, validateParams, validateQuery } from "../../lib/validation.js";
@@ -34,6 +35,8 @@ const listTariffsQuerySchema = z.object({
   facilityId: z.string().uuid(),
 });
 
+const subscribeSchema = z.object({ billingCycle: z.enum(["MONTHLY", "YEARLY"]) });
+
 const router = Router();
 
 // Read and pay require only authentication (ownership check in the controller); create, send and void stay staff-only.
@@ -54,5 +57,9 @@ router.get("/classifications", requireAuthenticated(), listClassificationsHandle
 router.get("/tariffs", requirePermission("tariff", "read"), validateQuery(listTariffsQuerySchema), listTariffsHandler);
 // Lists wallet transactions (own for patients).
 router.get("/wallet/transactions", requireAuthenticated(), validateQuery(walletTransactionsQuerySchema), listWalletTransactionsHandler);
+
+// Membership is a patient's own account, so these need a session rather than a grant; handlers only ever touch the caller's record.
+router.get("/subscription", requireAuthenticated(), getSubscriptionHandler);
+router.post("/subscription", requireAuthenticated(), validateBody(subscribeSchema), subscribeHandler);
 
 export { router as billingRoutes };

@@ -3,7 +3,7 @@ import {
   registerPatientHandler, getPatientHandler, getMyPatientHandler, searchPatientsHandler,
   updatePatientHandler, deletePatientHandler,
   createAddressHandler, createEmergencyContactHandler,
-  getWalletHandler, getPatientTimelineHandler, listPendingRegistrationsHandler,
+  getWalletHandler, setAutoDeductHandler, getPatientTimelineHandler, listPendingRegistrationsHandler,
   callPatientHandler, confirmFacilityHandler,
 } from "./controller.js";
 import { requirePermission, requireAuthenticated } from "../../lib/rbac.js";
@@ -67,6 +67,8 @@ const walletQuerySchema = z.object({
   patientId: z.string().uuid(),
 });
 
+const autoDeductSchema = z.object({ enabled: z.boolean() });
+
 const router = Router();
 
 // Not public: Admin issues the Unique Patient ID after reviewing a registration, so callers can't self-assign one.
@@ -95,5 +97,7 @@ router.post("/patients/:id/call", requirePermission("patient", "call"), validate
 router.patch("/patients/:id/confirm-facility", requirePermission("patient", "update"), validateParams(patientIdParamSchema), validateBody(confirmFacilitySchema), confirmFacilityHandler);
 // Same reasoning as GET /patients/:id — ownership-or-permission check lives in getWalletHandler.
 router.get("/wallet", requireAuthenticated(), validateQuery(walletQuerySchema), getWalletHandler);
+// A patient's own preference, so it needs a session rather than a grant; the handler only ever touches the caller's wallet.
+router.put("/wallet/auto-deduct", requireAuthenticated(), validateBody(autoDeductSchema), setAutoDeductHandler);
 
 export { router as patientRoutes };

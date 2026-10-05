@@ -4,6 +4,8 @@ import { Invoice } from "./entities/Invoice.js";
 import { PaymentService } from "./services/PaymentService.js";
 import { db } from "../../db/index.js";
 import { invoice, invoiceItem } from "./schema.js";
+import { eq } from "drizzle-orm";
+import { wallet } from "../../db/schema.js";
 
 const invoiceRepo = new InvoiceRepository();
 const itemRepo = new InvoiceItemRepository();
@@ -89,6 +91,22 @@ export class InvoiceService {
     await invoiceRepo.update(invoiceId, { status: "SENT", issuedAt: new Date() });
 
     return { invoice: updated.toJSON() };
+  }
+
+  // Sends the invoice, then pays it straight from the wallet when the patient opted into automatic deduction and the balance covers it.
+  async sendInvoiceWithAutoDeduct(invoiceId: string) {
+    const sent = await this.sendInvoice(invoiceId);
+    const row = await invoiceRepo.findById(invoiceId);
+    if (!row) return sent;
+    const walletRow = (await db.select().from(wallet).where(eq(wallet.patientId, row.patientId)).limit(1))[0];
+    if (!walletRow?.autoDeductEnabled || walletRow.balanceKobo < row.totalKobo) return sent;
+    try {
+      return await this.payInvoice(invoiceId);
+    } catch (err) {
+      // The invoice is already SENT and payable by hand, so a failed automatic charge must not fail the send.
+      console.error(`Automatic deduction failed for invoice ${invoiceId}:`, err);
+      return sent;
+    }
   }
 
   // Pays an invoice from the patient's wallet.
