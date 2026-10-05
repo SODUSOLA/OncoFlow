@@ -3,15 +3,23 @@ import { BrowserRouter, Routes, Route, Navigate, useLocation } from "react-route
 import { BookOpen, FileBarChart } from "lucide-react";
 import { DashboardLayout } from "./components/DashboardLayout";
 import { AuthProvider, useAuth } from "./lib/auth";
+import { NotificationBridge } from "./lib/NotificationBridge";
 import { dashboardPathForRoles, hasStaffAccess } from "./lib/roleRouting";
 import Login from "./pages/Login";
 import SetPassword from "./pages/SetPassword";
 
 // Lazy-loaded placeholder dashboards for roles that don't have their own shell yet.
-const vmo = lazy(() => import("./pages/virtual-medical-officer/Dashboard"));
 const scd = lazy(() => import("./pages/state-clinical-director/Dashboard"));
 const sdns = lazy(() => import("./pages/state-director-of-nursing-services/Dashboard"));
 const superAdmin = lazy(() => import("./pages/super-admin/Dashboard"));
+
+// Virtual Medical Officer: desktop shell with the side-effect inbox, the locked triage checklist and the gated patient folder.
+const VmoLayout = lazy(() => import("./pages/virtual-medical-officer/shell/VmoLayout").then((m) => ({ default: m.VmoLayout })));
+const VmoDashboard = lazy(() => import("./pages/virtual-medical-officer/pages/DashboardPage"));
+const VmoInbox = lazy(() => import("./pages/virtual-medical-officer/pages/InboxPage"));
+const VmoTriage = lazy(() => import("./pages/virtual-medical-officer/pages/TriageChecklistPage"));
+const VmoFolder = lazy(() => import("./pages/virtual-medical-officer/pages/PatientFolderPage"));
+const VmoMedicationTriage = lazy(() => import("./pages/virtual-medical-officer/pages/MedicationTriagePage"));
 
 // Quality Assurance Officer has its own shell too: a pending-review queue and a case review page.
 const QaLayout = lazy(() => import("./pages/quality-assurance-officer/shell/QaLayout").then((m) => ({ default: m.QaLayout })));
@@ -69,7 +77,6 @@ const NoSettings = lazy(() => import("./pages/onsite-nursing-officer/pages/Setti
 const NoNewCaseWizard = lazy(() => import("./pages/onsite-nursing-officer/wizard/NewCaseWizard"));
 
 const roles = [
-  { path: "virtual-medical-officer", component: vmo, label: "Virtual Medical Officer" },
   { path: "state-clinical-director", component: scd, label: "State Clinical Director" },
   { path: "state-director-of-nursing-services", component: sdns, label: "State Director of Nursing Services" },
   { path: "super-admin", component: superAdmin, label: "Super Admin" },
@@ -265,6 +272,23 @@ function AppRoutes() {
         <Route path="new-case" element={<Suspense fallback={<FullScreenLoading />}><NoNewCaseWizard /></Suspense>} />
       </Route>
       <Route
+        path="dashboard/virtual-medical-officer"
+        element={
+          <RequireAuth>
+            <Suspense fallback={<FullScreenLoading />}>
+              <VmoLayout />
+            </Suspense>
+          </RequireAuth>
+        }
+      >
+        <Route index element={<Suspense fallback={<FullScreenLoading />}><VmoDashboard /></Suspense>} />
+        <Route path="inbox" element={<Suspense fallback={<FullScreenLoading />}><VmoInbox /></Suspense>} />
+        <Route path="inbox/:conversationId" element={<Suspense fallback={<FullScreenLoading />}><VmoInbox /></Suspense>} />
+        <Route path="triage/:conversationId" element={<Suspense fallback={<FullScreenLoading />}><VmoTriage /></Suspense>} />
+        <Route path="folder/:conversationId" element={<Suspense fallback={<FullScreenLoading />}><VmoFolder /></Suspense>} />
+        <Route path="medication-triage/:conversationId" element={<Suspense fallback={<FullScreenLoading />}><VmoMedicationTriage /></Suspense>} />
+      </Route>
+      <Route
         path="dashboard/quality-assurance-officer"
         element={
           <RequireAuth>
@@ -295,7 +319,9 @@ export function App() {
   return (
     <BrowserRouter>
       <AuthProvider>
-        <AppRoutes />
+        <NotificationBridge>
+          <AppRoutes />
+        </NotificationBridge>
       </AuthProvider>
     </BrowserRouter>
   );
