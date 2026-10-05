@@ -8,6 +8,9 @@ export class ApiError extends Error {
   }
 }
 
+// Credential, MFA and password-reset calls answer 401 for a wrong password or code, which is not an expired session.
+const AUTH_ENTRY_PATHS = /^\/auth\/(login|logout|mfa|register|reset-password|forgot-password|verify-email)/;
+
 // Sends a JSON request to the API and throws an ApiError on failure.
 async function request<T>(path: string, options?: RequestInit): Promise<T> {
   const res = await fetch(`${BASE_URL}${path}`, {
@@ -15,6 +18,9 @@ async function request<T>(path: string, options?: RequestInit): Promise<T> {
     headers: { "Content-Type": "application/json", ...options?.headers },
     ...options,
   });
+  if (res.status === 401 && typeof window !== "undefined" && !AUTH_ENTRY_PATHS.test(path) && window.location.pathname !== "/login") {
+    window.location.assign("/login?expired=1");
+  }
   if (!res.ok) {
     const body = await res.json().catch(() => ({ error: res.statusText }));
     throw new ApiError(body.error ?? `Request failed: ${res.status}`, body);

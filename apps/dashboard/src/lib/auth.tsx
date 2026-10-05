@@ -1,5 +1,5 @@
 import { createContext, useContext, useEffect, useState, type ReactNode } from "react";
-import { api } from "./api";
+import { api, SESSION_EXPIRED_EVENT } from "./api";
 import { invalidateRegionScope } from "../pages/regional-admin/lib/facilityStore";
 
 export interface AuthUser {
@@ -26,6 +26,8 @@ interface AuthState {
   user: AuthUser | null;
   roles: AuthRole[];
   loading: boolean;
+  // Set when a signed-in session is rejected by the server, so the login page can say why the user was sent back.
+  sessionExpired: boolean;
 }
 
 interface AuthContextValue extends AuthState {
@@ -40,19 +42,28 @@ const AuthContext = createContext<AuthContextValue | null>(null);
 
 // Provides the session (user and roles) and login/logout to the app.
 export function AuthProvider({ children }: { children: ReactNode }) {
-  const [state, setState] = useState<AuthState>({ user: null, roles: [], loading: true });
+  const [state, setState] = useState<AuthState>({ user: null, roles: [], loading: true, sessionExpired: false });
 
   // Restores an existing session on load via /auth/profile, so a refresh doesn't drop back to the login screen.
   useEffect(() => {
     api.get<{ user: AuthUser; roles: AuthRole[] }>("/auth/profile")
-      .then(({ user, roles }) => setState({ user, roles, loading: false }))
-      .catch(() => setState({ user: null, roles: [], loading: false }));
+      .then(({ user, roles }) => setState({ user, roles, loading: false, sessionExpired: false }))
+      .catch(() => setState({ user: null, roles: [], loading: false, sessionExpired: false }));
+  }, []);
+
+  // The API client reports a 401 on any authenticated call; dropping the user here sends the protected routes to /login.
+  useEffect(() => {
+    function onExpired() {
+      setState((prev) => (prev.user ? { user: null, roles: [], loading: false, sessionExpired: true } : prev));
+    }
+    window.addEventListener(SESSION_EXPIRED_EVENT, onExpired);
+    return () => window.removeEventListener(SESSION_EXPIRED_EVENT, onExpired);
   }, []);
 
   // Returns the authenticated identity so the caller can refuse accounts this app shouldn't accept, such as patients.
   async function login(email: string, password: string) {
     const result = await api.post<{ user: AuthUser; roles: AuthRole[] }>("/auth/login", { email, password });
-    setState({ user: result.user, roles: result.roles, loading: false });
+    setState({ user: result.user, roles: result.roles, loading: false, sessionExpired: false });
     return result;
   }
 
@@ -65,7 +76,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     try {
       Object.keys(localStorage).filter((k) => k.startsWith("oncoflow.docDraft.")).forEach((k) => localStorage.removeItem(k));
     } catch { /* storage unavailable — nothing to clear */ }
-    setState({ user: null, roles: [], loading: false });
+    setState({ user: null, roles: [], loading: false, sessionExpired: false });
   }
 
   // Swaps in a freshly-returned user without touching roles or the loading flag.

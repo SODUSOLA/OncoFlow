@@ -1,5 +1,10 @@
 const BASE_URL = "/api";
 
+// Credential and MFA calls answer 401 for a wrong password or code, which is not an expired session.
+const AUTH_ENTRY_PATHS = /^\/auth\/(login|logout|mfa|reset-password|forgot-password)/;
+
+export const SESSION_EXPIRED_EVENT = "oncoflow:session-expired";
+
 // Sends a JSON request to the API with credentials and throws on a non-OK response.
 async function request<T>(path: string, options?: RequestInit): Promise<T> {
   const res = await fetch(`${BASE_URL}${path}`, {
@@ -7,6 +12,9 @@ async function request<T>(path: string, options?: RequestInit): Promise<T> {
     headers: { "Content-Type": "application/json", ...options?.headers },
     ...options,
   });
+  if (res.status === 401 && !AUTH_ENTRY_PATHS.test(path)) {
+    window.dispatchEvent(new Event(SESSION_EXPIRED_EVENT));
+  }
   if (!res.ok) {
     const body = await res.json().catch(() => ({ error: res.statusText }));
     throw new Error(body.error ?? `Request failed: ${res.status}`);

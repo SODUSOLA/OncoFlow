@@ -2,7 +2,7 @@
 
 import { useState, type FormEvent } from "react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { ShieldCheck } from "lucide-react";
 import { Button } from "@/components/ui/Button";
 import { FieldWrapper, Input, PasswordInput } from "@/components/ui/Field";
@@ -23,6 +23,7 @@ interface LoginResponse {
 // see the verification step below — it only appears for a patient who has enabled it in Settings.
 export function LoginForm() {
   const router = useRouter();
+  const sessionExpired = useSearchParams().get("expired") === "1";
   const [values, setValues] = useState({ identifier: "", password: "" });
   const [errors, setErrors] = useState<{ identifier?: string; password?: string; form?: string }>({});
   const [loading, setLoading] = useState(false);
@@ -159,6 +160,12 @@ export function LoginForm() {
           Forgot password?
         </Link>
       </div>
+
+      {sessionExpired && !errors.form && (
+        <p role="status" className="rounded-xl bg-warning-bg px-4 py-3 text-sm text-warning">
+          Your session has expired. Please log in again.
+        </p>
+      )}
 
       {errors.form && (
         <p role="alert" className="rounded-xl bg-warning-bg px-4 py-3 text-sm text-warning">

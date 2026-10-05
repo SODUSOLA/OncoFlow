@@ -6,7 +6,7 @@ import { dashboardPathForRoles, hasStaffAccess } from "../lib/roleRouting";
 
 // Staff login page.
 export default function Login() {
-  const { user, roles, loading, login, logout } = useAuth();
+  const { user, roles, loading, sessionExpired, login, logout } = useAuth();
   const location = useLocation();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -72,6 +72,12 @@ export default function Login() {
           <div className="mb-2 text-center">
             <h1 className="text-base font-semibold text-gray-900">Sign in to your dashboard</h1>
           </div>
+
+          {sessionExpired && !error && (
+            <p role="status" className="rounded bg-amber-50 px-3 py-2 text-sm text-amber-800">
+              Your session has expired. Please sign in again.
+            </p>
+          )}
 
           <div>
             <label className="mb-1 block text-sm text-gray-600">Email</label>
