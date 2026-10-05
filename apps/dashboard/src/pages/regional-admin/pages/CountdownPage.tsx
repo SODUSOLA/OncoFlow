@@ -3,8 +3,8 @@ import { FlaskConical, TriangleAlert, Clock, Syringe, Lock, CalendarDays } from 
 import { api } from "../../../lib/api";
 import type { CountdownCase, Patient } from "../../../lib/types";
 import { Card } from "../../../components/ui/Card";
-import { Badge } from "../../../components/ui/Badge";
 import { Button } from "../../../components/ui/Button";
+import { EscalateCaseButton } from "../components/EscalateCaseButton";
 import { cn } from "../../../lib/utils";
 import { useRegionScope } from "../lib/useRegionScope";
 import { type CountdownCardStatus, deriveCountdownStatus, isCountdownBreached } from "../lib/countdownStatus";
@@ -18,16 +18,6 @@ const STATUS_LABEL: Record<CardStatus, string> = {
   "md-review-pending": "MD Review Pending",
   "infusion-ready": "Infusion Ready",
   escalated: "Escalated",
-};
-
-// Overrides Badge's generic colors per instance with the locked admin-* SLA badge colors, without changing Badge for other screens.
-const STATUS_BADGE_CLASS: Record<CardStatus, string> = {
-  "on-track": "bg-admin-disabled-alt text-admin-text-secondary",
-  "overdue-bloodwork": "bg-admin-danger/10 text-admin-danger-text",
-  "awaiting-consent": "bg-admin-disabled-alt text-admin-text-secondary",
-  "md-review-pending": "bg-admin-warning/15 text-admin-warning",
-  "infusion-ready": "bg-admin-success/15 text-admin-success",
-  escalated: "bg-admin-danger/10 text-admin-danger-text",
 };
 
 // Status derived from real CountdownCase fields in the pathway's order (labs → QA → payment), shared with the bell alert and Notification Center.
@@ -80,156 +70,170 @@ export default function CountdownPage() {
   if (loading) return <p className="text-admin-body-sm text-admin-text-secondary">Loading…</p>;
 
   return (
-    <div className="space-y-5">
+    <div className="space-y-6">
       <div className="grid grid-cols-4 gap-4">
-        {/* Neutral variant */}
-        <Card className="flex items-start justify-between border-admin-border p-4">
+        <Card className="flex items-start justify-between rounded-admin-sm border-admin-border p-[17px] shadow-[0_1px_1px_rgba(0,0,0,0.05)]">
           <div>
-            <p className="text-admin-caption text-admin-text-secondary">Active Cycles</p>
-            <p className="text-3xl font-bold text-admin-text">{stats.active}</p>
-            <p className="mt-1 text-admin-caption text-admin-text-secondary">across {facilityIdsInRegion.size || 1} {facilityIdsInRegion.size === 1 ? "facility" : "facilities"} in region</p>
+            <p className="text-admin-body-sm font-semibold tracking-[0.14px] text-admin-text-secondary">Active Cycles</p>
+            <p className="mt-1 text-[32px] font-semibold leading-10 text-admin-text">{stats.active}</p>
           </div>
-          <FlaskConical className="size-6 text-admin-text-secondary" aria-hidden="true" />
+          <FlaskConical className="size-7 text-admin-text-secondary" aria-hidden="true" />
         </Card>
-        {/* Danger variant: left-border strip, not a full ring */}
-        <Card className="flex items-start justify-between rounded-admin-sm border-admin-border border-l-4 border-l-admin-danger p-4">
+        <Card className="flex items-start justify-between rounded-admin-sm border-admin-danger border-l-4 p-[17px] shadow-[0_1px_2px_rgba(0,0,0,0.05)]">
           <div>
-            <p className="text-admin-caption font-medium text-admin-danger">SLA Breaches</p>
-            <p className="text-3xl font-bold text-admin-danger">{stats.breaches}</p>
+            <p className="text-admin-body-sm font-semibold tracking-[0.14px] text-admin-text-secondary">SLA Breaches</p>
+            <p className="mt-1 text-[32px] font-semibold leading-10 text-admin-danger">{stats.breaches}</p>
           </div>
-          <TriangleAlert className="size-6 text-admin-danger" aria-hidden="true" />
+          <TriangleAlert className="size-7 text-admin-danger" aria-hidden="true" />
         </Card>
-        {/* Warning variant: full border */}
-        <Card className="flex items-start justify-between border-admin-warning p-4 shadow-admin-warning">
+        <Card className="flex items-start justify-between rounded-admin-sm border-admin-warning p-[17px] shadow-[0_2px_4px_rgba(230,126,34,0.15)]">
           <div>
-            <p className="text-admin-caption font-medium text-admin-warning">At Risk (Next 24h)</p>
-            <p className="text-3xl font-bold text-admin-warning">{stats.atRisk}</p>
+            <p className="text-admin-body-sm font-semibold tracking-[0.14px] text-admin-text-secondary">At Risk (Next 24h)</p>
+            <p className="mt-1 text-[32px] font-semibold leading-10 text-admin-warning">{stats.atRisk}</p>
           </div>
-          <Clock className="size-6 text-admin-warning" aria-hidden="true" />
+          <Clock className="size-7 text-admin-warning" aria-hidden="true" />
         </Card>
-        {/* Success accent: neutral border, colored icon/number only */}
-        <Card className="flex items-start justify-between border-admin-border p-4">
+        <Card className="flex items-start justify-between rounded-admin-sm border-admin-border p-[17px] shadow-[0_1px_1px_rgba(0,0,0,0.05)]">
           <div>
-            <p className="text-admin-caption text-admin-text-secondary">Infusion Ready (Day 0)</p>
-            <p className="text-3xl font-bold text-admin-success">{stats.infusionReady}</p>
+            <p className="text-admin-body-sm font-semibold tracking-[0.14px] text-admin-text-secondary">Infusion Ready (Day 0)</p>
+            <p className="mt-1 text-[32px] font-semibold leading-10 text-admin-success">{stats.infusionReady}</p>
           </div>
-          <Syringe className="size-6 text-admin-success" aria-hidden="true" />
+          <Syringe className="size-7 text-admin-success" aria-hidden="true" />
         </Card>
       </div>
 
       {visibleCases.length === 0 ? (
         <Card className="border-admin-border p-8 text-center text-admin-body-sm text-admin-text-secondary">No active countdown cases</Card>
       ) : (
-        <div className="grid grid-cols-4 gap-4">
+        <div className="flex items-start gap-4 overflow-x-auto pb-2">
           {COLUMNS.map((col) => {
             const colCases = visibleCases.filter((c) => col.match(c.currentDay));
             const isDay0 = col.key === "day0";
             return (
-              <div key={col.key} className="space-y-3">
-                <div
+              <section
+                key={col.key}
+                className={cn(
+                  "flex max-h-[640px] shrink-0 flex-col overflow-hidden",
+                  isDay0
+                    ? "w-[306px] rounded-admin-md border-2 border-admin-success bg-white p-0.5 shadow-[0_4px_12px_rgba(45,106,79,0.10)]"
+                    : "w-[282px] rounded-admin-md border border-admin-border bg-admin-card-alt p-px",
+                )}
+              >
+                <header
                   className={cn(
-                    "flex items-center justify-between rounded-admin-sm px-3 py-2",
-                    isDay0 ? "bg-admin-success" : "bg-admin-card-alt",
+                    "flex items-center justify-between px-4 pb-[17px] pt-4",
+                    isDay0 ? "rounded-t-admin-sm bg-admin-success" : "border-b border-admin-border bg-[#EFEDF1]",
                   )}
                 >
-                  <div className="flex items-center gap-1.5">
-                    {isDay0 && <Syringe className="size-4 text-white" aria-hidden="true" />}
-                    <p className={cn("text-admin-body-sm font-semibold", isDay0 ? "text-white" : "text-admin-text")}>
-                      {col.label} <span className={cn("font-normal", isDay0 ? "text-white/80" : "text-admin-text-secondary")}>{col.sub}</span>
-                    </p>
+                  <div className="flex items-center gap-2">
+                    {isDay0 && <Syringe className="size-5 text-white" aria-hidden="true" />}
+                    <h2 className={cn("text-admin-h3", isDay0 ? "text-white" : "text-admin-text")}>
+                      {col.label}{" "}
+                      <span className={cn("text-admin-body-sm font-normal", isDay0 ? "text-white/80" : "text-admin-text-secondary")}>{col.sub}</span>
+                    </h2>
                   </div>
-                  <span className={cn("rounded-admin-lg px-2 py-0.5 text-admin-caption font-medium", isDay0 ? "bg-white/20 text-white" : "bg-white text-admin-text-secondary")}>
+                  <span className={cn(
+                    "rounded-admin-xs px-2 py-1 text-admin-caption font-bold",
+                    isDay0 ? "bg-white/20 text-white" : "bg-admin-disabled text-admin-text",
+                  )}>
                     {colCases.length}
                   </span>
-                </div>
-                <div className="space-y-2.5">
+                </header>
+                <div className={cn("flex-1 space-y-3 overflow-y-auto p-3", isDay0 && "bg-admin-canvas-bg/30")}>
                   {colCases.map((c) => {
                     const patient = patientById.get(c.patientId);
                     const status = deriveStatus(c);
                     const flagged = isCountdownBreached(status);
+                    const name = patient ? `${patient.firstName} ${patient.lastName}` : c.patientId.slice(0, 8);
+                    const dueDate = new Date(Date.now() + c.currentDay * 86_400_000).toLocaleDateString(undefined, { month: "short", day: "numeric" });
+                    const dot = flagged ? "bg-admin-danger" : status === "awaiting-consent" || status === "md-review-pending" ? "bg-admin-warning" : "bg-[#74777F]";
+
+                    if (isDay0) {
+                      const ready = !!(c.labsUploadedAt && c.resultsSentToQaAt && c.paymentConfirmedAt);
+                      return (
+                        <article key={c.id} className="relative overflow-hidden rounded-admin-sm border border-admin-border bg-white p-[17px] pl-5 shadow-[0_1px_1px_rgba(0,0,0,0.05)]">
+                          <span className="absolute inset-y-0 left-0 w-1 bg-admin-success" aria-hidden="true" />
+                          <Lock className="absolute right-3 top-3 size-4 text-admin-text-secondary" aria-hidden="true" />
+                          <p className="pr-6 text-admin-body-sm font-semibold tracking-[0.14px] text-admin-text">{name}</p>
+                          <p className="text-admin-body-sm font-medium text-admin-text-secondary">ID: {patient?.uniquePatientId ?? c.patientId.slice(0, 8)}</p>
+                          <ul className="mt-3 space-y-1 border-l-2 border-admin-disabled-alt bg-admin-canvas-bg/60 p-2 text-admin-caption text-admin-text-secondary">
+                            <li className={c.labsUploadedAt ? "text-admin-success" : ""}>{c.labsUploadedAt ? "✓" : "○"} Consent Signed</li>
+                            <li className={c.resultsSentToQaAt ? "text-admin-success" : ""}>{c.resultsSentToQaAt ? "✓" : "○"} MD Cleared</li>
+                            <li className={c.paymentConfirmedAt ? "text-admin-success" : ""}>{c.paymentConfirmedAt ? "✓" : "○"} Pharmacy Prep</li>
+                          </ul>
+                          <Button
+                            variant="primary"
+                            size="sm"
+                            disabled={!ready}
+                            className="mt-3 w-full justify-center rounded-admin-xs bg-admin-success py-2 font-bold hover:bg-admin-success/90"
+                          >
+                            Begin Sequence →
+                          </Button>
+                        </article>
+                      );
+                    }
+
                     return (
-                      <Card
+                      <article
                         key={c.id}
                         className={cn(
-                          "relative border-admin-border p-3.5",
-                          // Day-0 cards sit on a dark header, so the red border strip would clash and the corner badge is the only flag.
-                          flagged && !isDay0 && "border-l-4 border-l-admin-danger bg-admin-danger/5",
+                          "relative flex flex-col gap-3 overflow-hidden rounded-admin-sm bg-white p-[17px] shadow-[0_1px_1px_rgba(0,0,0,0.05)]",
+                          flagged
+                            ? "border-2 border-admin-danger bg-[rgba(255,218,214,0.2)]"
+                            : status === "md-review-pending"
+                              ? "border border-admin-warning shadow-[0_2px_4px_rgba(230,126,34,0.15)]"
+                              : "border border-admin-border",
                         )}
                       >
                         {flagged && (
-                          <span className="absolute -right-1 -top-1 flex size-4 items-center justify-center rounded-full bg-admin-danger text-white" aria-hidden="true">
-                            <TriangleAlert className="size-2.5" />
-                          </span>
+                          <span
+                            className="absolute right-0 top-0 size-0 border-l-[28px] border-t-[28px] border-l-transparent border-t-admin-danger"
+                            aria-hidden="true"
+                          />
                         )}
-                        <div className="flex items-start justify-between gap-2">
-                          <div className="min-w-0">
-                            <p className={cn(
-                              "truncate text-admin-body-sm font-semibold",
-                              flagged && !isDay0 ? "text-admin-danger-text" : "text-admin-text",
-                            )}>
-                              {patient ? `${patient.firstName} ${patient.lastName}` : c.patientId.slice(0, 8)}
-                            </p>
-                            <p className="text-admin-caption text-admin-text-secondary">ID: {patient?.uniquePatientId ?? c.patientId.slice(0, 8)}</p>
-                          </div>
-                          {isDay0 ? (
-                            <Lock className="size-3.5 shrink-0 text-admin-text-secondary" aria-hidden="true" />
-                          ) : (
-                            <Badge className={STATUS_BADGE_CLASS[status]}>{STATUS_LABEL[status]}</Badge>
-                          )}
+                        <div>
+                          <p className={cn("text-admin-body-sm font-semibold tracking-[0.14px]", flagged ? "text-admin-danger-text" : "text-admin-text")}>{name}</p>
+                          <p className="text-admin-body-sm font-medium text-admin-text-secondary">ID: {patient?.uniquePatientId ?? c.patientId.slice(0, 8)}</p>
                         </div>
 
+                        <span className="inline-flex w-fit items-center gap-2 rounded-admin-xs bg-admin-disabled-alt px-2 py-1 text-admin-caption font-semibold text-admin-text-secondary">
+                          <span className={cn("size-2 rounded-full", dot)} aria-hidden="true" />
+                          {STATUS_LABEL[status]}
+                        </span>
+
                         {status === "overdue-bloodwork" && (
-                          <div className="mt-2.5 rounded-admin-sm border border-admin-danger/30 bg-admin-danger/10 p-2 text-admin-caption text-admin-danger-text">
-                            <TriangleAlert className="mr-1 inline size-3" aria-hidden="true" />
+                          <div className="rounded-admin-xs border border-admin-danger/30 bg-white/50 p-2 text-admin-caption text-admin-danger-text">
                             Overdue Bloodwork — CBC required before Day 3 Review.
                           </div>
                         )}
 
                         {status === "md-review-pending" && c.labsUploadedAt && (
-                          <div className="mt-2.5 flex items-center gap-1.5 rounded-admin-sm border border-admin-success/30 bg-admin-success/10 p-2 text-admin-caption text-admin-success">
-                            <span aria-hidden="true">✓</span> Labs verified
+                          <div className="flex items-center gap-1.5 rounded-admin-xs border border-admin-border/50 bg-admin-card-alt p-2 text-admin-caption text-admin-text-secondary">
+                            <span className="text-admin-success" aria-hidden="true">✓</span> Labs verified
                           </div>
                         )}
 
-                        {isDay0 ? (
-                          <>
-                            <ul className="mt-3 space-y-1 text-admin-caption text-admin-text-secondary">
-                              <li className={c.labsUploadedAt ? "text-admin-success" : ""}>{c.labsUploadedAt ? "✓" : "○"} Consent Signed</li>
-                              <li className={c.resultsSentToQaAt ? "text-admin-success" : ""}>{c.resultsSentToQaAt ? "✓" : "○"} MD Cleared</li>
-                              <li className={c.paymentConfirmedAt ? "text-admin-success" : ""}>{c.paymentConfirmedAt ? "✓" : "○"} Pharmacy Prep</li>
-                            </ul>
-                            <Button
-                              variant="primary"
-                              size="sm"
-                              disabled={!(c.labsUploadedAt && c.resultsSentToQaAt && c.paymentConfirmedAt)}
-                              className="mt-3 w-full justify-center rounded-admin-xs bg-admin-success hover:bg-admin-success/90"
-                            >
-                              Begin Sequence →
-                            </Button>
-                          </>
-                        ) : (
-                          <div className="mt-3 flex items-center justify-between gap-2">
-                            <span className="flex items-center gap-1 text-admin-caption text-admin-text-secondary">
-                              <CalendarDays className="size-3" aria-hidden="true" />
-                              {new Date(Date.now() + c.currentDay * 86_400_000).toLocaleDateString(undefined, { month: "short", day: "numeric" })}
-                            </span>
-                            {status === "overdue-bloodwork" || status === "escalated" ? (
-                              <Button variant="danger" size="sm" className="rounded-admin-xs bg-admin-danger hover:bg-admin-danger/90">Escalate</Button>
-                            ) : status === "md-review-pending" ? (
-                              <Button variant="outline" size="sm" className="rounded-admin-xs border-admin-border text-admin-text hover:border-admin-sidebar-cta hover:text-admin-sidebar-cta">Nudge MD</Button>
-                            ) : (
-                              <Badge className="bg-admin-disabled-alt text-admin-text-secondary">On Track</Badge>
-                            )}
-                          </div>
-                        )}
-                      </Card>
+                        <div className="flex items-center justify-between gap-2 border-t border-admin-border pt-[13px]">
+                          <span className="flex items-center gap-1 text-admin-caption text-admin-text-secondary">
+                            <CalendarDays className="size-3" aria-hidden="true" />
+                            {dueDate}
+                          </span>
+                          {flagged ? (
+                            <EscalateCaseButton caseId={c.id} label="Escalate" variant="danger" />
+                          ) : status === "md-review-pending" ? (
+                            <EscalateCaseButton caseId={c.id} label="Nudge MD" variant="outline" />
+                          ) : (
+                            <span className="rounded-admin-xs bg-admin-info-bg px-2 py-1 text-admin-caption font-semibold text-admin-info-text">On Track</span>
+                          )}
+                        </div>
+                      </article>
                     );
                   })}
                   {colCases.length === 0 && (
                     <p className="rounded-admin-sm border border-dashed border-admin-border p-4 text-center text-admin-caption text-admin-text-secondary">Empty</p>
                   )}
                 </div>
-              </div>
+              </section>
             );
           })}
         </div>

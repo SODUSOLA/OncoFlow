@@ -11,6 +11,7 @@ import { ClinicalDecision } from "./entities/ClinicalDecision.js";
 import { CountdownCase } from "./entities/CountdownCase.js";
 import { ConflictError, NotFoundError } from "../../lib/errors.js";
 import { userHasRole } from "../../lib/rbac.js";
+import { notificationService } from "../notification/index.js";
 // Cross-module read: the F4.6 virus-scan gate needs the File row's scan status, which this module doesn't own.
 import { FileRepository } from "../documents/index.js";
 
@@ -271,6 +272,17 @@ export class ClinicalDecisionService {
 
 // Orchestrates the countdown case's state transitions and, on sending results to QA, creates the ClinicalDecision row for QA.
 export class CountdownCaseService {
+  // A manual nudge from the Regional Admin: tells the patient's facility QA officers the case needs attention.
+  // Leaves the case itself untouched — the state machine alone moves it to ESCALATED at Day 0.
+  async escalate(id: string, facilityId: string) {
+    const row = await countdownCaseRepo.findById(id);
+    if (!row) throw new NotFoundError("Countdown case not found");
+    if (row.status !== "ACTIVE" && row.status !== "ESCALATED") throw new ConflictError("Only an open countdown case can be escalated");
+    const recipients = await countdownCaseRepo.findQaOfficerIdsForFacility(facilityId);
+    await Promise.all(recipients.map((recipientId) => notificationService.create({ recipientId, type: "COUNTDOWN_ESCALATION" }).catch(() => {})));
+    return { notified: recipients.length };
+  }
+
   // Records that labs were prompted.
   async labsPrompted(id: string) {
     const row = await countdownCaseRepo.findById(id);

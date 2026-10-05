@@ -1,6 +1,6 @@
 import { Router } from "express";
 import {
-  listCountdownCasesHandler, completeTriageChecklistHandler, getTriageChecklistHandler,
+  listCountdownCasesHandler, escalateCountdownCaseHandler, completeTriageChecklistHandler, getTriageChecklistHandler,
   createPrescriptionHandler, listPrescriptionsHandler,
   createLabRequestHandler, getLabRequestHandler, listLabRequestsHandler,
   markLabRequestUploadedHandler, markLabRequestReviewedHandler,
@@ -94,6 +94,15 @@ const router = Router();
 
 // Authenticated because ?patientId= is a patient's own-status read; without it the staff-wide listing is permission-checked in the handler.
 router.get("/countdown-cases", requireAuthenticated(), validateQuery(listCountdownCasesQuerySchema), listCountdownCasesHandler);
+
+// Regional Admin's manual nudge to QA; countdownCase:read suffices because it changes no case state, and the controller enforces facility scope.
+router.post(
+  "/countdown-cases/:id/escalate",
+  requirePermission("countdownCase", "read"),
+  requireRole("REGIONAL_ADMIN"),
+  validateParams(z.object({ id: z.string().uuid() })),
+  escalateCountdownCaseHandler,
+);
 
 // F3.2: only a Virtual Medical Officer can complete a triage checklist, enforced by requireRole on top of the permission.
 router.post(

@@ -10,6 +10,7 @@ import {
 } from "./service.js";
 // Cross-module read to check whether a result's patient is the caller's own record before falling back to staff grants.
 import { PatientRepository } from "../patient/index.js";
+import { accessibleFacilityIds } from "../../lib/facility-scope.js";
 
 const caseRepo = new CountdownCaseRepository();
 const triageSvc = new TriageChecklistService();
@@ -305,6 +306,32 @@ export async function getClinicalDecisionHandler(req: Request, res: Response) {
   } catch (err) {
     const message = err instanceof Error ? err.message : "Internal server error";
     res.status(message === "Clinical decision not found" ? 404 : 500).json({ error: message });
+  }
+}
+
+// Escalates an open countdown case to the patient's facility QA officers.
+export async function escalateCountdownCaseHandler(req: Request, res: Response) {
+  try {
+    const caseRow = await caseRepo.findById(String(req.params.id));
+    if (!caseRow) {
+      res.status(404).json({ error: "Countdown case not found" });
+      return;
+    }
+    const patientRow = await patientRepo.findById(caseRow.patientId);
+    if (!patientRow) {
+      res.status(404).json({ error: "Countdown case not found" });
+      return;
+    }
+    const allowed = await accessibleFacilityIds((req as AuthenticatedRequest).userId);
+    if (allowed !== null && !allowed.includes(patientRow.facilityId)) {
+      res.status(403).json({ error: "Forbidden: facility outside your scope" });
+      return;
+    }
+    res.json(await countdownCaseSvc.escalate(caseRow.id, patientRow.facilityId));
+  } catch (err) {
+    const message = err instanceof Error ? err.message : "Internal server error";
+    const status = message === "Countdown case not found" ? 404 : message.startsWith("Only an open") ? 409 : 500;
+    res.status(status).json({ error: message });
   }
 }
 

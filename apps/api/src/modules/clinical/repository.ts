@@ -39,6 +39,17 @@ export class CountdownCaseRepository {
       .where(and(inArray(countdownCase.status, ["ACTIVE", "ESCALATED"]), eq(countdownCase.isDeleted, false)));
   }
 
+  // QA officers are registered to one facility; an unscoped QA account (no facility) covers all of them.
+  async findQaOfficerIdsForFacility(facilityId: string): Promise<string[]> {
+    const rows = await db.execute<{ id: string }>(sql`
+      SELECT u.id FROM "user" u
+      JOIN user_role ur ON ur.user_id = u.id
+      JOIN role r ON r.id = ur.role_id
+      WHERE r.name::text = 'QUALITY_ASSURANCE_OFFICER' AND (u.facility_id = ${facilityId} OR u.facility_id IS NULL)
+    `);
+    return rows.map((r) => r.id);
+  }
+
   // countdown_case has no facility_id, so callers resolve patient ids first and batch-fetch here instead of joining across modules.
   async findActiveByPatientIds(patientIds: string[]) {
     if (patientIds.length === 0) return [];
