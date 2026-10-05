@@ -159,6 +159,18 @@ export default function HomePage() {
         {getGreeting()}, {patient.firstName}
       </h1>
 
+      {timeline.length <= 1 && appointments.length === 0 && invoices.length === 0 && (
+        <Link href="/getting-started">
+          <Card variant="interactive" className="flex items-center gap-3 border-primary/30 bg-primary-50">
+            <div className="flex-1">
+              <p className="text-sm font-bold text-primary">New to OncoFlow?</p>
+              <p className="text-xs text-neutral-600">See how your care works, step by step.</p>
+            </div>
+            <ChevronRight className="size-4 text-primary" aria-hidden="true" />
+          </Card>
+        </Link>
+      )}
+
       <Card className="bg-primary text-white">
         <div className="flex items-start justify-between">
           <div>
@@ -311,16 +323,18 @@ export default function HomePage() {
         </Link>
       )}
 
-      <Card className="flex items-center gap-3">
-        <div className="flex size-11 shrink-0 items-center justify-center rounded-lg bg-primary-50 text-primary">
-          <PlayCircle className="size-5" aria-hidden="true" />
-        </div>
-        <div className="flex-1">
-          <p className="text-sm font-bold text-neutral-900">Watch how OncoFlow works</p>
-          <p className="text-xs text-neutral-400">A quick walkthrough of the app</p>
-        </div>
-        <Badge variant="sample">Coming soon</Badge>
-      </Card>
+      <Link href="/getting-started">
+        <Card variant="interactive" className="flex items-center gap-3">
+          <div className="flex size-11 shrink-0 items-center justify-center rounded-lg bg-primary-50 text-primary">
+            <PlayCircle className="size-5" aria-hidden="true" />
+          </div>
+          <div className="flex-1">
+            <p className="text-sm font-bold text-neutral-900">How OncoFlow works</p>
+            <p className="text-xs text-neutral-400">Your journey from sign-in to treatment, step by step</p>
+          </div>
+          <ChevronRight className="size-4 text-neutral-400" aria-hidden="true" />
+        </Card>
+      </Link>
 
       <div className="pb-2 text-center">
         <p className="flex items-center justify-center gap-1.5 text-xs text-neutral-400">

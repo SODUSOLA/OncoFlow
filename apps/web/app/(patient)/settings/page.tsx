@@ -2,7 +2,8 @@
 
 import { useEffect, useState, useCallback } from "react";
 import { useRouter } from "next/navigation";
-import { ArrowLeft, Bell, Fingerprint, CreditCard, Monitor, Smartphone, LogOut } from "lucide-react";
+import Link from "next/link";
+import { ArrowLeft, Bell, Fingerprint, BadgeCheck, ChevronRight, Monitor, Smartphone, LogOut } from "lucide-react";
 import { Card } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
 import { Badge } from "@/components/ui/Badge";
@@ -10,6 +11,7 @@ import { api } from "@/lib/api";
 import type { AuthSession } from "@/lib/types";
 import { invalidateMyPatient } from "@/lib/useMyPatient";
 import { MfaSettingsCard } from "@/components/auth/MfaSettingsCard";
+import { AutoDeductCard } from "@/components/patient/AutoDeductCard";
 
 // Disabled settings row for a feature that isn't built yet.
 function ComingSoonRow({ icon: Icon, label, description }: { icon: typeof Bell; label: string; description: string }) {
@@ -114,8 +116,22 @@ export default function SettingsPage() {
       <Card className="divide-y divide-neutral-100 py-0">
         <ComingSoonRow icon={Bell} label="Notifications" description="Appointment and billing alerts" />
         <ComingSoonRow icon={Fingerprint} label="Biometric Login" description="Sign in with Face ID / Touch ID" />
-        <ComingSoonRow icon={CreditCard} label="Payment Methods" description="Manage saved payment methods" />
       </Card>
+
+      <AutoDeductCard />
+
+      <Link href="/subscription">
+        <Card variant="interactive" className="flex items-center gap-3">
+          <div className="flex size-9 shrink-0 items-center justify-center rounded-lg bg-primary-50 text-primary">
+            <BadgeCheck className="size-4.5" aria-hidden="true" />
+          </div>
+          <div className="flex-1">
+            <p className="text-sm font-semibold text-neutral-700">Membership</p>
+            <p className="text-xs text-neutral-400">View or renew your OncoFlow subscription</p>
+          </div>
+          <ChevronRight className="size-4 text-neutral-400" aria-hidden="true" />
+        </Card>
+      </Link>
 
       <MfaSettingsCard />
 

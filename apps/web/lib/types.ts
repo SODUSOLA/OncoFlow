@@ -23,6 +23,7 @@ export interface Wallet {
   id: string;
   patientId: string;
   balanceKobo: string;
+  autoDeductEnabled: boolean;
 }
 
 export interface WalletTransaction {
@@ -204,4 +205,19 @@ export interface Facility {
   latitude: string | null;
   longitude: string | null;
   status: "ACTIVE" | "INACTIVE";
+}
+
+export type SubscriptionCycle = "MONTHLY" | "YEARLY";
+
+export interface SubscriptionStatus {
+  state: "NONE" | "ACTIVE" | "EXPIRED";
+  canRenew: boolean;
+  subscription: {
+    id: string;
+    billingCycle: SubscriptionCycle;
+    status: "ACTIVE" | "EXPIRED";
+    nextBillingDate: string;
+    startedAt: string;
+  } | null;
+  prices: Record<SubscriptionCycle, string>;
 }
