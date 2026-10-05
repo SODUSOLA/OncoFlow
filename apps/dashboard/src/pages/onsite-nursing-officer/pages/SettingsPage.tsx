@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { DeviceNotificationsCard } from "../../../components/DeviceNotificationsCard";
 import { useNavigate } from "react-router-dom";
 import { ShieldCheck, Copy, Check, LogOut, Monitor, SlidersHorizontal } from "lucide-react";
 import { Card } from "../../../components/ui/Card";
@@ -223,6 +224,8 @@ export default function SettingsPage() {
 
       <MfaCard />
       <SessionsCard />
+      <DeviceNotificationsCard />
+
       <PreferencesCard />
 
       <Card className="border-admin-border p-4">

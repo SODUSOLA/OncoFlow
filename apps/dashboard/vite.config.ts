@@ -16,6 +16,8 @@ export default defineConfig({
         changeOrigin: true,
         rewrite: (p) => p.replace(/^\/api/, ""),
       },
+      // Live notifications ride the same origin as the page, so they need no CORS entry and carry the session cookie.
+      "/socket.io": { target: "http://localhost:3000", ws: true, changeOrigin: true },
     },
   },
 });

@@ -1,12 +1,13 @@
 import { io, type Socket } from "socket.io-client";
 
-// Connects straight to the backend because WebSockets can't use Vite's dev proxy; the session cookie is sent since cookies aren't port-scoped.
-const API_ORIGIN = import.meta.env.VITE_API_ORIGIN ?? "http://localhost:3000";
+// Same-origin by default (Vite proxies /socket.io to the API in dev, and a production reverse proxy should do the same),
+// so no CORS allow-list entry is needed and the session cookie goes along. VITE_API_ORIGIN overrides for split hosting.
+const API_ORIGIN: string | undefined = import.meta.env.VITE_API_ORIGIN || undefined;
 
 let socket: Socket | null = null;
 
 // Returns the shared Socket.IO client, creating it on first use.
 export function getSocket(): Socket {
-  socket ??= io(API_ORIGIN, { withCredentials: true, autoConnect: true });
+  socket ??= API_ORIGIN ? io(API_ORIGIN, { withCredentials: true, autoConnect: true }) : io({ withCredentials: true, autoConnect: true });
   return socket;
 }

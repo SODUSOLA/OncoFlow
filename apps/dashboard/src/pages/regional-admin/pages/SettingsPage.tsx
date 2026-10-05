@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { DeviceNotificationsCard } from "../../../components/DeviceNotificationsCard";
 import { User, ShieldCheck, Monitor, Bell, Copy, Check } from "lucide-react";
 import { Card } from "../../../components/ui/Card";
 import { Button } from "../../../components/ui/Button";
@@ -68,6 +69,8 @@ export default function SettingsPage() {
       </Card>
 
       <MfaCard />
+
+      <DeviceNotificationsCard />
 
       <Card className="border-admin-border p-5 opacity-70">
         <h2 className="flex items-center gap-2 text-admin-h4 text-admin-text">
