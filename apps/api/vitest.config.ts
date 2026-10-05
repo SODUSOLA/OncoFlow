@@ -5,6 +5,7 @@ export default defineConfig({
     globals: true,
     environment: "node",
     include: ["src/**/*.test.ts"],
+    globalSetup: ["./src/test/global-setup.ts"],
     setupFiles: ["./src/test/setup.ts"],
     // Integration-scale timeout: real HTTP, Postgres and bcrypt under full parallelism exceed vitest's 5s default, so a busy machine isn't reported as broken tests.
     testTimeout: 30_000,
