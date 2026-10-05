@@ -8,6 +8,7 @@ function errorStatus(message: string): number {
   if (message === "Availability block not found") return 404;
   if (message.startsWith("You can only")) return 403;
   if (message === "startTime must be before endTime") return 422;
+  if (message.startsWith("Select at least") || message.startsWith("Days must") || message.startsWith("Each day")) return 422;
   return 500;
 }
 
@@ -18,6 +19,18 @@ export async function addAvailabilityHandler(req: Request, res: Response) {
     const { availableDate, startTime, endTime } = req.body;
     const result = await availabilityService.addBlock(consultantId, availableDate, startTime, endTime);
     res.status(201).json({ availability: result });
+  } catch (err) {
+    const message = err instanceof Error ? err.message : "Internal server error";
+    res.status(errorStatus(message)).json({ error: message });
+  }
+}
+
+// Saves the caller's availability for the coming 7 days in one go.
+export async function setWeekAvailabilityHandler(req: Request, res: Response) {
+  try {
+    const consultantId = (req as AuthenticatedRequest).userId;
+    const result = await availabilityService.setWeek(consultantId, req.body.days);
+    res.json({ availability: result });
   } catch (err) {
     const message = err instanceof Error ? err.message : "Internal server error";
     res.status(errorStatus(message)).json({ error: message });

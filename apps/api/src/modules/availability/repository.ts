@@ -1,5 +1,5 @@
 import { db } from "../../db/index.js";
-import { eq, and, isNull } from "drizzle-orm";
+import { eq, and, isNull, gte, lte } from "drizzle-orm";
 import { consultantAvailability } from "./schema.js";
 
 // Data access for consultant availability blocks.
@@ -27,5 +27,18 @@ export class AvailabilityRepository {
   // Soft-delete, same convention as every other deletable row in this codebase.
   async remove(id: string) {
     await db.update(consultantAvailability).set({ deletedAt: new Date() }).where(eq(consultantAvailability.id, id));
+  }
+
+  // Replaces every active block dated within [from, to] with the given rows, atomically so a failed insert never leaves the week empty.
+  async replaceRange(consultantId: string, from: string, to: string, rows: (typeof consultantAvailability.$inferInsert)[]) {
+    return db.transaction(async (tx) => {
+      await tx.update(consultantAvailability).set({ deletedAt: new Date() }).where(and(
+        eq(consultantAvailability.consultantId, consultantId),
+        isNull(consultantAvailability.deletedAt),
+        gte(consultantAvailability.availableDate, from),
+        lte(consultantAvailability.availableDate, to),
+      ));
+      return tx.insert(consultantAvailability).values(rows).returning();
+    });
   }
 }

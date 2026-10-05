@@ -7,6 +7,9 @@ import { notificationService } from "../notification/index.js";
 
 const repo = new AvailabilityRepository();
 
+// A consultant must be bookable on at least this many days of the week.
+export const MIN_AVAILABLE_DAYS = 3;
+
 // Uses the Lagos calendar date, the same timezone the scheduling flow that reads these blocks uses.
 function lagosDateString(d: Date): string {
   return new Intl.DateTimeFormat("en-CA", { timeZone: "Africa/Lagos", year: "numeric", month: "2-digit", day: "2-digit" }).format(d);
@@ -49,6 +52,23 @@ export class AvailabilityService {
     const row = await repo.create({ id: crypto.randomUUID(), consultantId, availableDate, startTime, endTime });
     void notifyAdminsOfAvailabilityChange(consultantId);
     return row;
+  }
+
+  // Sets the consultant's availability for the 7 Lagos days starting today in one save, requiring at least MIN_AVAILABLE_DAYS distinct days.
+  async setWeek(consultantId: string, days: { availableDate: string; startTime: string; endTime: string }[]) {
+    const today = lagosDateString(new Date());
+    const windowEnd = lagosDateString(new Date(Date.now() + 6 * 86_400_000));
+    const distinct = new Set(days.map((d) => d.availableDate));
+    if (distinct.size !== days.length) throw new Error("Each day can only be set once");
+    if (days.length < MIN_AVAILABLE_DAYS) throw new Error(`Select at least ${MIN_AVAILABLE_DAYS} days to be available`);
+    for (const d of days) {
+      if (d.availableDate < today || d.availableDate > windowEnd) throw new Error("Days must fall within the next 7 days");
+      if (d.startTime >= d.endTime) throw new Error("startTime must be before endTime");
+    }
+    const rows = days.map((d) => ({ id: crypto.randomUUID(), consultantId, availableDate: d.availableDate, startTime: d.startTime, endTime: d.endTime }));
+    const saved = await repo.replaceRange(consultantId, today, windowEnd, rows);
+    void notifyAdminsOfAvailabilityChange(consultantId);
+    return saved;
   }
 
   // Lists a consultant's availability blocks.

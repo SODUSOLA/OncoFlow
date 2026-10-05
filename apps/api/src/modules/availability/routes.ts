@@ -1,6 +1,6 @@
 import { Router } from "express";
 import { z } from "zod";
-import { addAvailabilityHandler, listAvailabilityHandler, removeAvailabilityHandler } from "./controller.js";
+import { addAvailabilityHandler, listAvailabilityHandler, removeAvailabilityHandler, setWeekAvailabilityHandler } from "./controller.js";
 import { requireAuthenticated } from "../../lib/rbac.js";
 import { validateBody, validateParams, validateQuery } from "../../lib/validation.js";
 
@@ -9,6 +9,9 @@ const addAvailabilitySchema = z.object({
   startTime: z.string().regex(/^\d{2}:\d{2}$/, "Expected HH:MM"),
   endTime: z.string().regex(/^\d{2}:\d{2}$/, "Expected HH:MM"),
 });
+const setWeekSchema = z.object({
+  days: z.array(addAvailabilitySchema).max(7),
+});
 const listAvailabilityQuerySchema = z.object({ consultantId: z.string().uuid() });
 const idParamSchema = z.object({ id: z.string().uuid() });
 
@@ -16,6 +19,8 @@ const router = Router();
 
 // Managing your own availability is a right (requireAuthenticated); the list route's ownership-or-permission check is in the controller so Regional Admin can read others.
 router.post("/availability", requireAuthenticated(), validateBody(addAvailabilitySchema), addAvailabilityHandler);
+// Replaces the caller's availability for the next 7 days; enforces the 3-day minimum.
+router.put("/availability/week", requireAuthenticated(), validateBody(setWeekSchema), setWeekAvailabilityHandler);
 // Lists a consultant's availability blocks.
 router.get("/availability", requireAuthenticated(), validateQuery(listAvailabilityQuerySchema), listAvailabilityHandler);
 // Removes an availability block owned by the caller.

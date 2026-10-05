@@ -1,5 +1,6 @@
-import { useEffect, useState } from "react";
-import { User, ShieldCheck, Monitor, Bell, Sliders, Copy, Check, CalendarClock, Plus, Trash2 } from "lucide-react";
+import { useEffect, useMemo, useState } from "react";
+import { DeviceNotificationsCard } from "../../../components/DeviceNotificationsCard";
+import { User, ShieldCheck, Monitor, Bell, Sliders, Copy, Check, CalendarClock } from "lucide-react";
 import { Card } from "../../../components/ui/Card";
 import { Button } from "../../../components/ui/Button";
 import { Toggle } from "../../../components/ui/Toggle";
@@ -95,6 +96,8 @@ export default function SettingsPage() {
           </div>
         </div>
       </Card>
+
+      <DeviceNotificationsCard />
 
       <Card className="border-admin-border p-5 opacity-70">
         <h2 className="flex items-center gap-2 text-admin-h4 text-admin-text">
@@ -257,48 +260,89 @@ function MfaCard() {
   );
 }
 
-// Real create, list and delete against /availability; whatever is listed for a future date is the default the scheduler reads.
-function AvailabilityCard({ consultantId }: { consultantId: string | null }) {
-  const [blocks, setBlocks] = useState<ConsultantAvailability[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [date, setDate] = useState("");
-  const [start, setStart] = useState("09:00");
-  const [end, setEnd] = useState("17:00");
-  const [saving, setSaving] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+const MIN_AVAILABLE_DAYS = 3;
+const DEFAULT_START = "09:00";
+const DEFAULT_END = "17:00";
 
+interface DayChoice { startTime: string; endTime: string }
+
+// The Lagos calendar date `offset` days from today, as YYYY-MM-DD (the server counts days in Lagos time too).
+function lagosDate(offset: number): string {
+  return new Intl.DateTimeFormat("en-CA", { timeZone: "Africa/Lagos", year: "numeric", month: "2-digit", day: "2-digit" })
+    .format(new Date(Date.now() + offset * 86_400_000));
+}
+
+// Day boxes for the next 7 days: pick a day to open its time range, and save once at least 3 days are chosen.
+function AvailabilityCard({ consultantId }: { consultantId: string | null }) {
+  const days = useMemo(() => Array.from({ length: 7 }, (_, i) => lagosDate(i)), []);
+  const [choices, setChoices] = useState<Record<string, DayChoice>>({});
+  const [openDay, setOpenDay] = useState<string | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [message, setMessage] = useState<{ kind: "success" | "error"; text: string } | null>(null);
+
+  // Loads the blocks already saved for the coming week so the boxes show the current state.
   useEffect(() => {
     if (!consultantId) { setLoading(false); return; }
     let cancelled = false;
     api.get<{ availability: ConsultantAvailability[] }>(`/availability?consultantId=${consultantId}`)
-      .then((d) => { if (!cancelled) setBlocks(d.availability); })
+      .then((d) => {
+        if (cancelled) return;
+        const next: Record<string, DayChoice> = {};
+        for (const b of d.availability) {
+          if (days.includes(b.availableDate) && !next[b.availableDate]) {
+            next[b.availableDate] = { startTime: b.startTime.slice(0, 5), endTime: b.endTime.slice(0, 5) };
+          }
+        }
+        setChoices(next);
+      })
       .catch(() => {})
       .finally(() => { if (!cancelled) setLoading(false); });
     return () => { cancelled = true; };
-  }, [consultantId]);
+  }, [consultantId, days]);
 
-  // Adds an availability block.
-  async function addBlock() {
-    if (!date || !start || !end) return;
+  const selectedCount = Object.keys(choices).length;
+  const invalidDay = Object.entries(choices).find(([, c]) => !c.startTime || !c.endTime || c.startTime >= c.endTime)?.[0];
+  const canSave = selectedCount >= MIN_AVAILABLE_DAYS && !invalidDay;
+
+  // Selecting an unchosen day adds it with default hours and opens its time box; selecting a chosen day just opens its box.
+  function pickDay(date: string) {
+    setMessage(null);
+    setChoices((prev) => (prev[date] ? prev : { ...prev, [date]: { startTime: DEFAULT_START, endTime: DEFAULT_END } }));
+    setOpenDay((prev) => (prev === date ? null : date));
+  }
+
+  // Clears a day from the week.
+  function removeDay(date: string) {
+    setMessage(null);
+    setChoices((prev) => {
+      const next = { ...prev };
+      delete next[date];
+      return next;
+    });
+    setOpenDay(null);
+  }
+
+  function setTime(date: string, field: keyof DayChoice, value: string) {
+    setMessage(null);
+    setChoices((prev) => ({ ...prev, [date]: { ...(prev[date] ?? { startTime: DEFAULT_START, endTime: DEFAULT_END }), [field]: value } }));
+  }
+
+  // Replaces the week's availability with the chosen days.
+  async function save() {
     setSaving(true);
-    setError(null);
+    setMessage(null);
     try {
-      const res = await api.post<{ availability: ConsultantAvailability }>("/availability", {
-        availableDate: date, startTime: start, endTime: end,
+      await api.put("/availability/week", {
+        days: Object.entries(choices).map(([availableDate, c]) => ({ availableDate, startTime: c.startTime, endTime: c.endTime })),
       });
-      setBlocks((prev) => [...prev, res.availability].sort((a, b) => a.availableDate.localeCompare(b.availableDate)));
-      setDate("");
+      setMessage({ kind: "success", text: "Availability saved." });
+      setOpenDay(null);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Could not add availability");
+      setMessage({ kind: "error", text: err instanceof Error ? err.message : "Could not save availability" });
     } finally {
       setSaving(false);
     }
-  }
-
-  // Removes an availability block.
-  async function removeBlock(id: string) {
-    setBlocks((prev) => prev.filter((b) => b.id !== id));
-    await api.del(`/availability/${id}`).catch(() => {});
   }
 
   return (
@@ -307,48 +351,102 @@ function AvailabilityCard({ consultantId }: { consultantId: string | null }) {
         <CalendarClock className="size-4 text-admin-text-secondary" aria-hidden="true" /> Availability
       </h2>
       <p className="mt-1 text-admin-caption text-admin-text-secondary">
-        Regional Admin can only schedule a New Consultation with you inside these blocks — this is the real
-        constraint enforced server-side, not a display-only calendar.
+        Pick the days you can take consultations in the next 7 days, then set your hours for each. You must be
+        available on at least {MIN_AVAILABLE_DAYS} days. Regional Admin can only schedule a New Consultation with
+        you inside these hours.
       </p>
 
       {loading ? (
         <p className="mt-4 text-admin-body-sm text-admin-text-secondary">Loading…</p>
-      ) : blocks.length === 0 ? (
-        <p className="mt-4 text-admin-body-sm text-admin-text-secondary">No availability set yet.</p>
       ) : (
-        <ul className="mt-4 space-y-2">
-          {blocks.map((b) => (
-            <li key={b.id} className="flex items-center justify-between rounded-admin-sm bg-admin-card-alt px-3 py-2 text-admin-body-sm">
-              <span className="text-admin-text">
-                {new Date(`${b.availableDate}T00:00:00`).toLocaleDateString(undefined, { weekday: "short", month: "short", day: "numeric" })}
-                <span className="ml-2 text-admin-text-secondary">{b.startTime.slice(0, 5)}–{b.endTime.slice(0, 5)}</span>
-              </span>
-              <button onClick={() => removeBlock(b.id)} className="text-admin-text-secondary hover:text-admin-danger" title="Remove">
-                <Trash2 className="size-4" aria-hidden="true" />
-              </button>
-            </li>
-          ))}
-        </ul>
+        <div className="relative mt-4 grid grid-cols-7 gap-2">
+          {days.map((date, index) => {
+            const chosen = choices[date];
+            const isOpen = openDay === date && !!chosen;
+            const d = new Date(`${date}T00:00:00`);
+            return (
+              <div key={date} className="relative">
+                <button
+                  type="button"
+                  onClick={() => pickDay(date)}
+                  aria-pressed={!!chosen}
+                  aria-expanded={isOpen}
+                  className={cn(
+                    "flex w-full flex-col items-center rounded-admin-sm border px-1 py-3 text-center transition-colors",
+                    chosen
+                      ? "border-admin-sidebar-cta bg-admin-sidebar-cta text-white"
+                      : "border-admin-border bg-admin-card-alt text-admin-text hover:border-admin-sidebar-cta",
+                  )}
+                >
+                  <span className="text-admin-caption uppercase">{index === 0 ? "Today" : d.toLocaleDateString(undefined, { weekday: "short" })}</span>
+                  <span className="text-admin-h4">{d.getDate()}</span>
+                  <span className="text-admin-caption opacity-80">{d.toLocaleDateString(undefined, { month: "short" })}</span>
+                  <span className="mt-1 min-h-4 text-[10px] leading-4">{chosen ? `${chosen.startTime}–${chosen.endTime}` : ""}</span>
+                </button>
+
+                {isOpen && (
+                  <div
+                    className={cn(
+                      "absolute top-full z-10 mt-2 w-72 rounded-admin-sm border border-admin-border bg-white p-3 shadow-lg",
+                      index >= 4 ? "right-0" : "left-0",
+                    )}
+                  >
+                    <p className="text-admin-body-sm font-medium text-admin-text">
+                      {d.toLocaleDateString(undefined, { weekday: "long", month: "short", day: "numeric" })}
+                    </p>
+                    <div className="mt-2 grid grid-cols-2 gap-2">
+                      <label className="text-admin-caption text-admin-text-secondary">
+                        From
+                        <input
+                          type="time"
+                          value={chosen.startTime}
+                          onChange={(e) => setTime(date, "startTime", e.target.value)}
+                          className="mt-0.5 block w-full rounded-admin-sm border border-admin-border px-2 py-1.5 text-admin-body-sm text-admin-text"
+                        />
+                      </label>
+                      <label className="text-admin-caption text-admin-text-secondary">
+                        To
+                        <input
+                          type="time"
+                          value={chosen.endTime}
+                          onChange={(e) => setTime(date, "endTime", e.target.value)}
+                          className="mt-0.5 block w-full rounded-admin-sm border border-admin-border px-2 py-1.5 text-admin-body-sm text-admin-text"
+                        />
+                      </label>
+                    </div>
+                    {chosen.startTime >= chosen.endTime && (
+                      <p className="mt-2 text-admin-caption text-admin-danger">The end time must be after the start time.</p>
+                    )}
+                    <div className="mt-3 flex items-center justify-between">
+                      <button type="button" onClick={() => removeDay(date)} className="text-admin-caption text-admin-danger hover:underline">
+                        Remove day
+                      </button>
+                      <button type="button" onClick={() => setOpenDay(null)} className="text-admin-caption font-medium text-admin-sidebar-cta hover:underline">
+                        Done
+                      </button>
+                    </div>
+                  </div>
+                )}
+              </div>
+            );
+          })}
+        </div>
       )}
 
-      <div className="mt-4 flex flex-wrap items-end gap-2 border-t border-admin-border pt-4">
-        <div>
-          <label className="text-admin-caption text-admin-text-secondary">Date</label>
-          <input type="date" value={date} onChange={(e) => setDate(e.target.value)} className="mt-0.5 block rounded-admin-sm border border-admin-border px-2.5 py-1.5 text-admin-body-sm" />
-        </div>
-        <div>
-          <label className="text-admin-caption text-admin-text-secondary">Start</label>
-          <input type="time" value={start} onChange={(e) => setStart(e.target.value)} className="mt-0.5 block rounded-admin-sm border border-admin-border px-2.5 py-1.5 text-admin-body-sm" />
-        </div>
-        <div>
-          <label className="text-admin-caption text-admin-text-secondary">End</label>
-          <input type="time" value={end} onChange={(e) => setEnd(e.target.value)} className="mt-0.5 block rounded-admin-sm border border-admin-border px-2.5 py-1.5 text-admin-body-sm" />
-        </div>
-        <Button onClick={addBlock} loading={saving} disabled={!date} size="sm" className="rounded-admin-xs bg-admin-sidebar-cta hover:bg-admin-sidebar-cta/90">
-          <Plus className="size-3.5" aria-hidden="true" /> Add
+      {/* Reserves room so the open time box doesn't cover the save row. */}
+      <div className={cn("mt-4 flex items-center justify-between gap-3 border-t border-admin-border pt-4", openDay && "mt-28")}>
+        <p className={cn("text-admin-body-sm", selectedCount >= MIN_AVAILABLE_DAYS ? "text-admin-text-secondary" : "text-admin-danger")}>
+          {selectedCount} of {MIN_AVAILABLE_DAYS} minimum days selected
+        </p>
+        <Button onClick={save} loading={saving} disabled={!canSave || loading} size="sm" className="rounded-admin-xs bg-admin-sidebar-cta hover:bg-admin-sidebar-cta/90">
+          Save availability
         </Button>
       </div>
-      {error && <p className="mt-2 text-admin-body-sm text-admin-danger">{error}</p>}
+      {message && (
+        <p role="status" className={cn("mt-2 text-admin-body-sm", message.kind === "success" ? "text-admin-text-secondary" : "text-admin-danger")}>
+          {message.text}
+        </p>
+      )}
     </Card>
   );
 }
