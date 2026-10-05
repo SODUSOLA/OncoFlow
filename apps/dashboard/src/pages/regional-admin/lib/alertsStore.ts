@@ -4,7 +4,7 @@ import { getIsoWeek } from "./isoWeek";
 import { deriveCountdownStatus, isCountdownBreached, classifyInquirySla, isStaffingConflict, WEEKDAY_NAMES } from "./alertRules";
 
 export type AlertSeverity = "critical" | "warning";
-export type AlertSource = "countdown" | "staffing" | "inventory" | "inquiry" | "security" | "drug";
+export type AlertSource = "countdown" | "staffing" | "inventory" | "inquiry" | "security" | "drug" | "escalation";
 
 export interface RegionAlert {
   id: string;
@@ -221,9 +221,22 @@ async function drugAlerts(): Promise<RegionAlert[]> {
   return [...low, ...losses, ...variances];
 }
 
+// VMO escalations to a Specialist Oncologist still awaiting a consult; the actionable work lives in the Notification Center's escalation section.
+async function escalationAlerts(): Promise<RegionAlert[]> {
+  const rows = await api
+    .get<{ escalations: { id: string; status: string; triggerReason: string; firstName: string; lastName: string; facilityId: string }[] }>("/escalations?status=NOTIFIED")
+    .then((d) => d.escalations)
+    .catch(() => []);
+  return rows.map((e) => ({
+    id: `escalation-${e.id}`, source: "escalation" as const, severity: "critical" as const, badge: "SPECIALIST ESCALATION",
+    title: `${e.firstName} ${e.lastName}`, detail: `${e.triggerReason} — needs a virtual consult with a Specialist Oncologist.`,
+    actionLabel: "Schedule consult", actionTo: "/dashboard/regional-admin/notifications#escalations", facilityId: e.facilityId,
+  }));
+}
+
 // Every alert source, each returning its own alerts; adding a source means adding one entry here, not new branches below.
 const ALERT_SOURCES: ((region: string | null) => Promise<RegionAlert[]>)[] = [
-  countdownAlerts, staffingAlerts, inventoryAlerts, securityAlerts, drugAlerts, inquiryAlerts,
+  countdownAlerts, staffingAlerts, inventoryAlerts, securityAlerts, drugAlerts, inquiryAlerts, escalationAlerts,
 ];
 
 // Runs every source in parallel and merges the results; a failing source contributes nothing rather than hiding the rest.

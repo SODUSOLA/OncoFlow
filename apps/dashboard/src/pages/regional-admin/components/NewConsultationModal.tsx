@@ -16,12 +16,12 @@ const TYPE_OPTIONS: { value: Appointment["appointmentType"]; label: string }[] =
 ];
 
 // The revived New Consultation action: one real POST /consultations that enforces availability, provisions the room, and notifies and schedules reminders.
-export function NewConsultationModal({ onClose, onScheduled }: { onClose: () => void; onScheduled: () => void }) {
+export function NewConsultationModal({ onClose, onScheduled, initialPatientId, initialPatientLabel }: { onClose: () => void; onScheduled: () => void; initialPatientId?: string; initialPatientLabel?: string }) {
   const { user } = useAuth();
   const [patients, setPatients] = useState<Patient[]>([]);
   const [consultants, setConsultants] = useState<Consultant[]>([]);
   const [patientQuery, setPatientQuery] = useState("");
-  const [patientId, setPatientId] = useState("");
+  const [patientId, setPatientId] = useState(initialPatientId ?? "");
   const [oncologistId, setOncologistId] = useState("");
   const [appointmentType, setAppointmentType] = useState<Appointment["appointmentType"]>("VIRTUAL");
   const [date, setDate] = useState("");
@@ -102,7 +102,7 @@ export function NewConsultationModal({ onClose, onScheduled }: { onClose: () => 
             <div>
               <label className="text-admin-caption text-admin-text-secondary">Patient</label>
               <input
-                value={patientId ? `${patients.find((p) => p.id === patientId)?.firstName ?? ""} ${patients.find((p) => p.id === patientId)?.lastName ?? ""}` : patientQuery}
+                value={patientId ? (patients.find((p) => p.id === patientId) ? `${patients.find((p) => p.id === patientId)!.firstName} ${patients.find((p) => p.id === patientId)!.lastName}` : (initialPatientLabel ?? "")) : patientQuery}
                 onChange={(e) => { setPatientQuery(e.target.value); setPatientId(""); }}
                 placeholder="Search patient by name or ID…"
                 className="mt-1 w-full rounded-admin-sm border border-admin-border px-3 py-2 text-admin-body-sm"

@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { useLocation, useNavigate } from "react-router-dom";
 import { TriangleAlert, Clock3, CircleCheck, LogIn, LogOut, ShieldAlert, Activity as ActivityIcon } from "lucide-react";
 import { api } from "../../../lib/api";
 import { Card } from "../../../components/ui/Card";
@@ -7,6 +7,7 @@ import { Button } from "../../../components/ui/Button";
 import { cn } from "../../../lib/utils";
 import { useRegionAlerts } from "../lib/useRegionAlerts";
 import type { RegionAlert } from "../lib/alertsStore";
+import { EscalationsSection } from "../components/EscalationsSection";
 
 // A pure renderer over the shared alert aggregator that computes no alerts itself; cards are capped since the dev data has 200+ alerts.
 const MAX_CARDS = 6;
@@ -61,7 +62,11 @@ function activityIconFor(action: string) {
 // Notification center with critical, pending and system log columns.
 export default function NotificationCenterPage() {
   const navigate = useNavigate();
-  const { critical, warning, loading } = useRegionAlerts();
+  const { hash } = useLocation();
+  const { critical: allCritical, warning: allWarning, loading } = useRegionAlerts();
+  // Escalations have their own actionable section below, so the generic columns leave them out (the bell still counts them).
+  const critical = allCritical.filter((a) => a.source !== "escalation");
+  const warning = allWarning.filter((a) => a.source !== "escalation");
   const { events: activity, loading: activityLoading } = useActivityFeed(MAX_LOG_ITEMS);
 
   const visibleCritical = critical.slice(0, MAX_CARDS);
@@ -69,7 +74,13 @@ export default function NotificationCenterPage() {
   const visibleWarning = warning.slice(0, MAX_CARDS);
   const hiddenWarning = warning.length - visibleWarning.length;
 
+  useEffect(() => {
+    if (hash === "#escalations") document.getElementById("escalations")?.scrollIntoView({ block: "start" });
+  }, [hash]);
+
   return (
+    <div>
+    <EscalationsSection />
     <div className="grid grid-cols-3 gap-4" style={{ minHeight: "60vh" }}>
       <NotificationColumn
         title="Critical Action Required"
@@ -106,6 +117,7 @@ export default function NotificationCenterPage() {
           </div>
         )}
       </NotificationColumn>
+    </div>
     </div>
   );
 }
