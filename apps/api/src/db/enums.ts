@@ -151,3 +151,5 @@ export const regionalDrugLedgerReasonEnum = pgEnum("regional_drug_ledger_reason"
 // four incident types existed) and are no longer accepted for new reports; the column keeps its old name.
 export const drugLossReasonEnum = pgEnum("drug_loss_reason", ["SPILLAGE", "BREAKAGE", "OTHER", "SPOILAGE", "EXPIRY", "WASTAGE"]);
 export const drugReconciliationScopeEnum = pgEnum("drug_reconciliation_scope", ["REGIONAL", "NURSING_OFFICER"]);
+
+export const specialistEscalationStatusEnum = pgEnum("specialist_escalation_status", ["NOTIFIED", "CONSULT_SCHEDULED", "RESOLVED"]);

@@ -52,6 +52,11 @@ const PERMISSIONS: { resource: string; action: string; description: string }[] =
   { resource: "message", action: "read", description: "Read messages" },
   { resource: "publicInquiry", action: "read", description: "Read public (pre-registration) chat-widget inquiries from the marketing site" },
   { resource: "publicInquiry", action: "update", description: "Reply to, link-to-patient, or close a public inquiry" },
+  { resource: "triage", action: "create", description: "Start and answer the VMO's mandatory Yes/No triage checklist for an active side-effect chat" },
+  { resource: "triage", action: "read", description: "Read the patient folder and medication triage unlocked by a completed checklist (VMO only, chat-scoped)" },
+  { resource: "specialistEscalation", action: "create", description: "Escalate a patient to a Specialist Oncologist (VMO)" },
+  { resource: "specialistEscalation", action: "read", description: "Read specialist escalations in your region (Regional Admin, Clinical Directors)" },
+  { resource: "specialistEscalation", action: "update", description: "Advance a specialist escalation: consult scheduled, resolved (Regional Admin)" },
   { resource: "triageChecklist", action: "create", description: "Complete a triage checklist (Virtual Medical Officer only, requireRole)" },
   { resource: "triageChecklist", action: "read", description: "Read a triage checklist" },
   { resource: "prescription", action: "create", description: "Create a prescription (MO or Consultant)" },
@@ -216,7 +221,14 @@ export async function seedIdentity() {
   await grantPermissionsToRole("VIRTUAL_MEDICAL_OFFICER", [
     "conversation:create", "conversation:read", "conversation:update",
     "message:create", "message:read",
+    // The checklist that unlocks the chat-scoped patient folder, and the hand-off to a Specialist Oncologist.
+    "triage:create", "triage:read", "specialistEscalation:create",
   ]);
+
+  // Escalations: the Regional Admin acts on them (schedules the consult), Clinical Directors are only informed.
+  await grantPermissionsToRole("REGIONAL_ADMIN", ["specialistEscalation:read", "specialistEscalation:update"]);
+  await grantPermissionsToRole("STATE_CLINICAL_DIRECTOR", ["specialistEscalation:read"]);
+  await grantPermissionsToRole("NATIONAL_CLINICAL_DIRECTOR", ["specialistEscalation:read"]);
 
   // Onsite Nursing Officer grants for the case wizard (cases, regimen cycles, files, incidents) and the Inventory tab.
   await grantPermissionsToRole("ONSITE_NURSING_OFFICER", [

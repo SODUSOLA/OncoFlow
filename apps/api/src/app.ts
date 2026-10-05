@@ -19,6 +19,7 @@ import { inventoryRoutes } from "./modules/inventory/index.js";
 import { clinicalMetricsRoutes } from "./modules/clinical-metrics/index.js";
 import { availabilityRoutes } from "./modules/availability/index.js";
 import { nursingRoutes } from "./modules/nursing/index.js";
+import { vmoRoutes } from "./modules/vmo/index.js";
 import { drugSupplyRoutes } from "./modules/drug-supply/index.js";
 // Imported straight from routes.js because modules/audit/index.js deliberately doesn't re-export routes (circular import).
 import { auditRoutes } from "./modules/audit/routes.js";
@@ -73,6 +74,7 @@ export function createApp() {
   app.use(availabilityRoutes);
   app.use(nursingRoutes);
   app.use(drugSupplyRoutes);
+  app.use(vmoRoutes);
 
   app.use(notFoundHandler);
   app.use(errorHandler);
