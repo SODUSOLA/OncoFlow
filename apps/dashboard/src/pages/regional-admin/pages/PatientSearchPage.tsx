@@ -2,44 +2,12 @@ import { useEffect, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 import { Search, Lock } from "lucide-react";
 import { api } from "../../../lib/api";
-import { useAuth } from "../../../lib/auth";
 import type { Appointment, Facility, Patient, PendingRegistration } from "../../../lib/types";
 import { Card } from "../../../components/ui/Card";
 import { Button } from "../../../components/ui/Button";
 import { cn } from "../../../lib/utils";
 import { useRegionScope } from "../lib/useRegionScope";
-
-const CALL_ALLOWED_ROLES = new Set(["REGIONAL_ADMIN", "ONSITE_NURSING_OFFICER"]);
-
-// Button that places a masked call to a patient.
-function CallPatientButton({ patientId }: { patientId: string }) {
-  const { roles } = useAuth();
-  const [calling, setCalling] = useState(false);
-  const [result, setResult] = useState<string | null>(null);
-
-  if (!roles.some((r) => CALL_ALLOWED_ROLES.has(r.roleName))) return null;
-
-  // Places the call through the API.
-  async function call() {
-    setCalling(true);
-    setResult(null);
-    try {
-      const res = await api.post<{ callSessionId: string }>(`/patients/${patientId}/call`);
-      setResult(`Call started (session ${res.callSessionId.slice(0, 8)})`);
-    } catch (err) {
-      setResult(err instanceof Error ? err.message : "Call failed");
-    } finally {
-      setCalling(false);
-    }
-  }
-
-  return (
-    <div className="flex flex-col gap-1">
-      <Button onClick={call} loading={calling} variant="outline" size="sm">Call patient</Button>
-      {result && <p className="text-[11px] text-gray-500">{result}</p>}
-    </div>
-  );
-}
+import { CallPatientButton } from "../components/CallPatientButton";
 
 interface AdminLabResult {
   fileId: string;
@@ -48,9 +16,24 @@ interface AdminLabResult {
   fileStatus: "PENDING" | "CLEAN" | "INFECTED";
 }
 
+function formatDate(value?: string): string {
+  if (!value) return "—";
+  const d = new Date(value);
+  return Number.isNaN(d.getTime()) ? value : d.toLocaleDateString();
+}
+
 // Detail panel for a selected patient.
 function PatientDetailPanel({ patient, facilities }: { patient: Patient; facilities: Facility[] }) {
   const [labResults, setLabResults] = useState<AdminLabResult[]>([]);
+  // Search rows are a trimmed projection, so DOB and registration date come from the full record.
+  const [full, setFull] = useState<{ dob?: string; createdAt?: string } | null>(null);
+
+  useEffect(() => {
+    setFull(null);
+    api.get<{ patient: { dob?: string; createdAt?: string } }>(`/patients/${patient.id}`)
+      .then((d) => setFull(d.patient))
+      .catch(() => setFull(null));
+  }, [patient.id]);
 
   useEffect(() => {
     api.get<{ labResults: AdminLabResult[] }>(`/lab-results?patientId=${patient.id}`)
@@ -66,22 +49,25 @@ function PatientDetailPanel({ patient, facilities }: { patient: Patient; facilit
         <p className="text-xs font-semibold uppercase tracking-wide text-gray-400">Restricted patient record</p>
         <h3 className="mt-0.5 text-lg font-bold text-gray-900">{patient.firstName} {patient.lastName}</h3>
         <p className="text-sm text-gray-500">
-          {patient.uniquePatientId} · {facility?.name ?? "—"} · DOB {new Date(patient.dob).toLocaleDateString()}
+          {patient.uniquePatientId} · {facility?.name ?? "—"}
         </p>
       </div>
 
-      <div className="grid grid-cols-2 gap-3 p-5">
-        <div className="rounded border border-gray-200 p-3">
-          <p className="text-[10px] font-semibold uppercase tracking-wide text-gray-400">Phone</p>
-          <p className="mt-1 font-mono text-sm text-gray-800">{patient.phoneMasked ?? "—"}</p>
-        </div>
-        <div className="rounded border border-gray-200 p-3">
-          <p className="text-[10px] font-semibold uppercase tracking-wide text-gray-400">Registered</p>
-          <p className="mt-1 text-sm text-gray-800">{patient.createdAt ? new Date(patient.createdAt).toLocaleDateString() : "—"}</p>
-        </div>
-      </div>
+      <dl className="divide-y divide-gray-100 px-5 py-2 text-sm">
+        {([
+          ["Date of birth", formatDate(full?.dob)],
+          ["Gender", patient.gender || "—"],
+          ["Status", patient.status ? patient.status.charAt(0) + patient.status.slice(1).toLowerCase() : "—"],
+          ["Registered", formatDate(full?.createdAt)],
+        ] as const).map(([label, value]) => (
+          <div key={label} className="flex items-center justify-between gap-4 py-2.5">
+            <dt className="text-[10px] font-semibold uppercase tracking-wide text-gray-400">{label}</dt>
+            <dd className="text-gray-800">{value}</dd>
+          </div>
+        ))}
+      </dl>
 
-      <div className="px-5">
+      <div className="px-5 pt-3">
         <CallPatientButton patientId={patient.id} />
       </div>
 
@@ -424,7 +410,6 @@ export default function PatientSearchPage() {
                 <p className="text-sm font-semibold text-gray-800">
                   {loading ? "Searching…" : `${patients.length} result${patients.length === 1 ? "" : "s"}`}
                 </p>
-                <p className="text-xs text-gray-400">Phone numbers masked for this role</p>
               </div>
               {patients.length === 0 && !loading ? (
                 <div className="p-8 text-center text-gray-400">No patients found</div>
@@ -435,7 +420,6 @@ export default function PatientSearchPage() {
                       <th className="px-5 py-2 font-medium">Patient</th>
                       <th className="px-5 py-2 font-medium">ID</th>
                       <th className="px-5 py-2 font-medium">Facility</th>
-                      <th className="px-5 py-2 font-medium">Phone</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-gray-50">
@@ -451,7 +435,6 @@ export default function PatientSearchPage() {
                         <td className="px-5 py-3 font-medium text-gray-800">{p.firstName} {p.lastName}</td>
                         <td className="px-5 py-3 font-mono text-xs text-gray-500">{p.uniquePatientId}</td>
                         <td className="px-5 py-3 text-gray-500">{facilities.find((f) => f.id === p.facilityId)?.name ?? "—"}</td>
-                        <td className="px-5 py-3 font-mono text-xs text-gray-500">{p.phoneMasked ?? "—"}</td>
                       </tr>
                     ))}
                   </tbody>
