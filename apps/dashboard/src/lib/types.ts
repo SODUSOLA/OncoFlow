@@ -76,10 +76,17 @@ export interface Payment {
   reference: string;
 }
 
+export interface ServiceSubOption {
+  id: string;
+  code: string;
+  name: string;
+}
+
 export interface ServiceClassification {
   id: string;
   name: string;
   cappedNetworkFeeKobo: number;
+  subOptions?: ServiceSubOption[];
 }
 
 export interface Tariff {

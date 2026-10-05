@@ -76,6 +76,7 @@ export default function BillingPage() {
   const [classifications, setClassifications] = useState<ServiceClassification[]>([]);
   const [genPatientId, setGenPatientId] = useState("");
   const [genClassificationId, setGenClassificationId] = useState("");
+  const [genSubOptionId, setGenSubOptionId] = useState("");
   const [genFacilityId, setGenFacilityId] = useState("");
   const [genTariffs, setGenTariffs] = useState<Tariff[]>([]);
   const [genLoading, setGenLoading] = useState(false);
@@ -109,6 +110,8 @@ export default function BillingPage() {
   const genPatient = patients.find((p) => p.id === genPatientId) ?? null;
   const genFacility = facilitiesInRegion.find((f) => f.id === genFacilityId) ?? null;
   const genClassification = classifications.find((c) => c.id === genClassificationId) ?? null;
+  const subOptions = genClassification?.subOptions ?? [];
+  const genSubOption = subOptions.find((o) => o.id === genSubOptionId) ?? null;
   const total = genTariff
     ? Number(genTariff.networkFeeKobo) + Number(genTariff.facilityBedFeeKobo) + Number(genTariff.professionalFeeKobo) + Number(genTariff.drugPriceKobo)
     : 0;
@@ -128,11 +131,13 @@ export default function BillingPage() {
       await api.post<{ invoice: Invoice }>("/invoices", {
         patientId: genPatientId,
         classificationId: genClassificationId,
+        ...(genSubOptionId ? { subOptionId: genSubOptionId } : {}),
         facilityId: genFacilityId,
       });
       setGenResult("Invoice created successfully");
       setGenPatientId("");
       setGenClassificationId("");
+      setGenSubOptionId("");
       setGenFacilityId("");
       loadInvoices();
     } catch (err) {
@@ -182,12 +187,22 @@ export default function BillingPage() {
             title="Service Classification"
             status={step2Status}
             onEdit={() => setEditingStep(2)}
-            doneSummary={genClassification && <p className="font-medium text-admin-text">{genClassification.name.replace(/_/g, " ")}</p>}
+            doneSummary={genClassification && (
+              <p className="font-medium text-admin-text">
+                {genClassification.name.replace(/_/g, " ")}
+                {genSubOption && <span className="font-normal text-admin-text-secondary"> · {genSubOption.name}</span>}
+              </p>
+            )}
           >
             <label className="mb-1 block text-admin-caption font-medium text-admin-text-secondary">Select Primary Classification</label>
             <select
               value={genClassificationId}
-              onChange={(e) => { setGenClassificationId(e.target.value); setEditingStep(null); }}
+              onChange={(e) => {
+                const next = classifications.find((c) => c.id === e.target.value);
+                setGenClassificationId(e.target.value);
+                setGenSubOptionId("");
+                setEditingStep(next?.subOptions?.length ? 2 : null);
+              }}
               className="w-full rounded-admin-sm border border-admin-border px-3 py-2 text-admin-body-sm"
             >
               <option value="">Select from compliant dropdown...</option>
@@ -195,10 +210,32 @@ export default function BillingPage() {
                 <option key={c.id} value={c.id}>{c.name.replace(/_/g, " ")}</option>
               ))}
             </select>
-            <label className="mb-1 mt-3 block text-admin-caption font-medium text-admin-text-secondary">Secondary Code (Optional)</label>
-            <div className="flex items-center gap-2 rounded-admin-sm border border-admin-border bg-admin-card-alt px-3 py-2 text-admin-body-sm text-admin-text-secondary">
-              <Lock className="size-3.5 shrink-0" aria-hidden="true" /> Requires Primary Classification First
-            </div>
+            <label className="mb-1 mt-3 block text-admin-caption font-medium text-admin-text-secondary">Sub-option (Optional)</label>
+            {!genClassificationId ? (
+              <div className="flex items-center gap-2 rounded-admin-sm border border-admin-border bg-admin-card-alt px-3 py-2 text-admin-body-sm text-admin-text-secondary">
+                <Lock className="size-3.5 shrink-0" aria-hidden="true" /> Requires Primary Classification First
+              </div>
+            ) : subOptions.length === 0 ? (
+              <div className="rounded-admin-sm border border-admin-border bg-admin-card-alt px-3 py-2 text-admin-body-sm text-admin-text-secondary">
+                No sub-options for this classification
+              </div>
+            ) : (
+              <select
+                value={genSubOptionId}
+                onChange={(e) => { setGenSubOptionId(e.target.value); setEditingStep(null); }}
+                className="w-full rounded-admin-sm border border-admin-border px-3 py-2 text-admin-body-sm"
+              >
+                <option value="">None</option>
+                {subOptions.map((o) => (
+                  <option key={o.id} value={o.id}>{o.name}</option>
+                ))}
+              </select>
+            )}
+            {genClassificationId && subOptions.length > 0 && !genSubOptionId && (
+              <button type="button" onClick={() => setEditingStep(null)} className="mt-2 text-admin-caption font-medium text-admin-sidebar-cta hover:underline">
+                Continue without a sub-option
+              </button>
+            )}
           </StepCard>
 
           <StepCard
