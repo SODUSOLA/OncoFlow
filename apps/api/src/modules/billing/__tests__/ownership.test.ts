@@ -96,6 +96,35 @@ describe("GET /invoices/:id — ownership", () => {
   });
 });
 
+describe("Draft invoices — hidden from the patient until sent", () => {
+  // Creates a draft and deliberately does not send it.
+  async function createDraft() {
+    const created = await request(app).post(base).send({
+      patientId: ownPatientId, facilityId: testFacilityId, classificationId: testClassificationId,
+    });
+    return created.body.invoiceId as string;
+  }
+
+  it("omits a draft from the patient's own list but still shows it to staff", async () => {
+    const draftId = await createDraft();
+    const sentId = await createOwnInvoice();
+
+    const patientView = await request(app).get(`${base}?patientId=${ownPatientId}`).set("Cookie", ownCookie);
+    const patientIds = patientView.body.invoices.map((i: { id: string }) => i.id);
+    expect(patientIds).toContain(sentId);
+    expect(patientIds).not.toContain(draftId);
+
+    const staffView = await request(app).get(`${base}?patientId=${ownPatientId}`);
+    expect(staffView.body.invoices.map((i: { id: string }) => i.id)).toContain(draftId);
+  });
+
+  it("returns 404 when the patient opens a draft directly", async () => {
+    const draftId = await createDraft();
+    const res = await request(app).get(`${base}/${draftId}`).set("Cookie", ownCookie);
+    expect(res.status).toBe(404);
+  });
+});
+
 describe("POST /invoices/:id/pay — Patient role spec: 'can pay own invoices from wallet'", () => {
   it("lets the linked patient pay their own invoice", async () => {
     const invoiceId = await createOwnInvoice();

@@ -55,8 +55,14 @@ export async function getInvoiceHandler(req: Request, res: Response) {
 
     const callerId = (req as AuthenticatedRequest).userId;
     const isSelf = await callerOwnsPatient(callerId, row.patientId);
-    if (!isSelf && !(await userHasPermission(callerId, "invoice", "read"))) {
+    const isStaff = await userHasPermission(callerId, "invoice", "read");
+    if (!isSelf && !isStaff) {
       res.status(403).json({ error: "Forbidden" });
+      return;
+    }
+    // A draft is staff work-in-progress; the patient first sees an invoice once it has been sent, so a draft looks like it doesn't exist to them.
+    if (!isStaff && row.status === "DRAFT") {
+      res.status(404).json({ error: "Invoice not found" });
       return;
     }
 
@@ -79,13 +85,16 @@ export async function listInvoicesHandler(req: Request, res: Response) {
     }
 
     const callerId = (req as AuthenticatedRequest).userId;
+    let hideDrafts = false;
     if (patientId) {
       // Own-invoices path: ownership alone is enough, no blanket invoice:read needed.
       const isSelf = await callerOwnsPatient(callerId, patientId);
-      if (!isSelf && !(await userHasPermission(callerId, "invoice", "read"))) {
+      const isStaff = await userHasPermission(callerId, "invoice", "read");
+      if (!isSelf && !isStaff) {
         res.status(403).json({ error: "Forbidden" });
         return;
       }
+      hideDrafts = !isStaff;
     } else if (!(await userHasPermission(callerId, "invoice", "read"))) {
       // facilityId path is inherently a staff/facility-wide query — no "self" concept applies.
       res.status(403).json({ error: "Forbidden" });
@@ -103,7 +112,7 @@ export async function listInvoicesHandler(req: Request, res: Response) {
         ? await invoiceRepo.findAll()
         : await invoiceRepo.findByFacilityIds(scope.facilityIds);
     }
-    res.json({ invoices: invoices.map((r) => new Invoice(r).toJSON()) });
+    res.json({ invoices: invoices.filter((r) => !hideDrafts || r.status !== "DRAFT").map((r) => new Invoice(r).toJSON()) });
   } catch {
     res.status(500).json({ error: "Internal server error" });
   }

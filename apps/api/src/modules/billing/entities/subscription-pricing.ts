@@ -1,7 +1,7 @@
-// Placeholder membership prices pending sign-off — no price for the SUBSCRIPTION classification exists in the spec, and it has no tariff row.
+// Membership prices from the company price list; SUBSCRIPTION has no tariff row, so these constants are the source.
 export const SUBSCRIPTION_FEE_KOBO = {
-  MONTHLY: 500_000n, // ₦5,000
-  YEARLY: 5_000_000n, // ₦50,000
+  MONTHLY: 1_000_000n, // ₦10,000
+  YEARLY: 10_000_000n, // ₦100,000
 } as const;
 
 export type SubscriptionCycle = keyof typeof SUBSCRIPTION_FEE_KOBO;
