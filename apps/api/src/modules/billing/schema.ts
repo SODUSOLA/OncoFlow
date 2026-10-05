@@ -1,5 +1,5 @@
 import {
-  pgTable, uuid, varchar, bigint, boolean, date, timestamp, uniqueIndex, index,
+  pgTable, uuid, varchar, integer, bigint, boolean, date, timestamp, uniqueIndex, index,
 } from "drizzle-orm/pg-core";
 import { sql } from "drizzle-orm";
 import {
@@ -19,6 +19,19 @@ export const serviceClassification = pgTable("service_classification", {
   createdAt: timestamp("created_at").notNull().defaultNow(),
   updatedAt: timestamp("updated_at").notNull().defaultNow(),
 });
+
+// Named variants under a classification (e.g. Chemotherapy > Chemo-radiation). Descriptive only: price still comes from the facility tariff for the classification.
+export const serviceSubOption = pgTable("service_sub_option", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  classificationId: uuid("classification_id").notNull().references(() => serviceClassification.id),
+  code: varchar("code", { length: 64 }).notNull(),
+  name: varchar("name", { length: 128 }).notNull(),
+  sortOrder: integer("sort_order").notNull().default(0),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+}, (t) => ({
+  classificationCodeUnique: uniqueIndex("service_sub_option_classification_code_unique").on(t.classificationId, t.code),
+}));
 
 export const tariff = pgTable("tariff", {
   id: uuid("id").primaryKey().defaultRandom(),
@@ -43,6 +56,7 @@ export const invoice = pgTable("invoice", {
   appointmentId: uuid("appointment_id").references(() => appointment.id),
   facilityId: uuid("facility_id").notNull().references(() => facility.id),
   classificationId: uuid("classification_id").notNull().references(() => serviceClassification.id),
+  subOptionId: uuid("sub_option_id").references(() => serviceSubOption.id),
   status: invoiceStatusEnum("status").notNull().default("DRAFT"),
   totalKobo: bigint("total_kobo", { mode: "bigint" }).notNull(),
   issuedAt: timestamp("issued_at"),

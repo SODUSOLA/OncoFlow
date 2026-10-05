@@ -1,7 +1,7 @@
 import { db } from "../db/index.js";
 import { sql, eq, and } from "drizzle-orm";
 import crypto from "node:crypto";
-import { serviceClassification, tariff, facility } from "../db/schema.js";
+import { serviceClassification, serviceSubOption, tariff, facility } from "../db/schema.js";
 
 type ClassificationName =
   | "SUBSCRIPTION" | "CONSULTATION" | "DRUG_ADMINISTRATION" | "CHEMOTHERAPY" | "GENERAL_ADMISSION" | "PROCEDURE"
@@ -21,6 +21,28 @@ const CLASSIFICATIONS: {
   // Day-rate reference only; the real fee is computed per invoice by side-effect-pricing.ts.
   { name: "SIDE_EFFECT_REPORT", cappedNetworkFeeKobo: 3_000_00, facilityShare: 0, professionalShare: 0, drugShare: 0 },
 ];
+
+// Variants from the price list. Descriptive labels only; pricing stays on the per-facility classification tariff.
+const SUB_OPTIONS: Partial<Record<ClassificationName, { code: string; name: string }[]>> = {
+  CONSULTATION: [
+    { code: "TRIO_VIRTUAL", name: "Trio virtual consultation (bundle)" },
+    { code: "SINGLE_VIRTUAL", name: "Single virtual consultation" },
+    { code: "PHYSICAL", name: "Physical consultation" },
+  ],
+  CHEMOTHERAPY: [
+    { code: "CHEMOTHERAPY", name: "Chemotherapy" },
+    { code: "CHEMO_RADIATION", name: "Chemo-radiation" },
+  ],
+  DRUG_ADMINISTRATION: [
+    { code: "SHORT_STAY_INFUSION", name: "Short stay supportive injections / infusions" },
+  ],
+  GENERAL_ADMISSION: [
+    { code: "BED_DAY", name: "Bed space (9am - 5pm)" },
+    { code: "BED_NIGHT", name: "Bed space (5pm - 9am)" },
+    { code: "BED_24H", name: "Bed space (24 hours)" },
+  ],
+  PROCEDURE: [1, 2, 3, 4, 5].map((n) => ({ code: `BLOOD_${n}_PINT`, name: `Blood transfusion (${n} ${n === 1 ? "pint" : "pints"})` })),
+};
 
 // Seeds service classifications and pilot-facility tariffs.
 export async function seedBilling() {
@@ -42,6 +64,13 @@ export async function seedBilling() {
         cappedNetworkFeeKobo: BigInt(c.cappedNetworkFeeKobo),
       });
       console.log(`  Created classification: ${c.name}`);
+    }
+
+    const options = SUB_OPTIONS[c.name] ?? [];
+    for (const [i, o] of options.entries()) {
+      await db.insert(serviceSubOption)
+        .values({ classificationId, code: o.code, name: o.name, sortOrder: i })
+        .onConflictDoNothing();
     }
 
     // SUBSCRIPTION has no tariff and SIDE_EFFECT_REPORT is priced dynamically, so neither gets a tariff row.

@@ -9,6 +9,7 @@ export interface InvoiceData {
   appointmentId: string | null;
   facilityId: string;
   classificationId: string;
+  subOptionId?: string | null;
   status: InvoiceStatus;
   totalKobo: bigint;
   issuedAt: Date | null;
@@ -53,6 +54,7 @@ export class Invoice {
       patientId: this.data.patientId,
       facilityId: this.data.facilityId,
       classificationId: this.data.classificationId,
+      subOptionId: this.data.subOptionId ?? null,
       status: this.data.status,
       totalKobo: this.data.totalKobo.toString(),
       issuedAt: this.data.issuedAt?.toISOString() ?? null,

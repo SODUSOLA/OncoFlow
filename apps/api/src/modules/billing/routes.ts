@@ -17,6 +17,7 @@ const createInvoiceSchema = z.object({
   patientId: z.string().uuid(),
   facilityId: z.string().uuid(),
   classificationId: z.string().uuid(),
+  subOptionId: z.string().uuid().optional(),
   appointmentId: z.string().uuid().optional(),
 });
 

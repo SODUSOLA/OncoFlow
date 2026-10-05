@@ -1,6 +1,18 @@
 import { db } from "../../db/index.js";
 import { eq, sql, and, desc, inArray } from "drizzle-orm";
-import { serviceClassification, tariff, invoice, invoiceItem, subscription, walletTransaction } from "./schema.js";
+import { serviceClassification, serviceSubOption, tariff, invoice, invoiceItem, subscription, walletTransaction } from "./schema.js";
+
+// Data access for the named variants under each classification.
+export class ServiceSubOptionRepository {
+  async findAll() {
+    return db.select().from(serviceSubOption).orderBy(serviceSubOption.sortOrder, serviceSubOption.name);
+  }
+
+  async findById(id: string) {
+    const row = await db.select().from(serviceSubOption).where(eq(serviceSubOption.id, id)).limit(1);
+    return row[0] ?? null;
+  }
+}
 
 // Data access for service classifications.
 export class ServiceClassificationRepository {

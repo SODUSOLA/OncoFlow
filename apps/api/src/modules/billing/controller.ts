@@ -3,7 +3,7 @@ import { resolveScopeOrDeny } from "../../lib/facility-scope.js";
 import type { AuthenticatedRequest } from "../../lib/rbac.js";
 import { userHasPermission } from "../../lib/rbac.js";
 import { InvoiceService } from "./service.js";
-import { InvoiceRepository, InvoiceItemRepository, ServiceClassificationRepository, WalletTransactionRepository, TariffRepository } from "./repository.js";
+import { InvoiceRepository, InvoiceItemRepository, ServiceClassificationRepository, ServiceSubOptionRepository, WalletTransactionRepository, TariffRepository } from "./repository.js";
 import { Invoice, InvoiceItem } from "./entities/Invoice.js";
 import { ServiceClassification, Tariff } from "./entities/ServiceClassification.js";
 import { WalletTransaction } from "./entities/WalletTransaction.js";
@@ -15,6 +15,7 @@ const invoiceSvc = new InvoiceService();
 const invoiceRepo = new InvoiceRepository();
 const invoiceItemRepo = new InvoiceItemRepository();
 const classificationRepo = new ServiceClassificationRepository();
+const subOptionRepo = new ServiceSubOptionRepository();
 const tariffRepo = new TariffRepository();
 const walletTransactionRepo = new WalletTransactionRepository();
 const patientRepo = new PatientRepository();
@@ -30,16 +31,17 @@ async function callerOwnsPatient(callerId: string, patientId: string): Promise<b
 // Creates an invoice (staff-only).
 export async function createInvoiceHandler(req: Request, res: Response) {
   try {
-    const { patientId, facilityId, classificationId, appointmentId } = req.body;
+    const { patientId, facilityId, classificationId, subOptionId, appointmentId } = req.body;
     if (!patientId || !facilityId || !classificationId) {
       res.status(400).json({ error: "patientId, facilityId, classificationId required" });
       return;
     }
-    const result = await invoiceSvc.createInvoice({ patientId, facilityId, classificationId, appointmentId });
+    const result = await invoiceSvc.createInvoice({ patientId, facilityId, classificationId, subOptionId, appointmentId });
     res.status(201).json(result);
   } catch (err) {
     const message = err instanceof Error ? err.message : "Internal server error";
-    const status = message === "No tariff found for this facility and classification combination" ? 400 : 500;
+    const status = message === "No tariff found for this facility and classification combination"
+      || message === "Sub-option does not belong to this classification" ? 400 : 500;
     res.status(status).json({ error: message });
   }
 }
@@ -187,8 +189,15 @@ export async function listTariffsHandler(req: Request, res: Response) {
 // Lists the service classifications (reference data).
 export async function listClassificationsHandler(_req: Request, res: Response) {
   try {
-    const rows = await classificationRepo.findAll();
-    res.json({ classifications: rows.map((row) => new ServiceClassification(row).toJSON()) });
+    const [rows, subOptions] = await Promise.all([classificationRepo.findAll(), subOptionRepo.findAll()]);
+    res.json({
+      classifications: rows.map((row) => ({
+        ...new ServiceClassification(row).toJSON(),
+        subOptions: subOptions
+          .filter((o) => o.classificationId === row.id)
+          .map((o) => ({ id: o.id, code: o.code, name: o.name })),
+      })),
+    });
   } catch {
     res.status(500).json({ error: "Internal server error" });
   }
