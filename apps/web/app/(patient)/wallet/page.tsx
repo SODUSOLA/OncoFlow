@@ -349,12 +349,15 @@ export default function WalletPage() {
         </ul>
       )}
 
-      <Card className="bg-primary text-white">
-        <p className="mb-2 text-base font-bold">Automatic Payments</p>
-        <p className="text-sm leading-relaxed text-white/70">
-          Enable safe, friction-free billing to ensure your care plan is never interrupted by administrative delays.
-        </p>
-      </Card>
+      {/* Pitch for auto-pay only: once it's on, the card has nothing left to say. */}
+      {!wallet?.autoDeductEnabled && (
+        <Card className="bg-primary text-white">
+          <p className="mb-2 text-base font-bold">Automatic Payments</p>
+          <p className="text-sm leading-relaxed text-white/70">
+            Enable safe, friction-free billing to ensure your care plan is never interrupted by administrative delays.
+          </p>
+        </Card>
+      )}
     </div>
   );
 }
