@@ -1,5 +1,6 @@
 import { NotificationRepository } from "./repository.js";
 import { getIo, isIoAttached } from "../../lib/socket.js";
+import { pushToUser, emailIfSignedOut } from "./pushService.js";
 
 // Plain strings matching the varchar column: one member per domain event that creates a notification today.
 export type NotificationType =
@@ -14,7 +15,10 @@ export type NotificationType =
   | "APPOINTMENT_REMINDER"
   | "NURSING_CASE_SUBMITTED"
   | "NURSING_CASE_REVIEWED"
-  | "IDENTITY_MISMATCH_REPORTED";
+  | "IDENTITY_MISMATCH_REPORTED"
+  | "SPECIALIST_ESCALATION"
+  | "COUNTDOWN_ESCALATION"
+  | "NEW_MESSAGE";
 
 const notificationRepo = new NotificationRepository();
 
@@ -28,6 +32,10 @@ export class NotificationService {
       type: data.type,
       status: "PENDING",
     });
+
+    // Off-screen delivery (devices that registered for push, then email for signed-out users) is best-effort
+    // and never blocks or fails the event that caused the notification.
+    void Promise.allSettled([pushToUser(data.recipientId, data.type), emailIfSignedOut(data.recipientId, data.type)]);
 
     // Pushed only when a Socket.IO server exists, then marked SENT since delivery just happened.
     if (isIoAttached()) {

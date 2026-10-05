@@ -1,4 +1,5 @@
 /** @type {import('dependency-cruiser').IConfiguration} */
+
 export default {
   forbidden: [
     {

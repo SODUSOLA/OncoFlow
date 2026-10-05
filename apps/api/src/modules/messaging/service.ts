@@ -241,6 +241,17 @@ export class MessagingService {
       getIo().to(`conversation:${data.conversationId}`).emit("message:new", json);
     }
 
+    // Everyone else on the thread (the patient's account and the assigned staff) is alerted wherever they are:
+    // live if signed in, by push if a device is registered, by email if signed out. Never the sender.
+    const recipients = new Set<string>();
+    for (const p of await participantRepo.findByConversation(data.conversationId)) recipients.add(p.userId);
+    if (conversationRow.assignedTo) recipients.add(conversationRow.assignedTo);
+    const patientRow = await patientRepo.findById(conversationRow.patientId);
+    if (patientRow?.userId) recipients.add(patientRow.userId);
+    recipients.delete(callerId);
+    await Promise.all([...recipients].map((recipientId) =>
+      notificationService.create({ recipientId, type: "NEW_MESSAGE" }).catch((err) => { console.error("Message notification failed:", err); })));
+
     return json;
   }
 

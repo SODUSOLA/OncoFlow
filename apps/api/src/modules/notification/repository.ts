@@ -1,6 +1,6 @@
 import { db } from "../../db/index.js";
-import { eq, desc } from "drizzle-orm";
-import { notification } from "./schema.js";
+import { eq, desc, and } from "drizzle-orm";
+import { notification, pushSubscription } from "./schema.js";
 
 // Data access for notifications.
 export class NotificationRepository {
@@ -27,5 +27,35 @@ export class NotificationRepository {
       .where(eq(notification.id, id))
       .returning();
     return rows[0] ?? null;
+  }
+}
+
+// Data access for push subscriptions.
+export class PushSubscriptionRepository {
+  async findByUser(userId: string) {
+    return db.select().from(pushSubscription).where(eq(pushSubscription.userId, userId));
+  }
+
+  // Registers a device. An endpoint is unique to one browser profile, so re-registering (or a different user
+  // signing in on the same browser) moves it to the current user instead of failing or duplicating.
+  async upsert(data: { userId: string; endpoint: string; p256dh: string; auth: string; userAgent: string | null }) {
+    const rows = await db.insert(pushSubscription).values(data)
+      .onConflictDoUpdate({
+        target: pushSubscription.endpoint,
+        set: { userId: data.userId, p256dh: data.p256dh, auth: data.auth, userAgent: data.userAgent, updatedAt: new Date() },
+      }).returning();
+    return rows[0]!;
+  }
+
+  // Removes only the caller's own registration.
+  async deleteForUser(userId: string, endpoint: string): Promise<boolean> {
+    const rows = await db.delete(pushSubscription)
+      .where(and(eq(pushSubscription.userId, userId), eq(pushSubscription.endpoint, endpoint))).returning({ id: pushSubscription.id });
+    return rows.length > 0;
+  }
+
+  // Drops an endpoint the push service reports as gone (404/410).
+  async deleteByEndpoint(endpoint: string) {
+    await db.delete(pushSubscription).where(eq(pushSubscription.endpoint, endpoint));
   }
 }
