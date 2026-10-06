@@ -18,18 +18,25 @@ export type NotificationType =
   | "IDENTITY_MISMATCH_REPORTED"
   | "SPECIALIST_ESCALATION"
   | "COUNTDOWN_ESCALATION"
-  | "NEW_MESSAGE";
+  | "NEW_MESSAGE"
+  | "PATIENT_INQUIRY"
+  | "NEW_SIDE_EFFECT_REPORT";
+
+// Chat traffic. These still alert people (push, email, a live toast), but the Notification Center is for clinical
+// alerts, reminders and payments only, so the list endpoint can leave these out.
+export const CHAT_NOTIFICATION_TYPES: NotificationType[] = ["NEW_MESSAGE", "CONVERSATION_FEEDBACK", "PATIENT_INQUIRY", "NEW_SIDE_EFFECT_REPORT"];
 
 const notificationRepo = new NotificationRepository();
 
 // Business logic for creating and delivering notifications.
 export class NotificationService {
   // Creates a notification and pushes it live over Socket.IO when available.
-  async create(data: { recipientId: string; type: NotificationType }) {
+  async create(data: { recipientId: string; type: NotificationType; referenceId?: string }) {
     const row = await notificationRepo.create({
       id: crypto.randomUUID(),
       recipientId: data.recipientId,
       type: data.type,
+      referenceId: data.referenceId ?? null,
       status: "PENDING",
     });
 

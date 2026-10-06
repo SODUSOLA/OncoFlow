@@ -133,7 +133,7 @@ export class PaymentService {
       console.error(`Receipt email failed for invoice ${invoiceId}:`, err);
     });
 
-    void this.notifyPaidBestEffort(invRow.patientId).catch((err) => {
+    void this.notifyPaidBestEffort(invRow.patientId, invRow.id).catch((err) => {
       console.error(`Invoice-paid notification failed for invoice ${invoiceId}:`, err);
     });
 
@@ -160,9 +160,9 @@ export class PaymentService {
   }
 
   // Sends the patient a paid notification, best-effort.
-  private async notifyPaidBestEffort(patientId: string): Promise<void> {
+  private async notifyPaidBestEffort(patientId: string, invoiceId: string): Promise<void> {
     const patientRow = await patientRepo.findById(patientId);
     if (!patientRow?.userId) return;
-    await notificationService.create({ recipientId: patientRow.userId, type: "INVOICE_PAID" });
+    await notificationService.create({ recipientId: patientRow.userId, type: "INVOICE_PAID", referenceId: invoiceId });
   }
 }

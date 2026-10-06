@@ -6,6 +6,9 @@ export const notification = pgTable("notification", {
   id: uuid("id").primaryKey().defaultRandom(),
   recipientId: uuid("recipient_id").notNull().references(() => user.id),
   type: varchar("type", { length: 100 }).notNull(),
+  // What the notification is about (a conversation, invoice or appointment, depending on type), so it can be opened.
+  // Deliberately not a foreign key: it points at different tables, and older rows have none.
+  referenceId: uuid("reference_id"),
   status: notificationStatusEnum("status").notNull().default("PENDING"),
   sentAt: timestamp("sent_at"),
   createdAt: timestamp("created_at").notNull().defaultNow(),

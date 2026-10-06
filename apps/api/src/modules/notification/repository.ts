@@ -1,15 +1,16 @@
 import { db } from "../../db/index.js";
-import { eq, desc, and } from "drizzle-orm";
+import { eq, desc, and, ne, notInArray } from "drizzle-orm";
 import { notification, pushSubscription } from "./schema.js";
 
 // Data access for notifications.
 export class NotificationRepository {
   // Lists a recipient's notifications, newest first.
-  async findByRecipient(recipientId: string) {
+  async findByRecipient(recipientId: string, opts: { excludeTypes?: string[] } = {}) {
+    const exclude = opts.excludeTypes?.length ? notInArray(notification.type, opts.excludeTypes) : undefined;
     return db
       .select()
       .from(notification)
-      .where(eq(notification.recipientId, recipientId))
+      .where(and(eq(notification.recipientId, recipientId), exclude))
       .orderBy(desc(notification.createdAt));
   }
 
@@ -17,6 +18,26 @@ export class NotificationRepository {
   async create(data: typeof notification.$inferInsert) {
     const rows = await db.insert(notification).values(data).returning();
     return rows[0]!;
+  }
+
+  // Marks one of the recipient's own notifications as read; false when it isn't theirs or doesn't exist.
+  async markRead(id: string, recipientId: string): Promise<boolean> {
+    const rows = await db
+      .update(notification)
+      .set({ status: "READ" })
+      .where(and(eq(notification.id, id), eq(notification.recipientId, recipientId)))
+      .returning({ id: notification.id });
+    return rows.length > 0;
+  }
+
+  // Marks every unread notification of one recipient as read; returns how many changed.
+  async markAllRead(recipientId: string): Promise<number> {
+    const rows = await db
+      .update(notification)
+      .set({ status: "READ" })
+      .where(and(eq(notification.recipientId, recipientId), ne(notification.status, "READ")))
+      .returning({ id: notification.id });
+    return rows.length;
   }
 
   // Marks a notification as sent.

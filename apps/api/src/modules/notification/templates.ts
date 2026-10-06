@@ -6,6 +6,8 @@ const DEFAULT: Template = { title: "OncoFlow", body: "You have a new notificatio
 
 const TEMPLATES: Record<string, Template> = {
   NEW_MESSAGE: { title: "New message", body: "You have a new message.", path: "/" },
+  PATIENT_INQUIRY: { title: "New patient message", body: "A patient has written to the admin team.", path: "/dashboard/regional-admin/inquiry?tab=patients" },
+  NEW_SIDE_EFFECT_REPORT: { title: "New side effect report", body: "A patient reported a side effect and is waiting for a VMO.", path: "/dashboard/virtual-medical-officer/inbox" },
   SLA_BREACH: { title: "Response overdue", body: "A conversation has passed its response time.", path: "/" },
   SPECIALIST_ESCALATION: { title: "New escalation", body: "A patient escalation needs attention.", path: "/" },
   COUNTDOWN_ESCALATION: { title: "Countdown case escalated", body: "A pre-chemo countdown case needs your attention.", path: "/dashboard/quality-assurance-officer" },

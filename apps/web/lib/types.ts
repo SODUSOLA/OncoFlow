@@ -181,6 +181,8 @@ export interface ServiceClassification {
 export interface AppNotification {
   id: string;
   type: string;
+  // The conversation, invoice or appointment it is about, when known (older notifications have none).
+  referenceId?: string | null;
   status: "PENDING" | "SENT" | "READ" | "FAILED";
   sentAt: string | null;
   createdAt: string;

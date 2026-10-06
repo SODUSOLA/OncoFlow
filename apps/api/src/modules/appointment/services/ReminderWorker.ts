@@ -47,7 +47,7 @@ export async function processReminderJob(data: ReminderJobData): Promise<void> {
   }
 
   await Promise.all(notifyTargets.map(async (target) => {
-    await notificationService.create({ recipientId: target.recipientId, type: "APPOINTMENT_REMINDER" }).catch((err) => {
+    await notificationService.create({ recipientId: target.recipientId, type: "APPOINTMENT_REMINDER", referenceId: appointment.id }).catch((err) => {
       console.error(`Reminder notification failed for ${target.recipientId}:`, err);
     });
     const html = `

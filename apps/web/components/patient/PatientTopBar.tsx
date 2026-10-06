@@ -13,9 +13,18 @@ export function PatientTopBar() {
   const [unreadCount, setUnreadCount] = useState(0);
 
   useEffect(() => {
-    api.get<{ notifications: AppNotification[] }>("/notifications")
+    api.get<{ notifications: AppNotification[] }>("/notifications?scope=alerts")
       .then((res) => setUnreadCount(res.notifications.filter((n) => n.status !== "READ").length))
       .catch(() => setUnreadCount(0));
+    // The notifications page announces when everything was marked read, so the badge clears without a reload.
+    const clear = () => setUnreadCount(0);
+    const readOne = () => setUnreadCount((c) => Math.max(0, c - 1));
+    window.addEventListener("notifications:read-all", clear);
+    window.addEventListener("notifications:read-one", readOne);
+    return () => {
+      window.removeEventListener("notifications:read-all", clear);
+      window.removeEventListener("notifications:read-one", readOne);
+    };
   }, []);
 
   return (

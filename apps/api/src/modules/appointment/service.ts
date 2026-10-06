@@ -23,10 +23,10 @@ const transferRequestRepo = new TransferRequestRepository();
 const facilityRepo = new FacilityRepository();
 
 // Sends the patient an appointment notification of the given type.
-async function notifyPatient(patientId: string, type: "APPOINTMENT_CONFIRMED" | "APPOINTMENT_RESCHEDULED") {
+async function notifyPatient(patientId: string, type: "APPOINTMENT_CONFIRMED" | "APPOINTMENT_RESCHEDULED", appointmentId: string) {
   const patientRow = await patientRepo.findById(patientId);
   if (!patientRow?.userId) return;
-  await notificationService.create({ recipientId: patientRow.userId, type }).catch((err) => {
+  await notificationService.create({ recipientId: patientRow.userId, type, referenceId: appointmentId }).catch((err) => {
     console.error(`Notification (${type}) failed for patient ${patientId}:`, err);
   });
 }
@@ -106,7 +106,7 @@ export class AppointmentService {
         const cutoff = canConfirmOnDay(entity.scheduledAt, new Date());
         if (!cutoff.allowed) throw new Error(cutoff.reason);
         updated = entity.confirmPayment(new Date()).confirm();
-        void notifyPatient(entity.patientId, "APPOINTMENT_CONFIRMED");
+        void notifyPatient(entity.patientId, "APPOINTMENT_CONFIRMED", entity.id);
         break;
       }
       case "CHECKED_IN": updated = entity.checkIn(); break;
@@ -140,7 +140,7 @@ export class AppointmentService {
     if (isAfter2pmNigeria(paidAt)) {
       const nextDate = nextWorkingDayFor(row.appointmentType, row.scheduledAt, paidAt);
       await repo.update(appointmentId, { scheduledAt: nextDate });
-      void notifyPatient(row.patientId, "APPOINTMENT_RESCHEDULED");
+      void notifyPatient(row.patientId, "APPOINTMENT_RESCHEDULED", row.id);
     }
     // Before 2PM nothing changes; the queue query picks the appointment up via the PENDING/PAID join.
   }

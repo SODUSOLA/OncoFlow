@@ -19,7 +19,7 @@ export class MessagingJobService {
         await conversationRepo.update(row.id, { slaBreached: true });
         // An unassigned conversation has no one to notify — not an error, just nothing to do.
         if (entity.assignedTo) {
-          await notificationService.create({ recipientId: entity.assignedTo, type: "SLA_BREACH" }).catch((err) => {
+          await notificationService.create({ recipientId: entity.assignedTo, type: "SLA_BREACH", referenceId: row.id }).catch((err) => {
             console.error(`SLA breach notification failed for conversation ${row.id}:`, err);
           });
         }

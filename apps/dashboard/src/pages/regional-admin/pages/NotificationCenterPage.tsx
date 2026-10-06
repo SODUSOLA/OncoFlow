@@ -1,11 +1,13 @@
 import { useEffect, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
-import { TriangleAlert, Clock3, CircleCheck, LogIn, LogOut, ShieldAlert, Activity as ActivityIcon } from "lucide-react";
+import { TriangleAlert, Clock3, CircleCheck, CheckCheck, LogIn, LogOut, ShieldAlert, Activity as ActivityIcon } from "lucide-react";
 import { api } from "../../../lib/api";
 import { Card } from "../../../components/ui/Card";
 import { Button } from "../../../components/ui/Button";
 import { cn } from "../../../lib/utils";
 import { useRegionAlerts } from "../lib/useRegionAlerts";
+import { useAuth } from "../../../lib/auth";
+import { markAlertsRead, useReadAlertIds } from "../lib/readAlertsStore";
 import type { RegionAlert } from "../lib/alertsStore";
 import { EscalationsSection } from "../components/EscalationsSection";
 
@@ -63,7 +65,17 @@ function activityIconFor(action: string) {
 export default function NotificationCenterPage() {
   const navigate = useNavigate();
   const { hash } = useLocation();
-  const { critical: allCritical, warning: allWarning, loading } = useRegionAlerts();
+  const { user } = useAuth();
+  const { alerts: allAlerts, critical: allCritical, warning: allWarning, loading } = useRegionAlerts();
+  const readIds = useReadAlertIds(user?.id);
+  const unreadCount = allAlerts.filter((a) => !readIds.has(a.id)).length;
+
+  // Marks every alert as read here and any stored notifications on the server; the bell then clears.
+  function markAllRead() {
+    if (!user) return;
+    markAlertsRead(user.id, allAlerts.map((a) => a.id));
+    api.post("/notifications/read-all", {}).catch(() => {});
+  }
   // Escalations have their own actionable section below, so the generic columns leave them out (the bell still counts them).
   const critical = allCritical.filter((a) => a.source !== "escalation");
   const warning = allWarning.filter((a) => a.source !== "escalation");
@@ -81,6 +93,14 @@ export default function NotificationCenterPage() {
   return (
     <div>
     <EscalationsSection />
+    <div className="mb-3 flex items-center justify-end gap-3">
+      <span className="text-admin-caption text-admin-text-secondary">
+        {unreadCount > 0 ? `${unreadCount} unread` : "All caught up"}
+      </span>
+      <Button onClick={markAllRead} disabled={unreadCount === 0} variant="outline" size="sm" className="rounded-admin-xs">
+        <CheckCheck className="size-4" aria-hidden="true" /> Mark all as read
+      </Button>
+    </div>
     <div className="grid grid-cols-3 gap-4" style={{ minHeight: "60vh" }}>
       <NotificationColumn
         title="Critical Action Required"
@@ -90,7 +110,7 @@ export default function NotificationCenterPage() {
         empty="Nothing critical right now."
       >
         {visibleCritical.map((a) => (
-          <AlertCard key={a.id} alert={a} onAction={() => navigate(a.actionTo)} />
+          <AlertCard key={a.id} alert={a} read={readIds.has(a.id)} onAction={() => navigate(a.actionTo)} />
         ))}
         {hiddenCritical > 0 && <MoreLink count={hiddenCritical} onClick={() => navigate(visibleCritical[0]?.actionTo ?? "/dashboard/regional-admin")} />}
       </NotificationColumn>
@@ -103,7 +123,7 @@ export default function NotificationCenterPage() {
         empty="Nothing pending review."
       >
         {visibleWarning.map((a) => (
-          <AlertCard key={a.id} alert={a} onAction={() => navigate(a.actionTo)} />
+          <AlertCard key={a.id} alert={a} read={readIds.has(a.id)} onAction={() => navigate(a.actionTo)} />
         ))}
         {hiddenWarning > 0 && <MoreLink count={hiddenWarning} onClick={() => navigate(visibleWarning[0]?.actionTo ?? "/dashboard/regional-admin")} />}
       </NotificationColumn>
@@ -164,13 +184,13 @@ function NotificationColumn({
 }
 
 // Renders any RegionAlert generically, since the aggregator already decided severity, badge and copy.
-function AlertCard({ alert, onAction }: { alert: RegionAlert; onAction: () => void }) {
+function AlertCard({ alert, read, onAction }: { alert: RegionAlert; read: boolean; onAction: () => void }) {
   const critical = alert.severity === "critical";
   const toneClasses = critical ? "border-l-4 border-l-admin-danger" : "border-l-4 border-l-admin-warning";
   const badgeClasses = critical ? "bg-admin-danger/10 text-admin-danger-text" : "bg-admin-warning/15 text-admin-warning";
   const Icon = critical ? TriangleAlert : Clock3;
   return (
-    <Card className={cn("space-y-2 border-admin-border p-4", toneClasses)}>
+    <Card className={cn("space-y-2 border-admin-border p-4", toneClasses, read && "opacity-60")}>
       <div className="flex items-center gap-2">
         <Icon className={cn("size-3.5", critical ? "text-admin-danger" : "text-admin-warning")} aria-hidden="true" />
         <span className={cn("rounded-admin-xs px-1.5 py-0.5 text-admin-micro font-semibold", badgeClasses)}>{alert.badge}</span>

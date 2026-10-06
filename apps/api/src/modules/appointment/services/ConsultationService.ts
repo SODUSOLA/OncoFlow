@@ -76,7 +76,7 @@ export class ConsultationService {
       targets.push({ recipientId: oncologist.id, email: oncologist.email, otherPartyName: patient ? `${patient.firstName} ${patient.lastName}` : "your patient" });
     }
     await Promise.all(targets.map(async (target) => {
-      await notificationService.create({ recipientId: target.recipientId, type: "APPOINTMENT_SCHEDULED" }).catch((err) => {
+      await notificationService.create({ recipientId: target.recipientId, type: "APPOINTMENT_SCHEDULED", referenceId: appointment.id }).catch((err) => {
         console.error(`Scheduled-appointment notification failed for ${target.recipientId}:`, err);
       });
       const html = `

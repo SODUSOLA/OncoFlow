@@ -7,6 +7,7 @@ import {
 import { useAuth } from "../../lib/auth";
 import { useRegionScope } from "./lib/useRegionScope";
 import { useRegionAlerts } from "./lib/useRegionAlerts";
+import { useReadAlertIds } from "./lib/readAlertsStore";
 import { Sidebar } from "./shell/Sidebar";
 import { TopAppBar } from "./shell/TopAppBar";
 import { AppShell } from "./shell/AppShell";
@@ -49,6 +50,7 @@ export function RegionalAdminLayout() {
   const navigate = useNavigate();
   const { region, facilitiesInRegion, loading: scopeLoading } = useRegionScope();
   const { alerts } = useRegionAlerts();
+  const readAlertIds = useReadAlertIds(user?.id);
   const [collapsed, setCollapsed] = useState(() => localStorage.getItem(SIDEBAR_COLLAPSED_KEY) === "1");
   const [search, setSearch] = useState("");
   const [newConsultationOpen, setNewConsultationOpen] = useState(false);
@@ -104,7 +106,7 @@ export function RegionalAdminLayout() {
           onSearchChange={setSearch}
           onSearchSubmit={submitSearch}
           connected={!scopeLoading}
-          hasAlerts={alerts.length > 0}
+          hasAlerts={alerts.some((a) => !readAlertIds.has(a.id))}
           profileInitials={initials}
         />
       }
