@@ -23,7 +23,7 @@ export interface AuthenticatedRequest extends Request {
   mfaRequired?: boolean;
 }
 
-export type PermissionAction = "create" | "read" | "update" | "delete" | "approve" | "export" | "override" | "claim" | "call";
+export type PermissionAction = "create" | "read" | "update" | "delete" | "approve" | "export" | "override" | "claim" | "call" | "send";
 export type FacilityComparator = (userFacilityId: string, resourceFacilityId: string) => boolean;
 
 const PERMISSION_CACHE_TTL = 900;

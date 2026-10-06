@@ -36,6 +36,7 @@ const PERMISSIONS: { resource: string; action: string; description: string }[] =
   { resource: "invoice", action: "create", description: "Create invoices" },
   { resource: "invoice", action: "read", description: "Read invoices" },
   { resource: "invoice", action: "update", description: "Update invoices" },
+  { resource: "invoice", action: "send", description: "Send a draft invoice to its patient (Regional Admin, within region)" },
   { resource: "serviceClassification", action: "read", description: "Read service classifications" },
   { resource: "tariff", action: "read", description: "Read per-facility tariff rates (invoice fee-breakdown preview)" },
   { resource: "appointment", action: "create", description: "Create appointments" },
@@ -196,7 +197,7 @@ export async function seedIdentity() {
   await grantPermissionsToRole("REGIONAL_ADMIN", [
     // patient:update covers confirming or reassigning a facility, the last onboarding step.
     "patient:read", "patient:create", "patient:update", "patient:call",
-    "invoice:create", "invoice:read", "tariff:read",
+    "invoice:create", "invoice:read", "invoice:send", "tariff:read",
     // appointment:create plus availability:read power the New Consultation flow.
     "appointment:read", "appointment:update", "appointment:create",
     "availability:read",

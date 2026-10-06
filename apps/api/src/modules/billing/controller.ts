@@ -1,5 +1,5 @@
 import type { Request, Response } from "express";
-import { resolveScopeOrDeny } from "../../lib/facility-scope.js";
+import { resolveScopeOrDeny, accessibleFacilityIds } from "../../lib/facility-scope.js";
 import type { AuthenticatedRequest } from "../../lib/rbac.js";
 import { userHasPermission } from "../../lib/rbac.js";
 import { InvoiceService } from "./service.js";
@@ -123,6 +123,17 @@ export async function listInvoicesHandler(req: Request, res: Response) {
 // Sends a draft invoice to the patient.
 export async function sendInvoiceHandler(req: Request, res: Response) {
   try {
+    const row = await invoiceRepo.findById(String(req.params.id));
+    if (!row) {
+      res.status(404).json({ error: "Invoice not found" });
+      return;
+    }
+    // Sending is a regional action, so an invoice outside the caller's region looks the same as one that doesn't exist.
+    const allowed = await accessibleFacilityIds((req as AuthenticatedRequest).userId);
+    if (allowed && !allowed.includes(row.facilityId)) {
+      res.status(404).json({ error: "Invoice not found" });
+      return;
+    }
     const result = await invoiceSvc.sendInvoiceWithAutoDeduct(String(req.params.id));
     res.json(result);
   } catch (err) {

@@ -47,7 +47,7 @@ router.get("/invoices", requireAuthenticated(), validateQuery(listInvoicesQueryS
 // Reads one invoice.
 router.get("/invoices/:id", requireAuthenticated(), validateParams(invoiceIdParamSchema), getInvoiceHandler);
 // Sends a draft invoice to the patient.
-router.post("/invoices/:id/send", requirePermission("invoice", "update"), validateParams(invoiceIdParamSchema), sendInvoiceHandler);
+router.post("/invoices/:id/send", requirePermission("invoice", "send"), validateParams(invoiceIdParamSchema), sendInvoiceHandler);
 // Pays an invoice from the wallet.
 router.post("/invoices/:id/pay", requireAuthenticated(), validateParams(invoiceIdParamSchema), payInvoiceHandler);
 // Voids an invoice.
