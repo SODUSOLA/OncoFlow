@@ -55,7 +55,26 @@ export async function updateEscalationStatusHandler(req: Request, res: Response)
   } catch (e) { fail(res, e); }
 }
 
+// Side-effect reports waiting to be claimed.
+export async function unclaimedHandler(_req: Request, res: Response) {
+  try { res.json({ conversations: await vmoService.unclaimed() }); } catch (e) { fail(res, e); }
+}
+
+// Takes an unclaimed side-effect report.
+export async function claimHandler(req: Request, res: Response) {
+  try { res.json({ conversation: await vmoService.claim(String(req.params.conversationId), caller(req)) }); } catch (e) { fail(res, e); }
+}
+
 // The VMO's chat inbox.
 export async function inboxHandler(req: Request, res: Response) {
   try { res.json({ conversations: await vmoService.inbox(caller(req)) }); } catch (e) { fail(res, e); }
+}
+
+// Redirects to a short-lived signed link for a photo or voice note in the VMO's own chat.
+export async function attachmentHandler(req: Request, res: Response) {
+  try {
+    const url = await vmoService.attachmentUrl(String(req.params.conversationId), String(req.params.messageId), caller(req), req.query.download === "true");
+    res.set("Cache-Control", "no-store");
+    res.redirect(url);
+  } catch (e) { fail(res, e); }
 }

@@ -2,6 +2,7 @@ import type { Request, Response } from "express";
 import type { AuthenticatedRequest } from "../../lib/rbac.js";
 import { MessagingService, MeetingService, TranscriptionAssignmentService } from "./service.js";
 import { verifyDailyWebhookSignature } from "./services/DailyService.js";
+import { accessibleFacilityIds } from "../../lib/facility-scope.js";
 
 const messagingSvc = new MessagingService();
 const meetingSvc = new MeetingService();
@@ -9,7 +10,7 @@ const transcriptionAssignmentSvc = new TranscriptionAssignmentService();
 
 // Maps a messaging error message to an HTTP status.
 function messagingErrorStatus(message: string): number {
-  if (message === "Conversation not found" || message === "Appointment not found" || message === "Patient not found") return 404;
+  if (message === "Conversation not found" || message === "Inquiry not found" || message === "Attachment not found" || message === "File not found" || message === "Appointment not found" || message === "Patient not found") return 404;
   // Checked before the broader "You can only" 403 prefix, which would otherwise shadow these more specific cases.
   if (
     message.startsWith("You already have an open")
@@ -17,7 +18,7 @@ function messagingErrorStatus(message: string): number {
     || message.startsWith("Feedback can only be left")
     || message.startsWith("You've already submitted feedback")
   ) return 409;
-  if (message === "Forbidden" || message.startsWith("You can only") || message.startsWith("Reporting a side effect requires")) return 403;
+  if (message === "Forbidden" || message.startsWith("File blocked") || message.startsWith("You can only") || message.startsWith("Reporting a side effect requires")) return 403;
   return 500;
 }
 
@@ -405,5 +406,65 @@ export async function finalizeTranscriptionAssignmentHandler(req: Request, res: 
   } catch (err) {
     const message = err instanceof Error ? err.message : "Internal server error";
     res.status(transcriptionAssignmentErrorStatus(message)).json({ error: message });
+  }
+}
+
+// Patient admin inquiries for the caller's region only: a Regional Admin has no standing access to other conversations.
+export async function listAdminInquiriesHandler(req: Request, res: Response) {
+  try {
+    const scope = await accessibleFacilityIds((req as AuthenticatedRequest).userId);
+    const status = req.query.status === "CLOSED" ? "CLOSED" : "OPEN";
+    res.json({ inquiries: await messagingSvc.listAdminInquiries(scope, status) });
+  } catch (err) {
+    const message = err instanceof Error ? err.message : "Internal server error";
+    res.status(messagingErrorStatus(message)).json({ error: message });
+  }
+}
+
+// One admin inquiry's thread.
+export async function listAdminInquiryMessagesHandler(req: Request, res: Response) {
+  try {
+    const scope = await accessibleFacilityIds((req as AuthenticatedRequest).userId);
+    res.json({ messages: await messagingSvc.listAdminInquiryMessages(String(req.params.id), scope) });
+  } catch (err) {
+    const message = err instanceof Error ? err.message : "Internal server error";
+    res.status(messagingErrorStatus(message)).json({ error: message });
+  }
+}
+
+// A Regional Admin's reply to a patient's admin inquiry.
+export async function replyAdminInquiryHandler(req: Request, res: Response) {
+  try {
+    const callerId = (req as AuthenticatedRequest).userId;
+    const scope = await accessibleFacilityIds(callerId);
+    const result = await messagingSvc.replyToAdminInquiry(String(req.params.id), req.body.content, scope, callerId);
+    res.status(201).json({ message: result });
+  } catch (err) {
+    const message = err instanceof Error ? err.message : "Internal server error";
+    res.status(messagingErrorStatus(message)).json({ error: message });
+  }
+}
+
+// Closes an admin inquiry once it is resolved.
+export async function closeAdminInquiryHandler(req: Request, res: Response) {
+  try {
+    const scope = await accessibleFacilityIds((req as AuthenticatedRequest).userId);
+    res.json({ conversation: await messagingSvc.closeAdminInquiry(String(req.params.id), scope) });
+  } catch (err) {
+    const message = err instanceof Error ? err.message : "Internal server error";
+    res.status(messagingErrorStatus(message)).json({ error: message });
+  }
+}
+
+// Redirects to a short-lived signed link for an image or voice note in an inquiry in the admin's own region.
+export async function adminInquiryAttachmentHandler(req: Request, res: Response) {
+  try {
+    const scope = await accessibleFacilityIds((req as AuthenticatedRequest).userId);
+    const url = await messagingSvc.adminInquiryAttachmentUrl(String(req.params.id), String(req.params.messageId), scope, req.query.download === "true");
+    res.set("Cache-Control", "no-store");
+    res.redirect(url);
+  } catch (err) {
+    const message = err instanceof Error ? err.message : "Internal server error";
+    res.status(messagingErrorStatus(message)).json({ error: message });
   }
 }

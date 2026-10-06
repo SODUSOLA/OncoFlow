@@ -108,6 +108,8 @@ export interface Conversation {
   firstResponseAt: string | null;
   slaBreached: boolean;
   assignedTo: string | null;
+  // Messages from the patient that haven't been read yet.
+  unreadCount?: number;
 }
 
 export interface Message {

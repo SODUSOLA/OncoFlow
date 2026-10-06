@@ -1,5 +1,6 @@
 import { Router } from "express";
 import {
+  listAdminInquiriesHandler, listAdminInquiryMessagesHandler, adminInquiryAttachmentHandler, replyAdminInquiryHandler, closeAdminInquiryHandler,
   startConversationHandler, getConversationHandler, listConversationsHandler,
   postMessageHandler, listMessagesHandler, closeConversationHandler, startSideEffectReportHandler,
   submitFeedbackHandler, listFeedbackHandler,
@@ -72,7 +73,18 @@ const transcriptionAssignmentIdParamSchema = z.object({
   id: z.string().uuid(),
 });
 
+const adminInquiryReplySchema = z.object({ content: z.string().trim().min(1).max(4000) }).strict();
+const adminInquiryListQuerySchema = z.object({ status: z.enum(["OPEN", "CLOSED"]).optional() });
+
 const router = Router();
+
+// Patient admin inquiries for a Regional Admin, scoped to their region by the handlers. These deliberately do not
+// reuse conversation:read, which would expose every conversation (including side-effect chats) by id.
+router.get("/admin/patient-inquiries", requirePermission("patientInquiry", "read"), requireRole("REGIONAL_ADMIN"), validateQuery(adminInquiryListQuerySchema), listAdminInquiriesHandler);
+router.get("/admin/patient-inquiries/:id/messages", requirePermission("patientInquiry", "read"), requireRole("REGIONAL_ADMIN"), validateParams(conversationIdParamSchema), listAdminInquiryMessagesHandler);
+router.get("/admin/patient-inquiries/:id/messages/:messageId/attachment", requirePermission("patientInquiry", "read"), requireRole("REGIONAL_ADMIN"), validateParams(z.object({ id: z.string().uuid(), messageId: z.string().uuid() })), adminInquiryAttachmentHandler);
+router.post("/admin/patient-inquiries/:id/messages", requirePermission("patientInquiry", "update"), requireRole("REGIONAL_ADMIN"), validateParams(conversationIdParamSchema), validateBody(adminInquiryReplySchema), replyAdminInquiryHandler);
+router.post("/admin/patient-inquiries/:id/close", requirePermission("patientInquiry", "update"), requireRole("REGIONAL_ADMIN"), validateParams(conversationIdParamSchema), closeAdminInquiryHandler);
 
 // Authenticated only where a patient acting on their own record is legitimate; the ownership check is in the service.
 router.post("/conversations", requireAuthenticated(), validateBody(startConversationSchema), startConversationHandler);

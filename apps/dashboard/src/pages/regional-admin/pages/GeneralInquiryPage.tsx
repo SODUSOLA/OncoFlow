@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "react-router-dom";
+import { PatientInquiriesPanel } from "../components/PatientInquiriesPanel";
 import { ArrowUpDown, CircleCheck, Clock3, Send as SendIcon, TriangleAlert, User, Users as UsersIcon } from "lucide-react";
 import { api } from "../../../lib/api";
 import type { CountdownCase, Patient, PublicInquiry, PublicInquiryMessage } from "../../../lib/types";
@@ -176,11 +177,13 @@ function InquiryThread({ inquiry, now, onUpdated }: { inquiry: PublicInquiry; no
             <p className="text-center text-admin-body-sm text-admin-text-secondary">No messages</p>
           ) : (
             messages.map((m) => (
-              <div key={m.id} className={cn("max-w-[80%] rounded-admin-sm px-3 py-2 text-admin-body-sm", m.senderType === "STAFF" ? "ml-auto bg-admin-sidebar-cta text-white" : "bg-admin-card-alt text-admin-text")}>
-                <p>{m.content}</p>
-                <p className={cn("mt-1 text-admin-micro", m.senderType === "STAFF" ? "text-white/70" : "text-admin-text-secondary")}>
-                  {new Date(m.createdAt).toLocaleString()}
-                </p>
+              <div key={m.id} className={cn("chat-row", m.senderType === "STAFF" ? "chat-row-sent" : "chat-row-received")}>
+                <div className={cn("chat-bubble", m.senderType === "STAFF" ? "chat-bubble-sent" : "chat-bubble-received")}>
+                  <p>{m.content}</p>
+                  <p className={cn("chat-meta", m.senderType === "STAFF" ? "chat-meta-sent" : "chat-meta-received")}>
+                    {new Date(m.createdAt).toLocaleString()}
+                  </p>
+                </div>
               </div>
             ))
           )}
@@ -297,8 +300,8 @@ function CategoryPill({ linked }: { linked: boolean }) {
   );
 }
 
-// Inquiry inbox with thread list and detail panel.
-export default function GeneralInquiryPage() {
+// Website-visitor inquiry inbox with thread list and detail panel.
+function VisitorInquiries() {
   const [inquiries, setInquiries] = useState<PublicInquiry[]>([]);
   const [summaries, setSummaries] = useState<Record<string, ThreadSummary>>({});
   // The overview's inquiry queue deep-links here with ?id= so a clicked visitor opens straight into their thread.
@@ -347,7 +350,7 @@ export default function GeneralInquiryPage() {
 
   const sortedInquiries = useMemo(() => {
     const list = [...inquiries];
-    if (!urgentFirst) return list;
+    if (!urgentFirst) return list.sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime());
     // Urgent means open, unanswered and longest waiting; everything else sorts after by recency.
     return list.sort((a, b) => {
       const sa = summaries[a.id];
@@ -450,6 +453,49 @@ export default function GeneralInquiryPage() {
             Select an inquiry to view its thread
           </Card>
         )}
+      </div>
+    </div>
+  );
+}
+
+// The Inquiry Chat page: website visitors (the public chat widget) and patients writing from their app.
+export default function GeneralInquiryPage() {
+  const [searchParams, setSearchParams] = useSearchParams();
+  const tab = searchParams.get("tab") === "patients" ? "patients" : "visitors";
+  const [patientCount, setPatientCount] = useState<number | null>(null);
+
+  // The tab badge needs the patient count even while the visitors tab is showing.
+  useEffect(() => {
+    if (tab === "patients") return;
+    const load = () => api.get<{ inquiries: unknown[] }>("/admin/patient-inquiries?status=OPEN").then((d) => setPatientCount(d.inquiries.length)).catch(() => {});
+    load();
+    const t = setInterval(load, 15_000);
+    return () => clearInterval(t);
+  }, [tab]);
+
+  function selectTab(next: "visitors" | "patients") {
+    setSearchParams(next === "patients" ? { tab: "patients" } : {}, { replace: true });
+  }
+
+  return (
+    <div className="flex h-full min-h-0 flex-col gap-3">
+      <div className="flex shrink-0 gap-1 border-b border-admin-border">
+        {([["visitors", "Website visitors", null], ["patients", "Patients", patientCount]] as const).map(([key, label, count]) => (
+          <button
+            key={key}
+            onClick={() => selectTab(key)}
+            className={cn(
+              "-mb-px flex items-center gap-2 border-b-2 px-4 py-2 text-admin-body-sm font-medium",
+              tab === key ? "border-admin-sidebar-cta text-admin-text" : "border-transparent text-admin-text-secondary hover:text-admin-text",
+            )}
+          >
+            {label}
+            {count !== null && count > 0 && <Badge variant="gold">{count}</Badge>}
+          </button>
+        ))}
+      </div>
+      <div className="min-h-0 flex-1">
+        {tab === "patients" ? <PatientInquiriesPanel onCountChange={setPatientCount} /> : <VisitorInquiries />}
       </div>
     </div>
   );

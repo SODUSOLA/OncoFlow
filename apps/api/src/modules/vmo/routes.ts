@@ -2,7 +2,7 @@ import { Router } from "express";
 import { z } from "zod";
 import {
   startTriageHandler, answerHandler, folderHandler, medicationTriageHandler, escalateHandler,
-  listEscalationsHandler, updateEscalationStatusHandler, inboxHandler,
+  listEscalationsHandler, updateEscalationStatusHandler, inboxHandler, unclaimedHandler, claimHandler, attachmentHandler,
 } from "./controller.js";
 import { requirePermission, requireRole } from "../../lib/rbac.js";
 import { validateBody, validateParams, validateQuery } from "../../lib/validation.js";
@@ -24,6 +24,9 @@ const router = Router();
 // The VMO's checklist and the patient views it unlocks. No generic patient/vitals/labs grants exist for the role:
 // everything a VMO can read about a patient goes through these routes, each re-checking chat + checklist.
 router.get("/vmo/inbox", requirePermission("conversation", "read"), requireRole("VIRTUAL_MEDICAL_OFFICER"), inboxHandler);
+router.get("/vmo/unclaimed", requirePermission("conversation", "read"), requireRole("VIRTUAL_MEDICAL_OFFICER"), unclaimedHandler);
+router.get("/vmo/conversations/:conversationId/messages/:messageId/attachment", requirePermission("conversation", "read"), requireRole("VIRTUAL_MEDICAL_OFFICER"), validateParams(z.object({ conversationId: z.string().uuid(), messageId: z.string().uuid() })), attachmentHandler);
+router.post("/vmo/conversations/:conversationId/claim", requirePermission("conversation", "update"), requireRole("VIRTUAL_MEDICAL_OFFICER"), validateParams(conversationParam), claimHandler);
 router.post("/vmo/conversations/:conversationId/triage", requirePermission("triage", "create"), requireRole("VIRTUAL_MEDICAL_OFFICER"), validateParams(conversationParam), startTriageHandler);
 router.post("/vmo/triage-sessions/:sessionId/answers", requirePermission("triage", "create"), requireRole("VIRTUAL_MEDICAL_OFFICER"), validateParams(sessionParam), validateBody(answerSchema), answerHandler);
 router.get("/vmo/conversations/:conversationId/folder", requirePermission("triage", "read"), requireRole("VIRTUAL_MEDICAL_OFFICER"), validateParams(conversationParam), folderHandler);

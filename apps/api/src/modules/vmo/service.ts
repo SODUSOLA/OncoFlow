@@ -1,7 +1,7 @@
 import crypto from "node:crypto";
-import { TriageRepository, EscalationRepository, InboxRepository, utc } from "./repository.js";
+import { TriageRepository, EscalationRepository, InboxRepository, UnclaimedRepository, utc } from "./repository.js";
 import { SpecialistEscalation } from "./entities/SpecialistEscalation.js";
-import { ConversationRepository, ParticipantRepository } from "../messaging/index.js";
+import { ConversationRepository, ParticipantRepository, MessagingService } from "../messaging/index.js";
 import { PatientRepository } from "../patient/index.js";
 import { RegimenService, VitalsService, ClinicalMetricsService } from "../clinical-metrics/index.js";
 import { drugSupplyService } from "../drug-supply/index.js";
@@ -13,8 +13,10 @@ import { vitalTypeEnum } from "../../db/enums.js";
 const triageRepo = new TriageRepository();
 const escalationRepo = new EscalationRepository();
 const inboxRepo = new InboxRepository();
+const unclaimedRepo = new UnclaimedRepository();
 const conversationRepo = new ConversationRepository();
 const participantRepo = new ParticipantRepository();
+const messagingService = new MessagingService();
 const patientRepo = new PatientRepository();
 const regimenSvc = new RegimenService();
 const vitalsSvc = new VitalsService();
@@ -66,9 +68,41 @@ export class VmoService {
       id: r.id, status: r.status,
       slaState: slaStateFor({ status: r.status, slaBreached: r.slaBreached, slaDeadline: asDate(r.slaDeadline), firstResponseAt: asDate(r.firstResponseAt) }),
       slaDeadline: asDate(r.slaDeadline), createdAt: asDate(r.createdAt),
-      lastMessage: r.lastMessage, lastMessageAt: asDate(r.lastMessageAt), triageCompleted: r.triageCompleted,
+      lastMessage: r.lastMessage, lastMessageAt: asDate(r.lastMessageAt), triageCompleted: r.triageCompleted, unreadCount: r.unreadCount,
       patient: { firstName: r.firstName, lastName: r.lastName, uniquePatientId: r.uniquePatientId, age: ageFromDob(r.dob) },
     }));
+  }
+
+  // Side-effect reports still waiting for a VMO, oldest first; any VMO may take one.
+  async unclaimed() {
+    const rows = await unclaimedRepo.list();
+    return rows.map((r) => ({
+      id: r.id,
+      slaState: slaStateFor({ status: "OPEN", slaBreached: r.slaBreached, slaDeadline: utc(r.slaDeadline), firstResponseAt: null }),
+      slaDeadline: utc(r.slaDeadline), createdAt: utc(r.createdAt),
+      lastMessage: r.lastMessage, lastMessageAt: utc(r.lastMessageAt), unreadCount: r.unreadCount,
+      patient: { firstName: r.firstName, lastName: r.lastName, uniquePatientId: r.uniquePatientId, age: ageFromDob(r.dob) },
+    }));
+  }
+
+  // Takes an unclaimed report. Only one VMO can win; the winner is assigned and joins the chat, which is what gives
+  // them (and only them) access to the triage checklist and the chat-scoped patient folder.
+  async claim(conversationId: string, vmoId: string) {
+    const claimed = await conversationRepo.claimSideEffect(conversationId, vmoId);
+    if (!claimed) throw new ConflictError("This report was already taken by another VMO, or it has closed");
+    if (!(await participantRepo.isParticipant(conversationId, vmoId))) {
+      await participantRepo.create({ conversationId, userId: vmoId });
+    }
+    return { id: claimed.id, status: claimed.status, assignedTo: claimed.assignedTo };
+  }
+
+  // The signed URL of a photo or voice note in a side-effect chat the VMO is on. Open or closed, but never someone else's chat.
+  async attachmentUrl(conversationId: string, messageId: string, vmoId: string, forceDownload = false) {
+    const convo = await conversationRepo.findById(conversationId);
+    if (!convo || convo.conversationType !== "MO_SIDE_EFFECT") throw new NotFoundError("Side-effect chat not found");
+    const onIt = convo.assignedTo === vmoId || await participantRepo.isParticipant(conversationId, vmoId);
+    if (!onIt) throw new ForbiddenError("You are not on this chat");
+    return messagingService.attachmentUrl(conversationId, messageId, forceDownload);
   }
 
   // Starts (or resumes) the caller's checklist for a chat and returns questions with progress.

@@ -58,18 +58,42 @@ export class InboxRepository {
     return db.execute<{
       id: string; status: string; slaDeadline: Date | null; slaBreached: boolean; firstResponseAt: Date | null; createdAt: Date;
       firstName: string; lastName: string; uniquePatientId: string; dob: string; lastMessage: string | null; lastMessageAt: Date | null;
-      triageCompleted: boolean;
+      triageCompleted: boolean; unreadCount: number;
     }>(sql`
       SELECT c.id, c.status::text AS status, c.sla_deadline AS "slaDeadline", c.sla_breached AS "slaBreached",
              c.first_response_at AS "firstResponseAt", c.created_at AS "createdAt",
              p.first_name AS "firstName", p.last_name AS "lastName", p.unique_patient_id AS "uniquePatientId", p.dob::text AS dob,
              (SELECT m.content FROM message m WHERE m.conversation_id = c.id ORDER BY m.created_at DESC LIMIT 1) AS "lastMessage",
              (SELECT m.created_at FROM message m WHERE m.conversation_id = c.id ORDER BY m.created_at DESC LIMIT 1) AS "lastMessageAt",
-             EXISTS (SELECT 1 FROM triage_session ts WHERE ts.conversation_id = c.id AND ts.vmo_id = ${vmoId} AND ts.completed_at IS NOT NULL) AS "triageCompleted"
+             EXISTS (SELECT 1 FROM triage_session ts WHERE ts.conversation_id = c.id AND ts.vmo_id = ${vmoId} AND ts.completed_at IS NOT NULL) AS "triageCompleted",
+             (SELECT COUNT(*)::int FROM message mu WHERE mu.conversation_id = c.id AND mu.sender_id = p.user_id
+                AND mu.status::text <> 'READ' AND mu.type::text <> 'SYSTEM') AS "unreadCount"
       FROM conversation c
       JOIN patient p ON p.id = c.patient_id
       WHERE c.is_deleted = false AND c.conversation_type = 'MO_SIDE_EFFECT' AND c.assigned_to = ${vmoId}
-      ORDER BY c.created_at DESC
+      ORDER BY COALESCE((SELECT MAX(m.created_at) FROM message m WHERE m.conversation_id = c.id), c.created_at) DESC
+    `);
+  }
+}
+
+// Open side-effect chats nobody has taken yet (newest first, so a fresh report is never buried), shown to every VMO with the same mini-card (name, ID, age only).
+export class UnclaimedRepository {
+  async list() {
+    return db.execute<{
+      id: string; slaDeadline: Date | null; slaBreached: boolean; createdAt: Date;
+      firstName: string; lastName: string; uniquePatientId: string; dob: string; lastMessage: string | null; lastMessageAt: Date | null; unreadCount: number;
+    }>(sql`
+      SELECT c.id, c.sla_deadline AS "slaDeadline", c.sla_breached AS "slaBreached", c.created_at AS "createdAt",
+             (SELECT COUNT(*)::int FROM message mu WHERE mu.conversation_id = c.id AND mu.sender_id = p.user_id
+                AND mu.status::text <> 'READ' AND mu.type::text <> 'SYSTEM') AS "unreadCount",
+             p.first_name AS "firstName", p.last_name AS "lastName", p.unique_patient_id AS "uniquePatientId", p.dob::text AS dob,
+             (SELECT m.content FROM message m WHERE m.conversation_id = c.id ORDER BY m.created_at DESC LIMIT 1) AS "lastMessage",
+             (SELECT m.created_at FROM message m WHERE m.conversation_id = c.id ORDER BY m.created_at DESC LIMIT 1) AS "lastMessageAt"
+      FROM conversation c
+      JOIN patient p ON p.id = c.patient_id
+      WHERE c.is_deleted = false AND p.is_deleted = false AND c.conversation_type = 'MO_SIDE_EFFECT' AND c.status = 'OPEN' AND c.assigned_to IS NULL
+      ORDER BY COALESCE((SELECT MAX(m.created_at) FROM message m WHERE m.conversation_id = c.id), c.created_at) DESC
+      LIMIT 200
     `);
   }
 }

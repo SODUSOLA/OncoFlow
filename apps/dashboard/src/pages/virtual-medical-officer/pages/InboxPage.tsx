@@ -1,14 +1,27 @@
 import { useEffect, useRef, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
-import { Lock, Mic, Send, ShieldAlert, FlaskConical } from "lucide-react";
+import { Lock, Send, ShieldAlert, FlaskConical } from "lucide-react";
 import { api } from "../../../lib/api";
 import { getSocket } from "../../../lib/socket";
 import { useAuth } from "../../../lib/auth";
 import { cn } from "../../../lib/utils";
-import { useInbox, useFolder, SLA_STYLE, SlaBadge, SlaCountdown, fullName, type InboxChat } from "../lib/vmo";
+import { useInbox, useUnclaimed, useFolder, SLA_STYLE, SlaBadge, SlaCountdown, fullName, type InboxChat } from "../lib/vmo";
 import { VITAL_LABELS, VITAL_UNITS } from "../../consulting-oncologist/lib/clinicalTypes";
 
 const BASE = "/dashboard/virtual-medical-officer";
+// A photo or voice note shown in the thread. It loads through a link scoped to this chat, since the viewer has no
+// general file access; a photo that can't be fetched falls back to a label instead of a broken image.
+function Attachment({ type, src }: { type: "IMAGE" | "VOICE"; src: string }) {
+  const [failed, setFailed] = useState(false);
+  if (type === "VOICE") return <audio controls src={src} className="h-9 max-w-[220px]" />;
+  if (failed) return <span className="italic">Photo unavailable</span>;
+  return (
+    <a href={src} target="_blank" rel="noopener noreferrer">
+      <img src={src} alt="Attached photo" className="max-h-60 max-w-full rounded-lg object-contain" onError={() => setFailed(true)} />
+    </a>
+  );
+}
+
 interface Msg { id: string; senderId: string; type: "TEXT" | "IMAGE" | "VOICE" | "SYSTEM"; content: string; createdAt: string }
 
 // Three panes: threads (one SLA state each), the chat, and a patient summary that stays locked until triage is done.
@@ -16,12 +29,32 @@ export default function InboxPage() {
   const { conversationId } = useParams();
   const navigate = useNavigate();
   const { chats, error, reload } = useInbox();
-  const [filter, setFilter] = useState<"OPEN" | "RESOLVED">("OPEN");
+  const { chats: unclaimed, reload: reloadUnclaimed } = useUnclaimed();
+  const [filter, setFilter] = useState<"OPEN" | "RESOLVED" | "UNCLAIMED">("OPEN");
+  const [claiming, setClaiming] = useState<string | null>(null);
+  const [claimError, setClaimError] = useState<string | null>(null);
+
+  // Takes a report, then opens it: from here it is this VMO's chat, with triage and the folder behind it.
+  async function claim(id: string) {
+    setClaiming(id);
+    setClaimError(null);
+    try {
+      await api.post(`/vmo/conversations/${id}/claim`);
+      await Promise.all([reload(), reloadUnclaimed()]);
+      setFilter("OPEN");
+      navigate(`${BASE}/inbox/${id}`);
+    } catch (e) {
+      setClaimError(e instanceof Error ? e.message : "Couldn't claim this report");
+      void reloadUnclaimed();
+    } finally {
+      setClaiming(null);
+    }
+  }
   const active = chats?.find((c) => c.id === conversationId) ?? null;
 
   if (error) return <p className="p-8 text-admin-danger">{error}</p>;
   if (!chats) return <p className="p-8 text-admin-text-secondary">Loading…</p>;
-  const list = chats.filter((c) => (filter === "OPEN" ? c.status === "OPEN" : c.status === "CLOSED"));
+  const list = filter === "UNCLAIMED" ? [] : chats.filter((c) => (filter === "OPEN" ? c.status === "OPEN" : c.status === "CLOSED"));
 
   return (
     <div className="flex h-full">
@@ -29,16 +62,48 @@ export default function InboxPage() {
         <div className="border-b border-admin-border p-4">
           <h1 className="text-admin-h4 text-admin-text">Side-Effect Inbox</h1>
           <div className="mt-3 flex gap-2">
-            {(["OPEN", "RESOLVED"] as const).map((f) => (
+            {(["OPEN", "UNCLAIMED", "RESOLVED"] as const).map((f) => (
               <button key={f} onClick={() => setFilter(f)}
                 className={cn("rounded-admin-xs px-3 py-1 text-admin-caption font-semibold", filter === f ? "bg-admin-sidebar-cta text-white" : "bg-admin-card-alt text-admin-text-secondary")}>
-                {f === "OPEN" ? "Active" : "Resolved"}
+                {f === "OPEN" ? "Active" : f === "RESOLVED" ? "Resolved" : `Unclaimed${unclaimed && unclaimed.length > 0 ? ` (${unclaimed.length})` : ""}`}
               </button>
             ))}
           </div>
         </div>
         <ul className="min-h-0 flex-1 overflow-y-auto">
-          {list.length === 0 && <li className="p-6 text-center text-admin-body-sm text-admin-text-secondary">Nothing here.</li>}
+          {filter === "UNCLAIMED" && (
+            <>
+              {claimError && <li role="alert" className="border-b border-admin-border p-3 text-admin-caption text-admin-danger">{claimError}</li>}
+              {(unclaimed ?? []).length === 0 && <li className="p-6 text-center text-admin-body-sm text-admin-text-secondary">No reports are waiting for a VMO.</li>}
+              {(unclaimed ?? []).map((c) => (
+                <li key={c.id} className={cn("border-b border-admin-border p-4", SLA_STYLE[c.slaState].bar)}>
+                  <div className="flex items-start justify-between gap-2">
+                    <p className="truncate text-admin-body-sm font-semibold text-admin-text">{fullName(c.patient)}</p>
+                    <SlaCountdown deadline={c.slaDeadline} state={c.slaState} className="text-admin-caption" />
+                  </div>
+                  <div className="flex items-center justify-between gap-2">
+                    <p className="truncate text-admin-caption text-admin-text-secondary">{c.lastMessage ?? "No messages yet"}</p>
+                    {!!c.unreadCount && (
+                      <span className="unread-badge shrink-0" aria-label={`${c.unreadCount} unread ${c.unreadCount === 1 ? "message" : "messages"}`}>
+                        {c.unreadCount > 99 ? "99+" : c.unreadCount}
+                      </span>
+                    )}
+                  </div>
+                  <div className="mt-2 flex items-center justify-between gap-2">
+                    <SlaBadge state={c.slaState} />
+                    <button
+                      onClick={() => void claim(c.id)}
+                      disabled={claiming === c.id}
+                      className="rounded-admin-xs bg-admin-sidebar-cta px-3 py-1 text-admin-caption font-semibold text-white disabled:opacity-50"
+                    >
+                      {claiming === c.id ? "Claiming…" : "Claim"}
+                    </button>
+                  </div>
+                </li>
+              ))}
+            </>
+          )}
+          {filter !== "UNCLAIMED" && list.length === 0 && <li className="p-6 text-center text-admin-body-sm text-admin-text-secondary">Nothing here.</li>}
           {list.map((c) => (
             <li key={c.id}>
               <Link to={`${BASE}/inbox/${c.id}`}
@@ -47,7 +112,14 @@ export default function InboxPage() {
                   <p className="truncate text-admin-body-sm font-semibold text-admin-text">{fullName(c.patient)}</p>
                   <SlaCountdown deadline={c.slaDeadline} state={c.slaState} className="text-admin-caption" />
                 </div>
-                <p className="truncate text-admin-caption text-admin-text-secondary">{c.lastMessage ?? "No messages yet"}</p>
+                <div className="flex items-center justify-between gap-2">
+                  <p className={cn("truncate text-admin-caption", c.unreadCount ? "font-semibold text-admin-text" : "text-admin-text-secondary")}>{c.lastMessage ?? "No messages yet"}</p>
+                  {!!c.unreadCount && (
+                    <span className="unread-badge shrink-0" aria-label={`${c.unreadCount} unread ${c.unreadCount === 1 ? "message" : "messages"}`}>
+                      {c.unreadCount > 99 ? "99+" : c.unreadCount}
+                    </span>
+                  )}
+                </div>
                 <div className="mt-2"><SlaBadge state={c.slaState} /></div>
               </Link>
             </li>
@@ -133,11 +205,12 @@ function ChatPane({ chat, onChanged, onResolved }: { chat: InboxChat; onChanged:
           const mine = m.senderId === user?.id;
           if (m.type === "SYSTEM") return <p key={m.id} className="text-center text-admin-caption text-admin-text-secondary">{m.content}</p>;
           return (
-            <div key={m.id} className={cn("flex", mine ? "justify-end" : "justify-start")}>
-              <div className={cn("max-w-[70%] rounded-admin-md px-4 py-2 text-admin-body-sm", mine ? "bg-admin-sidebar-cta text-white" : "border border-admin-border bg-white text-admin-text")}>
-                {m.type === "VOICE" ? <span className="flex items-center gap-2"><Mic className="size-4" /> Voice note</span>
-                  : m.type === "IMAGE" ? <span>📎 Image attachment</span> : m.content}
-                <p className={cn("mt-1 text-admin-micro", mine ? "text-white/70" : "text-admin-text-secondary")}>{new Date(m.createdAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}</p>
+            <div key={m.id} className={cn("chat-row", mine ? "chat-row-sent" : "chat-row-received")}>
+              <div className={cn("chat-bubble", mine ? "chat-bubble-sent" : "chat-bubble-received")}>
+                {m.type === "VOICE" || m.type === "IMAGE"
+                  ? <Attachment type={m.type} src={`/api/vmo/conversations/${chat.id}/messages/${m.id}/attachment`} />
+                  : m.content}
+                <p className={cn("chat-meta", mine ? "chat-meta-sent" : "chat-meta-received")}>{new Date(m.createdAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}</p>
               </div>
             </div>
           );

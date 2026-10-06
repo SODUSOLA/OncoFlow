@@ -49,6 +49,23 @@ export class ConversationRepository {
       ));
   }
 
+  // Takes an unclaimed open side-effect chat for a VMO. The UPDATE only matches while nobody holds it, so two VMOs
+  // claiming at once can never both win; null means it was already taken, closed, or isn't a side-effect chat.
+  async claimSideEffect(id: string, vmoId: string) {
+    const rows = await db
+      .update(conversation)
+      .set({ assignedTo: vmoId, updatedAt: new Date() })
+      .where(and(
+        eq(conversation.id, id),
+        isNull(conversation.assignedTo),
+        eq(conversation.status, "OPEN"),
+        sql`${conversation.conversationType}::text = 'MO_SIDE_EFFECT'`,
+        eq(conversation.isDeleted, false),
+      ))
+      .returning();
+    return rows[0] ?? null;
+  }
+
   // Inserts a conversation.
   async create(data: typeof conversation.$inferInsert) {
     const row = await db.insert(conversation).values(data).returning();
@@ -142,6 +159,25 @@ export class MessageRepository {
       .update(message)
       .set({ status: "READ" })
       .where(and(eq(message.conversationId, conversationId), ne(message.status, "READ"), senderMatch));
+  }
+
+  // Unread messages per conversation from the viewer's point of view: the other side's messages not yet marked read.
+  // Raw SQL because it needs the patient's user id, which lives in another module's table.
+  async countUnread(conversationIds: string[], viewerIsPatient: boolean): Promise<Map<string, number>> {
+    if (conversationIds.length === 0) return new Map();
+    const fromOtherSide = viewerIsPatient
+      ? sql`m.sender_id IS DISTINCT FROM p.user_id`
+      : sql`m.sender_id = p.user_id`;
+    const rows = await db.execute<{ conversationId: string; n: number }>(sql`
+      SELECT m.conversation_id AS "conversationId", COUNT(*)::int AS n
+      FROM message m
+      JOIN conversation c ON c.id = m.conversation_id
+      JOIN patient p ON p.id = c.patient_id
+      WHERE m.conversation_id IN (${sql.join(conversationIds.map((id) => sql`${id}::uuid`), sql`, `)})
+        AND m.status::text <> 'READ' AND m.type::text <> 'SYSTEM' AND ${fromOtherSide}
+      GROUP BY m.conversation_id
+    `);
+    return new Map(rows.map((r) => [r.conversationId, r.n]));
   }
 
   // Inserts a message.
@@ -336,5 +372,89 @@ export class ConversationFeedbackRepository {
   async create(data: typeof conversationFeedback.$inferInsert) {
     const row = await db.insert(conversationFeedback).values(data).returning();
     return row[0]!;
+  }
+}
+
+// Raw SQL hands the zone-less UTC timestamp columns back as bare strings that `new Date()` would read as local time.
+function asUtc(v: Date | string): Date {
+  if (v instanceof Date) return v;
+  return new Date(/[zZ]|[+-]\d\d(:?\d\d)?$/.test(v) ? v : `${v.replace(" ", "T")}Z`);
+}
+
+export type AdminInquiryRow = {
+  id: string;
+  status: string;
+  createdAt: Date;
+  slaDeadline: Date | null;
+  slaBreached: boolean;
+  patientId: string;
+  patientUserId: string | null;
+  firstName: string;
+  lastName: string;
+  uniquePatientId: string;
+  facilityId: string;
+  lastMessage: string | null;
+  lastMessageType: string | null;
+  lastMessageAt: Date | null;
+  lastMessageFromPatient: boolean | null;
+  unreadCount: number;
+};
+
+// Raw SQL for the joins across patient, facility, user and role, which the module boundary rules keep out of drizzle here.
+// Staff routing: who should hear about a patient's message, and the patient inquiries a Regional Admin may work.
+export class StaffRoutingRepository {
+  // Active Regional Admins whose region is the patient's facility's region.
+  async regionalAdminIdsForPatient(patientId: string): Promise<string[]> {
+    const rows = await db.execute<{ id: string }>(sql`
+      SELECT DISTINCT u.id
+      FROM "user" u
+      JOIN user_role ur ON ur.user_id = u.id
+      JOIN role r ON r.id = ur.role_id
+      JOIN facility uf ON uf.id = u.facility_id
+      WHERE r.name::text = 'REGIONAL_ADMIN' AND u.status::text = 'ACTIVE'
+        AND uf.region = (SELECT pf.region FROM patient p JOIN facility pf ON pf.id = p.facility_id WHERE p.id = ${patientId})
+    `);
+    return rows.map((r) => r.id);
+  }
+
+  // Every active Virtual Medical Officer: a new side-effect report goes to all of them until one claims it.
+  async activeVmoIds(): Promise<string[]> {
+    const rows = await db.execute<{ id: string }>(sql`
+      SELECT DISTINCT u.id
+      FROM "user" u
+      JOIN user_role ur ON ur.user_id = u.id
+      JOIN role r ON r.id = ur.role_id
+      WHERE r.name::text = 'VIRTUAL_MEDICAL_OFFICER' AND u.status::text = 'ACTIVE'
+    `);
+    return rows.map((r) => r.id);
+  }
+
+  // Patient admin-inquiry conversations for the given facilities (null = unrestricted), with the patient card and last message.
+  async listAdminInquiries(facilityIds: string[] | null, status: "OPEN" | "CLOSED"): Promise<AdminInquiryRow[]> {
+    if (facilityIds && facilityIds.length === 0) return [];
+    const scope = facilityIds ? sql`AND p.facility_id IN (${sql.join(facilityIds.map((id) => sql`${id}::uuid`), sql`, `)})` : sql``;
+    const rows = await db.execute<AdminInquiryRow>(sql`
+      SELECT c.id, c.status::text AS status, c.created_at AS "createdAt", c.sla_deadline AS "slaDeadline", c.sla_breached AS "slaBreached",
+             p.id AS "patientId", p.user_id AS "patientUserId", p.first_name AS "firstName", p.last_name AS "lastName",
+             p.unique_patient_id AS "uniquePatientId", p.facility_id AS "facilityId",
+             lm.content AS "lastMessage", lm.type::text AS "lastMessageType", lm.created_at AS "lastMessageAt",
+             (lm.sender_id = p.user_id) AS "lastMessageFromPatient",
+             (SELECT COUNT(*)::int FROM message mu WHERE mu.conversation_id = c.id AND mu.sender_id = p.user_id
+                AND mu.status::text <> 'READ' AND mu.type::text <> 'SYSTEM') AS "unreadCount"
+      FROM conversation c
+      JOIN patient p ON p.id = c.patient_id
+      LEFT JOIN LATERAL (
+        SELECT m.content, m.type, m.created_at, m.sender_id FROM message m WHERE m.conversation_id = c.id ORDER BY m.created_at DESC LIMIT 1
+      ) lm ON true
+      WHERE c.is_deleted = false AND p.is_deleted = false AND c.conversation_type::text = 'ADMIN_INQUIRY' AND c.status::text = ${status} ${scope}
+      ORDER BY COALESCE(lm.created_at, c.created_at) DESC
+      LIMIT 200
+    `);
+    return [...rows].map((r) => ({
+      ...r,
+      createdAt: asUtc(r.createdAt),
+      slaDeadline: r.slaDeadline ? asUtc(r.slaDeadline) : null,
+      lastMessageAt: r.lastMessageAt ? asUtc(r.lastMessageAt) : null,
+    }));
   }
 }

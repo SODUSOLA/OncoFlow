@@ -281,8 +281,13 @@ export function MessagesPanel({ patientId: fixedPatientId }: { patientId?: strin
                         <span className="text-sm font-medium text-gray-800">{CONVERSATION_TYPE_LABELS[c.conversationType]}</span>
                         <SlaBadge conversation={c} />
                       </div>
-                      <div className="mt-1 flex items-center gap-2">
+                      <div className="mt-1 flex items-center justify-between gap-2">
                         <span className={`text-xs ${c.status === "OPEN" ? "text-green-600" : "text-gray-400"}`}>{c.status}</span>
+                        {!!c.unreadCount && (
+                          <span className="unread-badge" aria-label={`${c.unreadCount} unread ${c.unreadCount === 1 ? "message" : "messages"}`}>
+                            {c.unreadCount > 99 ? "99+" : c.unreadCount}
+                          </span>
+                        )}
                       </div>
                     </button>
                   </li>
@@ -320,19 +325,19 @@ export function MessagesPanel({ patientId: fixedPatientId }: { patientId?: strin
                   ) : (
                     messages.map((m) => {
                       const isMine = m.senderId === user?.id;
+                      const system = m.type === "SYSTEM";
                       return (
-                        <div key={m.id} className={`max-w-[80%] rounded-lg px-3 py-2 text-sm ${
-                          m.type === "SYSTEM" ? "bg-gray-100 text-gray-500 italic mx-auto" :
-                          isMine ? "bg-ink text-white ml-auto" : "bg-gray-100 text-gray-800"
-                        }`}>
-                          <p>{m.content}</p>
-                          {isMine && m.type !== "SYSTEM" ? (
-                            <DeliveryStatus status={m.status} />
-                          ) : (
-                            <p className="text-[10px] mt-1 text-gray-400">
-                              {new Date(m.createdAt).toLocaleTimeString()}
-                            </p>
-                          )}
+                        <div key={m.id} className={system ? "flex" : `chat-row ${isMine ? "chat-row-sent" : "chat-row-received"}`}>
+                          <div className={`chat-bubble ${system ? "chat-bubble-system" : isMine ? "chat-bubble-sent" : "chat-bubble-received"}`}>
+                            <p>{m.content}</p>
+                            {isMine && !system ? (
+                              <DeliveryStatus status={m.status} />
+                            ) : (
+                              <p className="chat-meta chat-meta-received">
+                                {new Date(m.createdAt).toLocaleTimeString()}
+                              </p>
+                            )}
+                          </div>
                         </div>
                       );
                     })

@@ -14,6 +14,7 @@ export interface InboxChat {
   lastMessage: string | null;
   lastMessageAt: string | null;
   triageCompleted: boolean;
+  unreadCount?: number;
   patient: { firstName: string; lastName: string; uniquePatientId: string; age: number };
 }
 
@@ -41,6 +42,35 @@ export function useInbox() {
   }, []);
   useEffect(() => { void reload(); }, [reload]);
   return { chats, error, reload };
+}
+
+export interface UnclaimedChat {
+  id: string;
+  slaState: SlaState;
+  slaDeadline: string | null;
+  createdAt: string;
+  lastMessage: string | null;
+  lastMessageAt: string | null;
+  unreadCount?: number;
+  patient: { firstName: string; lastName: string; uniquePatientId: string; age: number };
+}
+
+// Side-effect reports no VMO has taken yet; refreshes on its own so a new report appears without a reload.
+export function useUnclaimed() {
+  const [chats, setChats] = useState<UnclaimedChat[] | null>(null);
+  const reload = useCallback(async () => {
+    try {
+      setChats((await api.get<{ conversations: UnclaimedChat[] }>("/vmo/unclaimed")).conversations);
+    } catch {
+      setChats((prev) => prev ?? []);
+    }
+  }, []);
+  useEffect(() => {
+    void reload();
+    const t = setInterval(() => void reload(), 15_000);
+    return () => clearInterval(t);
+  }, [reload]);
+  return { chats, reload };
 }
 
 export const SLA_STYLE: Record<SlaState, { label: string; bar: string; badge: string }> = {

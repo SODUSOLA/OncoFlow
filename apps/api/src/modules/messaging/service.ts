@@ -1,7 +1,7 @@
 import crypto from "node:crypto";
 import {
   ConversationRepository, ParticipantRepository, MessageRepository, MeetingRepository, TranscriptRepository,
-  TranscriptionAssignmentRepository, ConversationFeedbackRepository, MeetingRecordingRepository,
+  TranscriptionAssignmentRepository, ConversationFeedbackRepository, MeetingRecordingRepository, StaffRoutingRepository,
 } from "./repository.js";
 import { Conversation } from "./entities/Conversation.js";
 import { Message } from "./entities/Message.js";
@@ -20,6 +20,7 @@ import { PaymentService } from "../billing/services/PaymentService.js";
 import { sideEffectReportFeeKobo } from "./entities/side-effect-pricing.js";
 import { MessagingJobService } from "./services/MessagingJobService.js";
 import { notificationService } from "../notification/index.js";
+import { FileService } from "../documents/index.js";
 import { getIo, isIoAttached } from "../../lib/socket.js";
 import type { conversationTypeEnum, messageTypeEnum, meetingStatusEnum } from "../../db/enums.js";
 
@@ -28,6 +29,8 @@ type MessageType = (typeof messageTypeEnum.enumValues)[number];
 type MeetingStatus = (typeof meetingStatusEnum.enumValues)[number];
 
 const conversationRepo = new ConversationRepository();
+const staffRouting = new StaffRoutingRepository();
+const fileSvc = new FileService();
 const participantRepo = new ParticipantRepository();
 const messageRepo = new MessageRepository();
 const patientRepo = new PatientRepository();
@@ -54,14 +57,19 @@ async function callerOwnsPatient(callerId: string, patientId: string): Promise<b
 }
 
 // Attaches each conversation's latest message for list previews; non-TEXT messages are flagged by type since their content is a file id.
-async function withLastMessage(rows: Awaited<ReturnType<ConversationRepository["findByPatient"]>>) {
-  const latest = await messageRepo.findLatestByConversations(rows.map((r) => r.id));
+async function withLastMessage(rows: Awaited<ReturnType<ConversationRepository["findByPatient"]>>, viewerIsPatient: boolean) {
+  const [latest, unread] = await Promise.all([
+    messageRepo.findLatestByConversations(rows.map((r) => r.id)),
+    messageRepo.countUnread(rows.map((r) => r.id), viewerIsPatient),
+  ]);
   const byConversation = new Map(latest.map((m) => [m.conversationId, m]));
 
   return rows.map((r) => {
     const m = byConversation.get(r.id);
     return {
       ...new Conversation(r).toJSON(),
+      // Messages from the other side that this viewer hasn't read yet.
+      unreadCount: unread.get(r.id) ?? 0,
       lastMessage: m
         ? { id: m.id, senderId: m.senderId, type: m.type, content: m.content, createdAt: m.createdAt }
         : null,
@@ -153,6 +161,11 @@ export class MessagingService {
       callerId,
     );
 
+    // Unclaimed until one of them takes it, so every active VMO is told.
+    const vmoIds = await staffRouting.activeVmoIds();
+    await Promise.all(vmoIds.filter((id) => id !== callerId).map((id) =>
+      notificationService.create({ recipientId: id, type: "NEW_SIDE_EFFECT_REPORT", referenceId: conversationRow.id }).catch((err) => { console.error("VMO notification failed:", err); })));
+
     const paidRow = await invoiceRepo.findById(invoiceId);
     return {
       paid: true as const,
@@ -186,7 +199,7 @@ export class MessagingService {
     for (const row of rows) {
       await messageRepo.markDeliveredForViewer(row.id, patientRow?.userId ?? null, isSelf);
     }
-    return withLastMessage(rows);
+    return withLastMessage(rows, isSelf);
   }
 
   // Staff-only path with no ownership branch, just the permission.
@@ -199,7 +212,7 @@ export class MessagingService {
       const patientRow = await patientRepo.findById(row.patientId);
       await messageRepo.markDeliveredForViewer(row.id, patientRow?.userId ?? null, false);
     }
-    return withLastMessage(rows);
+    return withLastMessage(rows, false);
   }
 
   // Posts a message; senderId is never taken from the request, since accepting it allowed impersonating a doctor, and the first real message stamps first_response_at.
@@ -214,6 +227,16 @@ export class MessagingService {
     if (!isSelf && !(await userHasPermission(callerId, "message", "create"))) {
       throw new ForbiddenError("Forbidden");
     }
+    return this.deliverMessage(conversationRow, data, callerId);
+  }
+
+  // Stores a message in an open conversation and alerts everyone who should hear about it. Callers have already
+  // authorised the sender (the patient, a permitted staff member, or a Regional Admin through the scoped admin routes).
+  private async deliverMessage(
+    conversationRow: NonNullable<Awaited<ReturnType<ConversationRepository["findById"]>>>,
+    data: { conversationId: string; type: MessageType; content: string },
+    callerId: string,
+  ) {
     if (conversationRow.status === "CLOSED") {
       throw new ConflictError("This conversation has been closed");
     }
@@ -249,10 +272,82 @@ export class MessagingService {
     const patientRow = await patientRepo.findById(conversationRow.patientId);
     if (patientRow?.userId) recipients.add(patientRow.userId);
     recipients.delete(callerId);
-    await Promise.all([...recipients].map((recipientId) =>
-      notificationService.create({ recipientId, type: "NEW_MESSAGE" }).catch((err) => { console.error("Message notification failed:", err); })));
+    const notify = (recipientId: string, type: "NEW_MESSAGE" | "PATIENT_INQUIRY") =>
+      notificationService.create({ recipientId, type, referenceId: data.conversationId }).catch((err) => { console.error("Message notification failed:", err); });
+    await Promise.all([...recipients].map((recipientId) => notify(recipientId, "NEW_MESSAGE")));
+
+    // A patient writing to the admin team reaches that region's Regional Admins, who have no other way to learn of it.
+    if (conversationRow.conversationType === "ADMIN_INQUIRY" && patientRow?.userId === callerId) {
+      const admins = (await staffRouting.regionalAdminIdsForPatient(conversationRow.patientId)).filter((id) => id !== callerId);
+      await Promise.all(admins.map((id) => notify(id, "PATIENT_INQUIRY")));
+    }
 
     return json;
+  }
+
+  // The patient admin inquiries a Regional Admin may work: those of patients in their own region.
+  async listAdminInquiries(allowedFacilityIds: string[] | null, status: "OPEN" | "CLOSED") {
+    const rows = await staffRouting.listAdminInquiries(allowedFacilityIds, status);
+    return rows.map((r) => ({
+      id: r.id,
+      status: r.status,
+      createdAt: r.createdAt.toISOString(),
+      slaDeadline: r.slaDeadline?.toISOString() ?? null,
+      slaBreached: r.slaBreached,
+      unreadCount: r.unreadCount,
+      patient: { id: r.patientId, firstName: r.firstName, lastName: r.lastName, uniquePatientId: r.uniquePatientId, facilityId: r.facilityId },
+      lastMessage: r.lastMessage ? { type: r.lastMessageType, content: r.lastMessage, createdAt: r.lastMessageAt!.toISOString(), fromPatient: !!r.lastMessageFromPatient } : null,
+    }));
+  }
+
+  // Loads an admin inquiry for a Regional Admin; one outside their region looks the same as one that doesn't exist.
+  private async loadAdminInquiry(conversationId: string, allowedFacilityIds: string[] | null) {
+    const row = await conversationRepo.findById(conversationId);
+    if (!row || row.conversationType !== "ADMIN_INQUIRY") throw new NotFoundError("Inquiry not found");
+    const patientRow = await patientRepo.findById(row.patientId);
+    if (!patientRow || (allowedFacilityIds && !allowedFacilityIds.includes(patientRow.facilityId))) {
+      throw new NotFoundError("Inquiry not found");
+    }
+    return { row, patientRow };
+  }
+
+  // The thread of one admin inquiry, each message flagged by whether the patient wrote it.
+  async listAdminInquiryMessages(conversationId: string, allowedFacilityIds: string[] | null) {
+    const { patientRow } = await this.loadAdminInquiry(conversationId, allowedFacilityIds);
+    // Opening the thread reads the patient's messages, which clears the unread count in the list.
+    await messageRepo.markReadForViewer(conversationId, patientRow.userId ?? null, false);
+    const rows = await messageRepo.findByConversation(conversationId);
+    return rows.map((r) => ({ ...new Message(r).toJSON(), fromPatient: r.senderId === patientRow.userId }));
+  }
+
+  // The signed URL of an image or voice note in a conversation. The caller has already been authorised for that
+  // conversation; this only checks the message really is an attachment in it, and blocks files flagged as infected.
+  async attachmentUrl(conversationId: string, messageId: string, forceDownload = false) {
+    const rows = await messageRepo.findByConversation(conversationId);
+    const msg = rows.find((r) => r.id === messageId);
+    if (!msg || (msg.type !== "IMAGE" && msg.type !== "VOICE")) throw new NotFoundError("Attachment not found");
+    const { file } = await fileSvc.findById(msg.content);
+    if (file.virusScanStatus === "INFECTED") throw new ForbiddenError("File blocked: flagged as infected, pending review");
+    return fileSvc.getSignedUrl(file, { forceDownload });
+  }
+
+  // A Regional Admin opening an attachment in an inquiry from their own region: no general file access is involved.
+  async adminInquiryAttachmentUrl(conversationId: string, messageId: string, allowedFacilityIds: string[] | null, forceDownload = false) {
+    await this.loadAdminInquiry(conversationId, allowedFacilityIds);
+    return this.attachmentUrl(conversationId, messageId, forceDownload);
+  }
+
+  // A Regional Admin's reply, delivered and alerted exactly like any other message.
+  async replyToAdminInquiry(conversationId: string, content: string, allowedFacilityIds: string[] | null, callerId: string) {
+    const { row } = await this.loadAdminInquiry(conversationId, allowedFacilityIds);
+    return this.deliverMessage(row, { conversationId, type: "TEXT", content }, callerId);
+  }
+
+  async closeAdminInquiry(conversationId: string, allowedFacilityIds: string[] | null) {
+    const { row } = await this.loadAdminInquiry(conversationId, allowedFacilityIds);
+    const updated = new Conversation(row).close();
+    const saved = await conversationRepo.update(conversationId, { status: updated.status });
+    return new Conversation(saved!).toJSON();
   }
 
   // Lists a conversation's messages, marking the other party's read.
@@ -323,7 +418,7 @@ export class MessagingService {
     // Notifies the other party, best-effort like every other notification hook.
     const recipientId = isSelf ? row.assignedTo : (await patientRepo.findById(row.patientId))?.userId;
     if (recipientId) {
-      await notificationService.create({ recipientId, type: "CONVERSATION_FEEDBACK" }).catch((err) => {
+      await notificationService.create({ recipientId, type: "CONVERSATION_FEEDBACK", referenceId: conversationId }).catch((err) => {
         console.error(`Feedback notification failed for conversation ${conversationId}:`, err);
       });
     }
