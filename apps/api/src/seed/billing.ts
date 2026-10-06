@@ -1,7 +1,7 @@
 import { db } from "../db/index.js";
 import { sql, eq, and } from "drizzle-orm";
 import crypto from "node:crypto";
-import { serviceClassification, serviceSubOption, tariff, facility } from "../db/schema.js";
+import { serviceClassification, serviceSubOption, serviceSubOptionPrice, tariff, facility } from "../db/schema.js";
 
 type ClassificationName =
   | "SUBSCRIPTION" | "CONSULTATION" | "DRUG_ADMINISTRATION" | "CHEMOTHERAPY" | "GENERAL_ADMISSION" | "PROCEDURE"
@@ -22,11 +22,11 @@ const CLASSIFICATIONS: {
   { name: "SIDE_EFFECT_REPORT", cappedNetworkFeeKobo: 3_000_00, facilityShare: 0, professionalShare: 0, drugShare: 0 },
 ];
 
-// Variants from the price list. Descriptive labels only; pricing stays on the per-facility classification tariff.
+// Variants from the price list; each gets a flat price per tier in SUB_OPTION_PRICES.
 const SUB_OPTIONS: Partial<Record<ClassificationName, { code: string; name: string }[]>> = {
   CONSULTATION: [
-    { code: "TRIO_VIRTUAL", name: "Trio virtual consultation (bundle)" },
     { code: "SINGLE_VIRTUAL", name: "Single virtual consultation" },
+    { code: "TRIO_VIRTUAL", name: "Trio virtual consultation (bundle)" },
     { code: "PHYSICAL", name: "Physical consultation" },
   ],
   CHEMOTHERAPY: [
@@ -42,6 +42,26 @@ const SUB_OPTIONS: Partial<Record<ClassificationName, { code: string; name: stri
     { code: "BED_24H", name: "Bed space (24 hours)" },
   ],
   PROCEDURE: [1, 2, 3, 4, 5].map((n) => ({ code: `BLOOD_${n}_PINT`, name: `Blood transfusion (${n} ${n === 1 ? "pint" : "pints"})` })),
+};
+
+// [medication, consumables, administration, professional fee, network fee, facility fee] in naira, non-subscriber then subscriber.
+// Blood pints 2-5 only have a published total, so the network fee is held at the 1-pint figure and the remainder is booked as the blood product (medication).
+type PriceRow = [number, number, number, number, number, number];
+const SUB_OPTION_PRICES: Record<string, { nonSubscriber: PriceRow; subscriber: PriceRow }> = {
+  TRIO_VIRTUAL: { nonSubscriber: [0, 0, 0, 105_000, 55_000, 0], subscriber: [0, 0, 0, 75_000, 35_000, 0] },
+  SINGLE_VIRTUAL: { nonSubscriber: [0, 0, 0, 30_000, 20_000, 0], subscriber: [0, 0, 0, 25_000, 15_000, 0] },
+  PHYSICAL: { nonSubscriber: [0, 0, 0, 65_000, 10_000, 0], subscriber: [0, 0, 0, 35_000, 25_000, 0] },
+  CHEMOTHERAPY: { nonSubscriber: [0, 20_000, 75_000, 0, 30_000, 0], subscriber: [0, 10_000, 37_000, 0, 28_000, 0] },
+  CHEMO_RADIATION: { nonSubscriber: [20_000, 10_000, 40_000, 0, 20_000, 0], subscriber: [15_000, 3_000, 22_000, 0, 20_000, 0] },
+  SHORT_STAY_INFUSION: { nonSubscriber: [0, 10_000, 35_000, 0, 20_000, 0], subscriber: [0, 3_000, 22_000, 0, 15_000, 0] },
+  BED_DAY: { nonSubscriber: [0, 0, 0, 0, 0, 10_000], subscriber: [0, 0, 0, 0, 0, 10_000] },
+  BED_NIGHT: { nonSubscriber: [0, 0, 0, 0, 0, 10_000], subscriber: [0, 0, 0, 0, 0, 10_000] },
+  BED_24H: { nonSubscriber: [0, 0, 0, 0, 0, 15_000], subscriber: [0, 0, 0, 0, 0, 15_000] },
+  BLOOD_1_PINT: { nonSubscriber: [90_000, 20_000, 50_000, 0, 25_000, 0], subscriber: [80_000, 10_000, 45_000, 0, 15_000, 0] },
+  BLOOD_2_PINT: { nonSubscriber: [275_000, 0, 0, 0, 25_000, 0], subscriber: [225_000, 0, 0, 0, 15_000, 0] },
+  BLOOD_3_PINT: { nonSubscriber: [390_000, 0, 0, 0, 25_000, 0], subscriber: [330_000, 0, 0, 0, 15_000, 0] },
+  BLOOD_4_PINT: { nonSubscriber: [505_000, 0, 0, 0, 25_000, 0], subscriber: [420_000, 0, 0, 0, 15_000, 0] },
+  BLOOD_5_PINT: { nonSubscriber: [620_000, 0, 0, 0, 25_000, 0], subscriber: [525_000, 0, 0, 0, 15_000, 0] },
 };
 
 // Seeds service classifications and pilot-facility tariffs.
@@ -68,9 +88,20 @@ export async function seedBilling() {
 
     const options = SUB_OPTIONS[c.name] ?? [];
     for (const [i, o] of options.entries()) {
-      await db.insert(serviceSubOption)
+      const [row] = await db.insert(serviceSubOption)
         .values({ classificationId, code: o.code, name: o.name, sortOrder: i })
-        .onConflictDoNothing();
+        .onConflictDoUpdate({ target: [serviceSubOption.classificationId, serviceSubOption.code], set: { name: o.name, sortOrder: i } })
+        .returning();
+      const prices = SUB_OPTION_PRICES[o.code];
+      if (!row || !prices) continue;
+      for (const [isSubscriber, p] of [[false, prices.nonSubscriber], [true, prices.subscriber]] as const) {
+        const values = {
+          medicationKobo: BigInt(p[0] * 100), consumablesKobo: BigInt(p[1] * 100), administrationKobo: BigInt(p[2] * 100),
+          professionalFeeKobo: BigInt(p[3] * 100), networkFeeKobo: BigInt(p[4] * 100), facilityFeeKobo: BigInt(p[5] * 100),
+        };
+        await db.insert(serviceSubOptionPrice).values({ subOptionId: row.id, isSubscriber, ...values })
+          .onConflictDoUpdate({ target: [serviceSubOptionPrice.subOptionId, serviceSubOptionPrice.isSubscriber], set: values });
+      }
     }
 
     // SUBSCRIPTION has no tariff and SIDE_EFFECT_REPORT is priced dynamically, so neither gets a tariff row.

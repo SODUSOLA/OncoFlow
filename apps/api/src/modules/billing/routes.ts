@@ -2,7 +2,7 @@ import { Router } from "express";
 import {
   createInvoiceHandler, getInvoiceHandler, listInvoicesHandler,
   sendInvoiceHandler, payInvoiceHandler, voidInvoiceHandler,
-  listClassificationsHandler, listWalletTransactionsHandler, listTariffsHandler,
+  listClassificationsHandler, quoteInvoiceHandler, listWalletTransactionsHandler, listTariffsHandler,
   getSubscriptionHandler, subscribeHandler,
 } from "./controller.js";
 import { requirePermission, requireAuthenticated } from "../../lib/rbac.js";
@@ -13,12 +13,23 @@ const invoiceIdParamSchema = z.object({
   id: z.string().uuid(),
 });
 
+const invoiceLinesSchema = z.array(z.object({
+  subOptionId: z.string().uuid(),
+  drugIds: z.array(z.string().uuid()).max(50).optional(),
+})).min(1).max(10);
+
+// Either priced `lines` (the generator) or a single classification priced from the facility tariff.
 const createInvoiceSchema = z.object({
   patientId: z.string().uuid(),
   facilityId: z.string().uuid(),
-  classificationId: z.string().uuid(),
-  subOptionId: z.string().uuid().optional(),
+  classificationId: z.string().uuid().optional(),
+  lines: invoiceLinesSchema.optional(),
   appointmentId: z.string().uuid().optional(),
+}).refine((v) => Boolean(v.classificationId || v.lines), { message: "Provide lines or classificationId" });
+
+const quoteInvoiceSchema = z.object({
+  patientId: z.string().uuid(),
+  lines: invoiceLinesSchema,
 });
 
 const listInvoicesQuerySchema = z.object({
@@ -41,6 +52,8 @@ const subscribeSchema = z.object({ billingCycle: z.enum(["MONTHLY", "YEARLY"]) }
 const router = Router();
 
 // Read and pay require only authentication (ownership check in the controller); create, send and void stay staff-only.
+// Prices a set of services for a patient without creating an invoice.
+router.post("/invoices/quote", requirePermission("invoice", "create"), validateBody(quoteInvoiceSchema), quoteInvoiceHandler);
 router.post("/invoices", requirePermission("invoice", "create"), validateBody(createInvoiceSchema), createInvoiceHandler);
 // Lists invoices (own for patients, scoped for staff).
 router.get("/invoices", requireAuthenticated(), validateQuery(listInvoicesQuerySchema), listInvoicesHandler);

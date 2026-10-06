@@ -11,6 +11,7 @@ import { patient, wallet } from "../patient/schema.js";
 import { appointment } from "../appointment/schema.js";
 import { facility } from "../facility/schema.js";
 import { user } from "../auth/schema.js";
+import { drug } from "../inventory/schema.js";
 
 export const serviceClassification = pgTable("service_classification", {
   id: uuid("id").primaryKey().defaultRandom(),
@@ -20,7 +21,7 @@ export const serviceClassification = pgTable("service_classification", {
   updatedAt: timestamp("updated_at").notNull().defaultNow(),
 });
 
-// Named variants under a classification (e.g. Chemotherapy > Chemo-radiation). Descriptive only: price still comes from the facility tariff for the classification.
+// Named variants under a classification (e.g. Chemotherapy > Chemo-radiation), each with a flat price per tier in service_sub_option_price.
 export const serviceSubOption = pgTable("service_sub_option", {
   id: uuid("id").primaryKey().defaultRandom(),
   classificationId: uuid("classification_id").notNull().references(() => serviceClassification.id),
@@ -31,6 +32,23 @@ export const serviceSubOption = pgTable("service_sub_option", {
   updatedAt: timestamp("updated_at").notNull().defaultNow(),
 }, (t) => ({
   classificationCodeUnique: uniqueIndex("service_sub_option_classification_code_unique").on(t.classificationId, t.code),
+}));
+
+// Flat price of a sub-option for subscribers or non-subscribers, split into the components the price list uses.
+export const serviceSubOptionPrice = pgTable("service_sub_option_price", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  subOptionId: uuid("sub_option_id").notNull().references(() => serviceSubOption.id),
+  isSubscriber: boolean("is_subscriber").notNull(),
+  medicationKobo: bigint("medication_kobo", { mode: "bigint" }).notNull().default(sql`0`),
+  consumablesKobo: bigint("consumables_kobo", { mode: "bigint" }).notNull().default(sql`0`),
+  administrationKobo: bigint("administration_kobo", { mode: "bigint" }).notNull().default(sql`0`),
+  professionalFeeKobo: bigint("professional_fee_kobo", { mode: "bigint" }).notNull().default(sql`0`),
+  networkFeeKobo: bigint("network_fee_kobo", { mode: "bigint" }).notNull().default(sql`0`),
+  facilityFeeKobo: bigint("facility_fee_kobo", { mode: "bigint" }).notNull().default(sql`0`),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+}, (t) => ({
+  subOptionTierUnique: uniqueIndex("service_sub_option_price_tier_unique").on(t.subOptionId, t.isSubscriber),
 }));
 
 export const tariff = pgTable("tariff", {
@@ -56,7 +74,6 @@ export const invoice = pgTable("invoice", {
   appointmentId: uuid("appointment_id").references(() => appointment.id),
   facilityId: uuid("facility_id").notNull().references(() => facility.id),
   classificationId: uuid("classification_id").notNull().references(() => serviceClassification.id),
-  subOptionId: uuid("sub_option_id").references(() => serviceSubOption.id),
   status: invoiceStatusEnum("status").notNull().default("DRAFT"),
   totalKobo: bigint("total_kobo", { mode: "bigint" }).notNull(),
   issuedAt: timestamp("issued_at"),
@@ -68,6 +85,30 @@ export const invoice = pgTable("invoice", {
   patientIdx: index("invoice_patient_idx").on(t.patientId),
   statusIdx: index("invoice_status_idx").on(t.status),
   issuedAtIdx: index("invoice_issued_at_idx").on(t.issuedAt),
+}));
+
+// One billed service on an invoice; an invoice can carry several (e.g. a consultation plus a drug administration).
+export const invoiceLine = pgTable("invoice_line", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  invoiceId: uuid("invoice_id").notNull().references(() => invoice.id),
+  classificationId: uuid("classification_id").notNull().references(() => serviceClassification.id),
+  subOptionId: uuid("sub_option_id").notNull().references(() => serviceSubOption.id),
+  // Snapshot of the sub-option name at billing time.
+  description: varchar("description", { length: 255 }).notNull(),
+  amountKobo: bigint("amount_kobo", { mode: "bigint" }).notNull(),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+}, (t) => ({
+  invoiceIdx: index("invoice_line_invoice_idx").on(t.invoiceId),
+}));
+
+// The drugs recorded as administered under a drug-administration line; covered by that line's flat fee.
+export const invoiceLineDrug = pgTable("invoice_line_drug", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  invoiceLineId: uuid("invoice_line_id").notNull().references(() => invoiceLine.id),
+  drugId: uuid("drug_id").notNull().references(() => drug.id),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+}, (t) => ({
+  lineDrugUnique: uniqueIndex("invoice_line_drug_unique").on(t.invoiceLineId, t.drugId),
 }));
 
 export const invoiceItem = pgTable("invoice_item", {

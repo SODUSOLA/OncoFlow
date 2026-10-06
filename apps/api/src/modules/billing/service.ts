@@ -1,5 +1,5 @@
 import crypto from "node:crypto";
-import { InvoiceRepository, InvoiceItemRepository, TariffRepository, ServiceSubOptionRepository } from "./repository.js";
+import { InvoiceRepository, InvoiceItemRepository, TariffRepository } from "./repository.js";
 import { Invoice } from "./entities/Invoice.js";
 import { PaymentService } from "./services/PaymentService.js";
 import { db } from "../../db/index.js";
@@ -10,7 +10,6 @@ import { wallet } from "../../db/schema.js";
 const invoiceRepo = new InvoiceRepository();
 const itemRepo = new InvoiceItemRepository();
 const tariffRepo = new TariffRepository();
-const subOptionRepo = new ServiceSubOptionRepository();
 const paymentService = new PaymentService();
 
 // Business logic for creating, sending, paying and voiding invoices.
@@ -20,15 +19,8 @@ export class InvoiceService {
     patientId: string;
     facilityId: string;
     classificationId: string;
-    subOptionId?: string;
     appointmentId?: string;
   }) {
-    if (data.subOptionId) {
-      const subOption = await subOptionRepo.findById(data.subOptionId);
-      if (!subOption || subOption.classificationId !== data.classificationId) {
-        throw new Error("Sub-option does not belong to this classification");
-      }
-    }
     const tariff = await tariffRepo.findByFacilityAndClassification(data.facilityId, data.classificationId);
     if (!tariff) {
       throw new Error("No tariff found for this facility and classification combination");
@@ -42,7 +34,6 @@ export class InvoiceService {
         patientId: data.patientId,
         facilityId: data.facilityId,
         classificationId: data.classificationId,
-        subOptionId: data.subOptionId ?? null,
         appointmentId: data.appointmentId ?? null,
         status: "DRAFT",
         totalKobo: total,

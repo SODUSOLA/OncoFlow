@@ -1,6 +1,7 @@
 import { db } from "../../db/index.js";
+import { drug } from "../inventory/schema.js";
 import { eq, sql, and, desc, inArray } from "drizzle-orm";
-import { serviceClassification, serviceSubOption, tariff, invoice, invoiceItem, subscription, walletTransaction } from "./schema.js";
+import { serviceClassification, serviceSubOption, serviceSubOptionPrice, invoiceLine, invoiceLineDrug, tariff, invoice, invoiceItem, subscription, walletTransaction } from "./schema.js";
 
 // Data access for the named variants under each classification.
 export class ServiceSubOptionRepository {
@@ -11,6 +12,30 @@ export class ServiceSubOptionRepository {
   async findById(id: string) {
     const row = await db.select().from(serviceSubOption).where(eq(serviceSubOption.id, id)).limit(1);
     return row[0] ?? null;
+  }
+
+  // Sub-options with the price row for one tier, keyed by sub-option id.
+  async findWithPrices(ids: string[], isSubscriber: boolean) {
+    if (ids.length === 0) return [];
+    const options = await db.select().from(serviceSubOption).where(inArray(serviceSubOption.id, ids));
+    const prices = await db.select().from(serviceSubOptionPrice)
+      .where(and(inArray(serviceSubOptionPrice.subOptionId, ids), eq(serviceSubOptionPrice.isSubscriber, isSubscriber)));
+    return options.map((o) => ({ option: o, price: prices.find((p) => p.subOptionId === o.id) ?? null }));
+  }
+}
+
+// Data access for the billed services on an invoice.
+export class InvoiceLineRepository {
+  // Lists an invoice's lines, each with the drugs recorded under it.
+  async findByInvoice(invoiceId: string) {
+    const lines = await db.select().from(invoiceLine).where(eq(invoiceLine.invoiceId, invoiceId)).orderBy(invoiceLine.createdAt);
+    if (lines.length === 0) return [];
+    const drugs = await db
+      .select({ lineId: invoiceLineDrug.invoiceLineId, id: drug.id, name: drug.name, strength: drug.strength })
+      .from(invoiceLineDrug)
+      .innerJoin(drug, eq(drug.id, invoiceLineDrug.drugId))
+      .where(inArray(invoiceLineDrug.invoiceLineId, lines.map((l) => l.id)));
+    return lines.map((l) => ({ ...l, drugs: drugs.filter((d) => d.lineId === l.id).map(({ lineId: _lineId, ...d }) => d) }));
   }
 }
 
