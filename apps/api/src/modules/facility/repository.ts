@@ -14,6 +14,12 @@ export class FacilityRepository {
     return row[0] ?? null;
   }
 
+  // Finds a facility even if it has since been removed, for historical records such as receipts.
+  async findByIdIncludingDeleted(id: string) {
+    const row = await db.select().from(facility).where(sql`${facility.id} = ${id}`).limit(1);
+    return row[0] ?? null;
+  }
+
   // Lists all non-deleted facilities.
   async findAll() {
     return db.select().from(facility).where(sql`${facility.isDeleted} = false`);

@@ -12,6 +12,7 @@ export interface InvoiceData {
   status: InvoiceStatus;
   totalKobo: bigint;
   issuedAt: Date | null;
+  createdAt?: Date;
 }
 
 // Invoice domain entity that enforces the status state machine.
@@ -56,6 +57,7 @@ export class Invoice {
       status: this.data.status,
       totalKobo: this.data.totalKobo.toString(),
       issuedAt: this.data.issuedAt?.toISOString() ?? null,
+      createdAt: this.data.createdAt?.toISOString() ?? null,
     };
   }
 }

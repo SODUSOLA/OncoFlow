@@ -16,8 +16,8 @@ const NOT_INVOICEABLE = new Set(["SUBSCRIPTION", "SIDE_EFFECT_REPORT"]);
 
 export interface InvoiceLineRequest {
   subOptionId: string;
-  // Only meaningful for drug administration; recorded for the visit and covered by that line's flat fee.
-  drugIds?: string[];
+  // Only meaningful for drug administration; recorded for the visit with a quantity each, and covered by that line's flat fee.
+  drugs?: { drugId: string; quantity: number }[];
 }
 
 // Prices a set of services from the flat price list and creates multi-line invoices from them.
@@ -46,9 +46,12 @@ export class InvoiceBuilder {
       const classification = await classificationRepo.findById(found.option.classificationId);
       if (!classification || NOT_INVOICEABLE.has(classification.name)) throw new Error("This service cannot be invoiced");
 
-      const drugIds = [...new Set(req.drugIds ?? [])];
-      if (drugIds.length > 0) {
+      const drugs = req.drugs ?? [];
+      if (drugs.length > 0) {
         if (classification.name !== "DRUG_ADMINISTRATION") throw new Error("Drugs can only be added to a drug administration");
+        const drugIds = drugs.map((d) => d.drugId);
+        if (new Set(drugIds).size !== drugIds.length) throw new Error("A drug can only be added once");
+        if (drugs.some((d) => !Number.isInteger(d.quantity) || d.quantity < 1)) throw new Error("Drug quantity must be at least 1");
         const rows = await db.select({ id: drug.id }).from(drug).where(and(inArray(drug.id, drugIds), eq(drug.isDeleted, false)));
         if (rows.length !== drugIds.length) throw new Error("Unknown drug selected");
       }
@@ -60,7 +63,7 @@ export class InvoiceBuilder {
         classificationId: found.option.classificationId,
         classificationName: classification.name,
         description: found.option.name,
-        drugIds,
+        drugs,
         components: { network: p.networkFeeKobo, facility: p.facilityFeeKobo, professional: p.professionalFeeKobo, drug: drugCost },
         amountKobo: drugCost + p.networkFeeKobo + p.facilityFeeKobo + p.professionalFeeKobo,
       });
@@ -97,8 +100,8 @@ export class InvoiceBuilder {
           id: lineId, invoiceId: created.id, classificationId: line.classificationId,
           subOptionId: line.subOptionId, description: line.description, amountKobo: line.amountKobo,
         });
-        if (line.drugIds.length > 0) {
-          await tx.insert(invoiceLineDrug).values(line.drugIds.map((drugId) => ({ id: crypto.randomUUID(), invoiceLineId: lineId, drugId })));
+        if (line.drugs.length > 0) {
+          await tx.insert(invoiceLineDrug).values(line.drugs.map((d) => ({ id: crypto.randomUUID(), invoiceLineId: lineId, drugId: d.drugId, quantity: d.quantity })));
         }
       }
       return created;

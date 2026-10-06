@@ -1,0 +1,1 @@
+ALTER TABLE "invoice_line_drug" ADD COLUMN "quantity" integer DEFAULT 1 NOT NULL;

@@ -72,14 +72,15 @@ function StepCard({
 const NOT_INVOICEABLE = new Set(["SUBSCRIPTION", "SIDE_EFFECT_REPORT"]);
 
 interface Drug { id: string; name: string; strength: string }
-interface DraftLine { classificationId: string; subOptionId: string; drugIds: string[] }
+interface DrugQty { drugId: string; quantity: number }
+interface DraftLine { classificationId: string; subOptionId: string; drugs: DrugQty[] }
 interface Quote {
   isSubscriber: boolean;
   totalKobo: string;
-  lines: { subOptionId: string; description: string; amountKobo: string; drugIds: string[] }[];
+  lines: { subOptionId: string; description: string; amountKobo: string; drugs: DrugQty[] }[];
 }
 
-const EMPTY_PICK: DraftLine = { classificationId: "", subOptionId: "", drugIds: [] };
+const EMPTY_PICK: DraftLine = { classificationId: "", subOptionId: "", drugs: [] };
 
 // Billing page with invoice list and the Invoice Generator.
 export default function BillingPage() {
@@ -121,7 +122,7 @@ export default function BillingPage() {
     let cancelled = false;
     api.post<Quote>("/invoices/quote", {
       patientId: genPatientId,
-      lines: lines.map(({ subOptionId, drugIds }) => ({ subOptionId, ...(drugIds.length ? { drugIds } : {}) })),
+      lines: lines.map(({ subOptionId, drugs }) => ({ subOptionId, ...(drugs.length ? { drugs } : {}) })),
     })
       .then((q) => { if (!cancelled) { setQuote(q); setQuoteError(null); } })
       .catch((err) => { if (!cancelled) { setQuote(null); setQuoteError(err instanceof Error ? err.message : "Could not price these services"); } });
@@ -140,7 +141,7 @@ export default function BillingPage() {
   const genPatient = patients.find((p) => p.id === genPatientId) ?? null;
   const genFacility = facilitiesInRegion.find((f) => f.id === genFacilityId) ?? null;
   const classificationLabel = (id: string) => classifications.find((c) => c.id === id)?.name.replace(/_/g, " ") ?? "";
-  const drugLabel = (id: string) => { const d = drugs.find((x) => x.id === id); return d ? `${d.name} ${d.strength}` : ""; };
+  const drugLabel = ({ drugId, quantity }: DrugQty) => { const d = drugs.find((x) => x.id === drugId); return d ? `${d.name} ${d.strength} × ${quantity}` : ""; };
 
   const step1Status: StepStatus = editingStep === 1 ? "active" : genPatientId ? "done" : "active";
   const step2Status: StepStatus = editingStep === 2 ? "active" : !genPatientId ? "pending" : lines.length > 0 ? "done" : "active";
@@ -150,12 +151,16 @@ export default function BillingPage() {
 
   function chooseClassification(id: string) {
     const c = classifications.find((x) => x.id === id);
-    setPick({ classificationId: id, subOptionId: c?.subOptions?.[0]?.id ?? "", drugIds: [] });
+    setPick({ classificationId: id, subOptionId: c?.subOptions?.[0]?.id ?? "", drugs: [] });
     setDrugQuery("");
   }
 
   function toggleDrug(id: string) {
-    setPick((p) => ({ ...p, drugIds: p.drugIds.includes(id) ? p.drugIds.filter((x) => x !== id) : [...p.drugIds, id] }));
+    setPick((p) => ({ ...p, drugs: p.drugs.some((x) => x.drugId === id) ? p.drugs.filter((x) => x.drugId !== id) : [...p.drugs, { drugId: id, quantity: 1 }] }));
+  }
+
+  function setDrugQuantity(id: string, quantity: number) {
+    setPick((p) => ({ ...p, drugs: p.drugs.map((x) => (x.drugId === id ? { ...x, quantity } : x)) }));
   }
 
   function addService() {
@@ -175,7 +180,7 @@ export default function BillingPage() {
       const created = await api.post<{ invoiceId: string }>("/invoices", {
         patientId: genPatientId,
         facilityId: genFacilityId,
-        lines: lines.map(({ subOptionId, drugIds }) => ({ subOptionId, ...(drugIds.length ? { drugIds } : {}) })),
+        lines: lines.map(({ subOptionId, drugs }) => ({ subOptionId, ...(drugs.length ? { drugs } : {}) })),
       });
       await api.post(`/invoices/${created.invoiceId}/send`, {});
       setGenResult("Invoice created and sent successfully");
@@ -257,7 +262,7 @@ export default function BillingPage() {
                     <li key={l.subOptionId} className="flex items-start justify-between gap-3 px-3 py-2 text-admin-body-sm">
                       <div>
                         <p className="font-medium text-admin-text">{classificationLabel(l.classificationId)}{q && <span className="font-normal text-admin-text-secondary"> · {q.description}</span>}</p>
-                        {l.drugIds.length > 0 && <p className="text-admin-caption text-admin-text-secondary">{l.drugIds.map(drugLabel).join(", ")}</p>}
+                        {l.drugs.length > 0 && <p className="text-admin-caption text-admin-text-secondary">{l.drugs.map(drugLabel).join(", ")}</p>}
                       </div>
                       <div className="flex items-center gap-3">
                         {q && <span className="font-medium text-admin-text">{koboToNaira(Number(q.amountKobo))}</span>}
@@ -312,7 +317,7 @@ export default function BillingPage() {
                 {isDrugAdministration && (
                   <div>
                     <label className="mb-1 block text-admin-caption font-medium text-admin-text-secondary">
-                      Drugs administered ({pick.drugIds.length} selected) — covered by the flat fee
+                      Drugs administered ({pick.drugs.length} selected) — covered by the flat fee
                     </label>
                     <input
                       value={drugQuery}
@@ -322,14 +327,31 @@ export default function BillingPage() {
                     />
                     <ul className="max-h-44 space-y-1 overflow-y-auto rounded-admin-sm border border-admin-border p-2">
                       {visibleDrugs.length === 0 && <li className="px-1 text-admin-caption text-admin-text-secondary">No drugs found</li>}
-                      {visibleDrugs.map((d) => (
-                        <li key={d.id}>
-                          <label className="flex cursor-pointer items-center gap-2 rounded px-1 py-0.5 text-admin-body-sm hover:bg-admin-card-alt">
-                            <input type="checkbox" checked={pick.drugIds.includes(d.id)} onChange={() => toggleDrug(d.id)} />
-                            <span>{d.name} <span className="text-admin-text-secondary">{d.strength}</span></span>
-                          </label>
-                        </li>
-                      ))}
+                      {visibleDrugs.map((d) => {
+                        const chosen = pick.drugs.find((x) => x.drugId === d.id);
+                        return (
+                          <li key={d.id} className="flex items-center justify-between gap-2 rounded px-1 py-0.5 hover:bg-admin-card-alt">
+                            <label className="flex flex-1 cursor-pointer items-center gap-2 text-admin-body-sm">
+                              <input type="checkbox" checked={!!chosen} onChange={() => toggleDrug(d.id)} />
+                              <span>{d.name} <span className="text-admin-text-secondary">{d.strength}</span></span>
+                            </label>
+                            {chosen && (
+                              <label className="flex items-center gap-1 text-admin-caption text-admin-text-secondary">
+                                Qty
+                                <input
+                                  type="number"
+                                  min={1}
+                                  step={1}
+                                  value={chosen.quantity}
+                                  onChange={(e) => setDrugQuantity(d.id, Math.max(1, Math.floor(Number(e.target.value)) || 1))}
+                                  aria-label={`Quantity of ${d.name} ${d.strength}`}
+                                  className="w-16 rounded-admin-sm border border-admin-border px-2 py-1 text-admin-body-sm text-admin-text"
+                                />
+                              </label>
+                            )}
+                          </li>
+                        );
+                      })}
                     </ul>
                   </div>
                 )}
@@ -427,7 +449,7 @@ export default function BillingPage() {
                         <span className="text-admin-text-secondary">{l.description}</span>
                         <span className="font-medium text-admin-text">{koboToNaira(Number(l.amountKobo))}</span>
                       </div>
-                      {l.drugIds.length > 0 && <p className="text-admin-caption text-admin-text-secondary">{l.drugIds.map(drugLabel).join(", ")}</p>}
+                      {l.drugs.length > 0 && <p className="text-admin-caption text-admin-text-secondary">{l.drugs.map(drugLabel).join(", ")}</p>}
                     </div>
                   ))}
                 </div>

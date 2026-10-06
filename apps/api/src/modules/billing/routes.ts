@@ -15,7 +15,7 @@ const invoiceIdParamSchema = z.object({
 
 const invoiceLinesSchema = z.array(z.object({
   subOptionId: z.string().uuid(),
-  drugIds: z.array(z.string().uuid()).max(50).optional(),
+  drugs: z.array(z.object({ drugId: z.string().uuid(), quantity: z.number().int().min(1).max(10_000) })).max(50).optional(),
 })).min(1).max(10);
 
 // Either priced `lines` (the generator) or a single classification priced from the facility tariff.

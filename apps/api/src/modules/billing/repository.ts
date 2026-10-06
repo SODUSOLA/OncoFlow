@@ -1,7 +1,7 @@
 import { db } from "../../db/index.js";
 import { drug } from "../inventory/schema.js";
 import { eq, sql, and, desc, inArray } from "drizzle-orm";
-import { serviceClassification, serviceSubOption, serviceSubOptionPrice, invoiceLine, invoiceLineDrug, tariff, invoice, invoiceItem, subscription, walletTransaction } from "./schema.js";
+import { payment, serviceClassification, serviceSubOption, serviceSubOptionPrice, invoiceLine, invoiceLineDrug, tariff, invoice, invoiceItem, subscription, walletTransaction } from "./schema.js";
 
 // Data access for the named variants under each classification.
 export class ServiceSubOptionRepository {
@@ -31,7 +31,7 @@ export class InvoiceLineRepository {
     const lines = await db.select().from(invoiceLine).where(eq(invoiceLine.invoiceId, invoiceId)).orderBy(invoiceLine.createdAt);
     if (lines.length === 0) return [];
     const drugs = await db
-      .select({ lineId: invoiceLineDrug.invoiceLineId, id: drug.id, name: drug.name, strength: drug.strength })
+      .select({ lineId: invoiceLineDrug.invoiceLineId, id: drug.id, name: drug.name, strength: drug.strength, quantity: invoiceLineDrug.quantity })
       .from(invoiceLineDrug)
       .innerJoin(drug, eq(drug.id, invoiceLineDrug.drugId))
       .where(inArray(invoiceLineDrug.invoiceLineId, lines.map((l) => l.id)));
@@ -144,6 +144,14 @@ export class TariffRepository {
 
 // Data access for invoices.
 export class InvoiceRepository {
+  // The successful payment that settled an invoice, if any (the receipt's reference and paid date).
+  async findSuccessfulPayment(invoiceId: string) {
+    const rows = await db.select().from(payment)
+      .where(and(eq(payment.invoiceId, invoiceId), eq(payment.status, "SUCCESS")))
+      .orderBy(desc(payment.createdAt)).limit(1);
+    return rows[0] ?? null;
+  }
+
   // Finds an invoice by id.
   async findById(id: string) {
     const row = await db

@@ -73,7 +73,7 @@ describe("POST /invoices/quote", () => {
   });
 
   it("rejects drugs on a non drug-administration line", async () => {
-    const res = await request(app).post("/invoices/quote").send({ patientId, lines: [{ subOptionId: optionIds.PHYSICAL, drugIds: [drugId] }] });
+    const res = await request(app).post("/invoices/quote").send({ patientId, lines: [{ subOptionId: optionIds.PHYSICAL, drugs: [{ drugId, quantity: 1 }] }] });
     expect(res.status).toBe(400);
   });
 
@@ -100,7 +100,7 @@ describe("POST /invoices with lines", () => {
   it("creates one invoice with a line per service, recorded drugs and summed components", async () => {
     const res = await request(app).post("/invoices").send({
       patientId, facilityId,
-      lines: [{ subOptionId: optionIds.SINGLE_VIRTUAL }, { subOptionId: optionIds.SHORT_STAY_INFUSION, drugIds: [drugId] }],
+      lines: [{ subOptionId: optionIds.SINGLE_VIRTUAL }, { subOptionId: optionIds.SHORT_STAY_INFUSION, drugs: [{ drugId, quantity: 3 }] }],
     });
     expect(res.status).toBe(201);
     const id = res.body.invoiceId as string;
@@ -110,13 +110,24 @@ describe("POST /invoices with lines", () => {
     const lines = await db.select().from(invoiceLine).where(eq(invoiceLine.invoiceId, id));
     expect(lines).toHaveLength(2);
     const drugLines = await db.select().from(invoiceLineDrug).where(eq(invoiceLineDrug.drugId, drugId));
-    expect(drugLines.some((l) => lines.some((x) => x.id === l.invoiceLineId))).toBe(true);
+    const mine = drugLines.filter((l) => lines.some((x) => x.id === l.invoiceLineId));
+    expect(mine).toHaveLength(1);
+    expect(mine[0]!.quantity).toBe(3);
 
     const items = await db.select().from(invoiceItem).where(eq(invoiceItem.invoiceId, id));
     expect(items.reduce((sum, i) => sum + i.amountKobo, 0n)).toBe(11_500_000n);
 
     const read = await request(app).get(`/invoices/${id}`);
     expect(read.body.invoice.lines).toHaveLength(2);
+    const drugLine = read.body.invoice.lines.find((l: { drugs: unknown[] }) => l.drugs.length > 0);
+    expect(drugLine.drugs[0].quantity).toBe(3);
+  });
+
+  it("rejects a drug quantity below 1", async () => {
+    const res = await request(app).post("/invoices/quote").send({
+      patientId, lines: [{ subOptionId: optionIds.SHORT_STAY_INFUSION, drugs: [{ drugId, quantity: 0 }] }],
+    });
+    expect(res.status).toBe(400);
   });
 });
 
@@ -131,5 +142,17 @@ describe("Regional Admin permissions for the generator", () => {
     expect(actions).toContain("create");
     expect(actions).toContain("send");
     expect(actions).not.toContain("update");
+  });
+});
+
+describe("GET /invoices/:id receipt details", () => {
+  it("includes created date, issue date, facility name and, once paid, the payment reference", async () => {
+    const created = await request(app).post("/invoices").send({ patientId, facilityId, lines: [{ subOptionId: optionIds.SINGLE_VIRTUAL }] });
+    const id = created.body.invoiceId as string;
+    const draft = await request(app).get(`/invoices/${id}`);
+    expect(draft.body.invoice.createdAt).toBeTruthy();
+    expect(draft.body.invoice.issuedAt).toBeNull();
+    expect(draft.body.invoice.facilityName).toBe("Lines Test Fac");
+    expect(draft.body.invoice.payment).toBeNull();
   });
 });

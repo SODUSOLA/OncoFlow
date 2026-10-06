@@ -11,6 +11,7 @@ import { WalletTransaction } from "./entities/WalletTransaction.js";
 import { PatientRepository, WalletRepository } from "../patient/index.js";
 import { SubscriptionService } from "./services/SubscriptionService.js";
 import { InvoiceBuilder } from "./services/InvoiceBuilder.js";
+import { FacilityRepository } from "../facility/index.js";
 
 const invoiceSvc = new InvoiceService();
 const invoiceRepo = new InvoiceRepository();
@@ -19,6 +20,7 @@ const classificationRepo = new ServiceClassificationRepository();
 const subOptionRepo = new ServiceSubOptionRepository();
 const invoiceLineRepo = new InvoiceLineRepository();
 const invoiceBuilder = new InvoiceBuilder();
+const facilityRepo = new FacilityRepository();
 const tariffRepo = new TariffRepository();
 const walletTransactionRepo = new WalletTransactionRepository();
 const patientRepo = new PatientRepository();
@@ -34,7 +36,7 @@ async function callerOwnsPatient(callerId: string, patientId: string): Promise<b
 // Business-rule failures from the invoice builder, surfaced as 400s rather than 500s.
 const BUILDER_ERRORS = [
   "Add at least one service", "A service can only be added once", "Unknown service option", "This service cannot be invoiced",
-  "Drugs can only be added to a drug administration", "Unknown drug selected",
+  "Drugs can only be added to a drug administration", "Unknown drug selected", "A drug can only be added once", "Drug quantity must be at least 1",
 ];
 function isBuilderError(message: string) {
   return BUILDER_ERRORS.includes(message) || message.startsWith("No price is configured for");
@@ -46,7 +48,7 @@ function serializeQuote(quote: Awaited<ReturnType<InvoiceBuilder["quote"]>>) {
     totalKobo: quote.totalKobo.toString(),
     lines: quote.lines.map((l) => ({
       subOptionId: l.subOptionId, classificationId: l.classificationId, description: l.description,
-      drugIds: l.drugIds, amountKobo: l.amountKobo.toString(),
+      drugs: l.drugs, amountKobo: l.amountKobo.toString(),
     })),
   };
 }
@@ -109,9 +111,15 @@ export async function getInvoiceHandler(req: Request, res: Response) {
     const entity = new Invoice(row);
     const items = await invoiceItemRepo.findByInvoice(row.id);
     const lines = await invoiceLineRepo.findByInvoice(row.id);
+    const [facilityRow, paidWith] = await Promise.all([
+      facilityRepo.findByIdIncludingDeleted(row.facilityId),
+      row.status === "PAID" ? invoiceRepo.findSuccessfulPayment(row.id) : Promise.resolve(null),
+    ]);
     res.json({
       invoice: {
         ...entity.toJSON(),
+        facilityName: facilityRow?.name ?? null,
+        payment: paidWith ? { reference: paidWith.reference, paidAt: paidWith.createdAt.toISOString() } : null,
         items: items.map((item) => new InvoiceItem(item).toJSON()),
         lines: lines.map((l) => ({ id: l.id, classificationId: l.classificationId, description: l.description, amountKobo: l.amountKobo.toString(), drugs: l.drugs })),
       },

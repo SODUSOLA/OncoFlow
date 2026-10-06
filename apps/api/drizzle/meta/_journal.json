@@ -225,6 +225,13 @@
       "when": 1791272415345,
       "tag": "0031_facility_description",
       "breakpoints": true
+    },
+    {
+      "idx": 32,
+      "version": "7",
+      "when": 1791277848314,
+      "tag": "0032_invoice_line_drug_quantity",
+      "breakpoints": true
     }
   ]
 }

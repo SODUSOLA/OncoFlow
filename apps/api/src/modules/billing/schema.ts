@@ -106,6 +106,7 @@ export const invoiceLineDrug = pgTable("invoice_line_drug", {
   id: uuid("id").primaryKey().defaultRandom(),
   invoiceLineId: uuid("invoice_line_id").notNull().references(() => invoiceLine.id),
   drugId: uuid("drug_id").notNull().references(() => drug.id),
+  quantity: integer("quantity").notNull().default(1),
   createdAt: timestamp("created_at").notNull().defaultNow(),
 }, (t) => ({
   lineDrugUnique: uniqueIndex("invoice_line_drug_unique").on(t.invoiceLineId, t.drugId),
