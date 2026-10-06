@@ -1,7 +1,7 @@
 import { useEffect, useState, type ReactNode } from "react";
-import { Receipt, Lock, Check, Send } from "lucide-react";
+import { Receipt, Lock, Check, Send, Plus, X } from "lucide-react";
 import { api } from "../../../lib/api";
-import type { Invoice, ServiceClassification, Patient, Facility, Tariff } from "../../../lib/types";
+import type { Invoice, ServiceClassification, Patient } from "../../../lib/types";
 import { Card } from "../../../components/ui/Card";
 import { Button } from "../../../components/ui/Button";
 import { Badge } from "../../../components/ui/Badge";
@@ -68,17 +68,33 @@ function StepCard({
   );
 }
 
+// Classifications that are billed elsewhere: membership is deducted from the patient app and side-effect reports are paid upfront in chat.
+const NOT_INVOICEABLE = new Set(["SUBSCRIPTION", "SIDE_EFFECT_REPORT"]);
+
+interface Drug { id: string; name: string; strength: string }
+interface DraftLine { classificationId: string; subOptionId: string; drugIds: string[] }
+interface Quote {
+  isSubscriber: boolean;
+  totalKobo: string;
+  lines: { subOptionId: string; description: string; amountKobo: string; drugIds: string[] }[];
+}
+
+const EMPTY_PICK: DraftLine = { classificationId: "", subOptionId: "", drugIds: [] };
+
 // Billing page with invoice list and the Invoice Generator.
 export default function BillingPage() {
   const { facilitiesInRegion } = useRegionScope();
   const [invoices, setInvoices] = useState<Invoice[]>([]);
   const [patients, setPatients] = useState<Patient[]>([]);
   const [classifications, setClassifications] = useState<ServiceClassification[]>([]);
+  const [drugs, setDrugs] = useState<Drug[]>([]);
   const [genPatientId, setGenPatientId] = useState("");
-  const [genClassificationId, setGenClassificationId] = useState("");
-  const [genSubOptionId, setGenSubOptionId] = useState("");
+  const [lines, setLines] = useState<DraftLine[]>([]);
+  const [pick, setPick] = useState<DraftLine>(EMPTY_PICK);
+  const [drugQuery, setDrugQuery] = useState("");
   const [genFacilityId, setGenFacilityId] = useState("");
-  const [genTariffs, setGenTariffs] = useState<Tariff[]>([]);
+  const [quote, setQuote] = useState<Quote | null>(null);
+  const [quoteError, setQuoteError] = useState<string | null>(null);
   const [genLoading, setGenLoading] = useState(false);
   const [genResult, setGenResult] = useState<string | null>(null);
   const [editingStep, setEditingStep] = useState<1 | 2 | 3 | null>(null);
@@ -92,53 +108,82 @@ export default function BillingPage() {
     loadInvoices();
     api.get<{ patients: Patient[] }>("/patients?facilityId=all").then((d) => setPatients(d.patients)).catch(() => {});
     api.get<{ classifications: ServiceClassification[] }>("/classifications").then((d) => setClassifications(d.classifications)).catch(() => {});
+    api.get<{ drugs: Drug[] }>("/inventory/drugs").then((d) => setDrugs(d.drugs)).catch(() => {});
   }, []);
 
+  // Re-prices the chosen services whenever the patient (which sets the subscriber tier) or the services change.
   useEffect(() => {
-    if (!genFacilityId) {
-      setGenTariffs([]);
+    if (!genPatientId || lines.length === 0) {
+      setQuote(null);
+      setQuoteError(null);
       return;
     }
-    api.get<{ tariffs: Tariff[] }>(`/tariffs?facilityId=${genFacilityId}`)
-      .then((d) => setGenTariffs(d.tariffs)).catch(() => setGenTariffs([]));
-  }, [genFacilityId]);
+    let cancelled = false;
+    api.post<Quote>("/invoices/quote", {
+      patientId: genPatientId,
+      lines: lines.map(({ subOptionId, drugIds }) => ({ subOptionId, ...(drugIds.length ? { drugIds } : {}) })),
+    })
+      .then((q) => { if (!cancelled) { setQuote(q); setQuoteError(null); } })
+      .catch((err) => { if (!cancelled) { setQuote(null); setQuoteError(err instanceof Error ? err.message : "Could not price these services"); } });
+    return () => { cancelled = true; };
+  }, [genPatientId, lines]);
 
   const facilityIdsInRegion = new Set(facilitiesInRegion.map((f) => f.id));
   const invoicesInRegion = invoices.filter((inv) => facilityIdsInRegion.has(inv.facilityId));
 
-  const genTariff = genTariffs.find((t) => t.classificationId === genClassificationId) ?? null;
+  const invoiceable = classifications.filter((c) => !NOT_INVOICEABLE.has(c.name));
+  const available = invoiceable.filter((c) => !lines.some((l) => l.classificationId === c.id));
+  const pickClassification = classifications.find((c) => c.id === pick.classificationId) ?? null;
+  const pickOptions = pickClassification?.subOptions ?? [];
+  const isDrugAdministration = pickClassification?.name === "DRUG_ADMINISTRATION";
+  const visibleDrugs = drugs.filter((d) => `${d.name} ${d.strength}`.toLowerCase().includes(drugQuery.trim().toLowerCase()));
   const genPatient = patients.find((p) => p.id === genPatientId) ?? null;
   const genFacility = facilitiesInRegion.find((f) => f.id === genFacilityId) ?? null;
-  const genClassification = classifications.find((c) => c.id === genClassificationId) ?? null;
-  const subOptions = genClassification?.subOptions ?? [];
-  const genSubOption = subOptions.find((o) => o.id === genSubOptionId) ?? null;
-  const total = genTariff
-    ? Number(genTariff.networkFeeKobo) + Number(genTariff.facilityBedFeeKobo) + Number(genTariff.professionalFeeKobo) + Number(genTariff.drugPriceKobo)
-    : 0;
+  const classificationLabel = (id: string) => classifications.find((c) => c.id === id)?.name.replace(/_/g, " ") ?? "";
+  const drugLabel = (id: string) => { const d = drugs.find((x) => x.id === id); return d ? `${d.name} ${d.strength}` : ""; };
 
   const step1Status: StepStatus = editingStep === 1 ? "active" : genPatientId ? "done" : "active";
-  const step2Status: StepStatus = editingStep === 2 ? "active" : !genPatientId ? "pending" : genClassificationId ? "done" : "active";
-  const step3Status: StepStatus = editingStep === 3 ? "active" : !genClassificationId ? "pending" : genFacilityId ? "done" : "active";
-  const step4Status: StepStatus = genPatientId && genClassificationId && genFacilityId ? "active" : "pending";
-  const allComplete = step4Status === "active" && !!genTariff;
+  const step2Status: StepStatus = editingStep === 2 ? "active" : !genPatientId ? "pending" : lines.length > 0 ? "done" : "active";
+  const step3Status: StepStatus = editingStep === 3 ? "active" : lines.length === 0 ? "pending" : genFacilityId ? "done" : "active";
+  const step4Status: StepStatus = genPatientId && lines.length > 0 && genFacilityId ? "active" : "pending";
+  const allComplete = step4Status === "active" && !!quote;
 
-  // Generates an invoice for the chosen patient, facility and classification.
+  function chooseClassification(id: string) {
+    const c = classifications.find((x) => x.id === id);
+    setPick({ classificationId: id, subOptionId: c?.subOptions?.[0]?.id ?? "", drugIds: [] });
+    setDrugQuery("");
+  }
+
+  function toggleDrug(id: string) {
+    setPick((p) => ({ ...p, drugIds: p.drugIds.includes(id) ? p.drugIds.filter((x) => x !== id) : [...p.drugIds, id] }));
+  }
+
+  function addService() {
+    if (!pick.classificationId || !pick.subOptionId) return;
+    setLines((prev) => [...prev, pick]);
+    setPick(EMPTY_PICK);
+    setDrugQuery("");
+    setEditingStep(2);
+  }
+
+  // Creates the invoice from the chosen services and sends it, so the patient sees it straight away.
   async function generateInvoice() {
-    if (!genPatientId || !genFacilityId || !genClassificationId) return;
+    if (!genPatientId || !genFacilityId || lines.length === 0) return;
     setGenLoading(true);
     setGenResult(null);
     try {
-      await api.post<{ invoice: Invoice }>("/invoices", {
+      const created = await api.post<{ invoiceId: string }>("/invoices", {
         patientId: genPatientId,
-        classificationId: genClassificationId,
-        ...(genSubOptionId ? { subOptionId: genSubOptionId } : {}),
         facilityId: genFacilityId,
+        lines: lines.map(({ subOptionId, drugIds }) => ({ subOptionId, ...(drugIds.length ? { drugIds } : {}) })),
       });
-      setGenResult("Invoice created successfully");
+      await api.post(`/invoices/${created.invoiceId}/send`, {});
+      setGenResult("Invoice created and sent successfully");
       setGenPatientId("");
-      setGenClassificationId("");
-      setGenSubOptionId("");
+      setLines([]);
+      setPick(EMPTY_PICK);
       setGenFacilityId("");
+      setEditingStep(null);
       loadInvoices();
     } catch (err) {
       setGenResult(err instanceof Error ? err.message : "Failed to create invoice");
@@ -187,55 +232,127 @@ export default function BillingPage() {
             title="Service Classification"
             status={step2Status}
             onEdit={() => setEditingStep(2)}
-            doneSummary={genClassification && (
-              <p className="font-medium text-admin-text">
-                {genClassification.name.replace(/_/g, " ")}
-                {genSubOption && <span className="font-normal text-admin-text-secondary"> · {genSubOption.name}</span>}
-              </p>
+            doneSummary={(
+              <ul className="space-y-1">
+                {lines.map((l) => {
+                  const q = quote?.lines.find((x) => x.subOptionId === l.subOptionId);
+                  return (
+                    <li key={l.subOptionId} className="flex justify-between gap-3">
+                      <span>
+                        <span className="font-medium text-admin-text">{classificationLabel(l.classificationId)}</span>
+                        {q && <span> · {q.description}</span>}
+                      </span>
+                      {q && <span className="font-medium text-admin-text">{koboToNaira(Number(q.amountKobo))}</span>}
+                    </li>
+                  );
+                })}
+              </ul>
             )}
           >
-            <label className="mb-1 block text-admin-caption font-medium text-admin-text-secondary">Select Primary Classification</label>
-            <select
-              value={genClassificationId}
-              onChange={(e) => {
-                const next = classifications.find((c) => c.id === e.target.value);
-                setGenClassificationId(e.target.value);
-                setGenSubOptionId("");
-                setEditingStep(next?.subOptions?.length ? 2 : null);
-              }}
-              className="w-full rounded-admin-sm border border-admin-border px-3 py-2 text-admin-body-sm"
-            >
-              <option value="">Select from compliant dropdown...</option>
-              {classifications.map((c) => (
-                <option key={c.id} value={c.id}>{c.name.replace(/_/g, " ")}</option>
-              ))}
-            </select>
-            <label className="mb-1 mt-3 block text-admin-caption font-medium text-admin-text-secondary">Sub-option (Optional)</label>
-            {!genClassificationId ? (
-              <div className="flex items-center gap-2 rounded-admin-sm border border-admin-border bg-admin-card-alt px-3 py-2 text-admin-body-sm text-admin-text-secondary">
-                <Lock className="size-3.5 shrink-0" aria-hidden="true" /> Requires Primary Classification First
-              </div>
-            ) : subOptions.length === 0 ? (
-              <div className="rounded-admin-sm border border-admin-border bg-admin-card-alt px-3 py-2 text-admin-body-sm text-admin-text-secondary">
-                No sub-options for this classification
+            {lines.length > 0 && (
+              <ul className="mb-4 divide-y divide-admin-border rounded-admin-sm border border-admin-border">
+                {lines.map((l) => {
+                  const q = quote?.lines.find((x) => x.subOptionId === l.subOptionId);
+                  return (
+                    <li key={l.subOptionId} className="flex items-start justify-between gap-3 px-3 py-2 text-admin-body-sm">
+                      <div>
+                        <p className="font-medium text-admin-text">{classificationLabel(l.classificationId)}{q && <span className="font-normal text-admin-text-secondary"> · {q.description}</span>}</p>
+                        {l.drugIds.length > 0 && <p className="text-admin-caption text-admin-text-secondary">{l.drugIds.map(drugLabel).join(", ")}</p>}
+                      </div>
+                      <div className="flex items-center gap-3">
+                        {q && <span className="font-medium text-admin-text">{koboToNaira(Number(q.amountKobo))}</span>}
+                        <button
+                          type="button"
+                          onClick={() => setLines((prev) => prev.filter((x) => x.subOptionId !== l.subOptionId))}
+                          aria-label={`Remove ${classificationLabel(l.classificationId)}`}
+                          className="text-admin-text-secondary hover:text-admin-danger"
+                        >
+                          <X className="size-4" aria-hidden="true" />
+                        </button>
+                      </div>
+                    </li>
+                  );
+                })}
+              </ul>
+            )}
+
+            {available.length > 0 ? (
+              <div className="space-y-3">
+                <div>
+                  <label className="mb-1 block text-admin-caption font-medium text-admin-text-secondary">
+                    {lines.length === 0 ? "Select Primary Classification" : "Add another classification"}
+                  </label>
+                  <select
+                    value={pick.classificationId}
+                    onChange={(e) => chooseClassification(e.target.value)}
+                    className="w-full rounded-admin-sm border border-admin-border px-3 py-2 text-admin-body-sm"
+                  >
+                    <option value="">Select from compliant dropdown...</option>
+                    {available.map((c) => (
+                      <option key={c.id} value={c.id}>{c.name.replace(/_/g, " ")}</option>
+                    ))}
+                  </select>
+                </div>
+
+                {pickClassification && pickOptions.length > 1 && (
+                  <div>
+                    <label className="mb-1 block text-admin-caption font-medium text-admin-text-secondary">Type</label>
+                    <select
+                      value={pick.subOptionId}
+                      onChange={(e) => setPick((p) => ({ ...p, subOptionId: e.target.value }))}
+                      className="w-full rounded-admin-sm border border-admin-border px-3 py-2 text-admin-body-sm"
+                    >
+                      {pickOptions.map((o) => (
+                        <option key={o.id} value={o.id}>{o.name}</option>
+                      ))}
+                    </select>
+                  </div>
+                )}
+
+                {isDrugAdministration && (
+                  <div>
+                    <label className="mb-1 block text-admin-caption font-medium text-admin-text-secondary">
+                      Drugs administered ({pick.drugIds.length} selected) — covered by the flat fee
+                    </label>
+                    <input
+                      value={drugQuery}
+                      onChange={(e) => setDrugQuery(e.target.value)}
+                      placeholder="Search drugs…"
+                      className="mb-2 w-full rounded-admin-sm border border-admin-border px-3 py-2 text-admin-body-sm"
+                    />
+                    <ul className="max-h-44 space-y-1 overflow-y-auto rounded-admin-sm border border-admin-border p-2">
+                      {visibleDrugs.length === 0 && <li className="px-1 text-admin-caption text-admin-text-secondary">No drugs found</li>}
+                      {visibleDrugs.map((d) => (
+                        <li key={d.id}>
+                          <label className="flex cursor-pointer items-center gap-2 rounded px-1 py-0.5 text-admin-body-sm hover:bg-admin-card-alt">
+                            <input type="checkbox" checked={pick.drugIds.includes(d.id)} onChange={() => toggleDrug(d.id)} />
+                            <span>{d.name} <span className="text-admin-text-secondary">{d.strength}</span></span>
+                          </label>
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+
+                <Button
+                  type="button"
+                  onClick={addService}
+                  disabled={!pick.classificationId || !pick.subOptionId}
+                  className="rounded-admin-xs bg-admin-sidebar-cta hover:bg-admin-sidebar-cta/90"
+                >
+                  <Plus className="size-4" aria-hidden="true" /> Add service
+                </Button>
               </div>
             ) : (
-              <select
-                value={genSubOptionId}
-                onChange={(e) => { setGenSubOptionId(e.target.value); setEditingStep(null); }}
-                className="w-full rounded-admin-sm border border-admin-border px-3 py-2 text-admin-body-sm"
-              >
-                <option value="">None</option>
-                {subOptions.map((o) => (
-                  <option key={o.id} value={o.id}>{o.name}</option>
-                ))}
-              </select>
+              <p className="text-admin-caption text-admin-text-secondary">Every available classification has been added.</p>
             )}
-            {genClassificationId && subOptions.length > 0 && !genSubOptionId && (
-              <button type="button" onClick={() => setEditingStep(null)} className="mt-2 text-admin-caption font-medium text-admin-sidebar-cta hover:underline">
-                Continue without a sub-option
+
+            {lines.length > 0 && (
+              <button type="button" onClick={() => setEditingStep(null)} className="mt-3 text-admin-caption font-medium text-admin-sidebar-cta hover:underline">
+                Continue to facility
               </button>
             )}
+            {quoteError && <p role="alert" className="mt-2 text-admin-caption text-admin-danger">{quoteError}</p>}
           </StepCard>
 
           <StepCard
@@ -262,7 +379,7 @@ export default function BillingPage() {
             <p className="text-admin-body-sm text-admin-text-secondary">
               {allComplete
                 ? "All required fields are set — the computed preview on the right is locked and ready. Use “Send to Patient” to issue."
-                : "No tariff is configured for this facility/classification pair."}
+                : "The services could not be priced. Check the message under Service Classification."}
             </p>
           </StepCard>
 
@@ -299,35 +416,24 @@ export default function BillingPage() {
                     <p className="font-medium text-admin-text">{new Date().toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" })}</p>
                   </div>
                 </div>
+                {quote && (
+                  <Badge variant={quote.isSubscriber ? "success" : "neutral"}>{quote.isSubscriber ? "Subscriber rate" : "Standard rate"}</Badge>
+                )}
                 <div className="space-y-1.5 border-t border-admin-border pt-3 text-admin-body-sm">
-                  <div className="flex justify-between">
-                    <span className="text-admin-text-secondary">Network Fee</span>
-                    <span className={genTariff ? "font-medium text-admin-text" : "text-admin-text-secondary/50"}>
-                      {genTariff ? koboToNaira(Number(genTariff.networkFeeKobo)) : "Pending..."}
-                    </span>
-                  </div>
-                  <div className="flex justify-between">
-                    <span className="text-admin-text-secondary">Facility Fees</span>
-                    <span className={genTariff ? "font-medium text-admin-text" : "text-admin-text-secondary/50"}>
-                      {genTariff ? koboToNaira(Number(genTariff.facilityBedFeeKobo)) : "Facility Fees Pending... --"}
-                    </span>
-                  </div>
-                  <div className="flex justify-between">
-                    <span className="text-admin-text-secondary">Professional Fee</span>
-                    <span className={genTariff ? "font-medium text-admin-text" : "text-admin-text-secondary/50"}>
-                      {genTariff ? koboToNaira(Number(genTariff.professionalFeeKobo)) : "Pending..."}
-                    </span>
-                  </div>
-                  <div className="flex justify-between">
-                    <span className="text-admin-text-secondary">Medications</span>
-                    <span className={genTariff ? "font-medium text-admin-text" : "text-admin-text-secondary/50"}>
-                      {genTariff ? koboToNaira(Number(genTariff.drugPriceKobo)) : "Medications Pending... --"}
-                    </span>
-                  </div>
+                  {!quote && <p className="text-admin-text-secondary/50">Services Pending...</p>}
+                  {quote?.lines.map((l) => (
+                    <div key={l.subOptionId}>
+                      <div className="flex justify-between gap-3">
+                        <span className="text-admin-text-secondary">{l.description}</span>
+                        <span className="font-medium text-admin-text">{koboToNaira(Number(l.amountKobo))}</span>
+                      </div>
+                      {l.drugIds.length > 0 && <p className="text-admin-caption text-admin-text-secondary">{l.drugIds.map(drugLabel).join(", ")}</p>}
+                    </div>
+                  ))}
                 </div>
                 <div className="flex items-baseline justify-between border-t border-admin-border pt-3">
                   <span className="text-admin-body-sm font-semibold text-admin-text">Total</span>
-                  <span className="text-2xl font-bold text-admin-sidebar-cta">{koboToNaira(total)}</span>
+                  <span className="text-2xl font-bold text-admin-sidebar-cta">{koboToNaira(quote ? Number(quote.totalKobo) : 0)}</span>
                 </div>
                 <Button
                   onClick={generateInvoice}
@@ -338,7 +444,7 @@ export default function BillingPage() {
                   <Send className="size-4" aria-hidden="true" /> Send to Patient
                 </Button>
                 <p className="text-center text-admin-micro text-admin-text-secondary">
-                  {allComplete ? "Amount computed from the regional tariff table." : "Complete all steps to unlock submission."}
+                  {allComplete ? "Flat fees from the OncoFlow price list." : "Complete all steps to unlock submission."}
                 </p>
               </div>
             </div>
