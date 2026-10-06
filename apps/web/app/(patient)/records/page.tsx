@@ -6,6 +6,7 @@ import { Card } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
 import { Badge } from "@/components/ui/Badge";
 import { api } from "@/lib/api";
+import { LabResultDialog } from "@/components/patient/LabResultDialog";
 import { useMyPatient } from "@/lib/useMyPatient";
 import type { LabRequest, LabResult } from "@/lib/types";
 
@@ -101,6 +102,7 @@ export default function RecordsPage() {
   const [results, setResults] = useState<LabResult[]>([]);
   const [loading, setLoading] = useState(true);
   const [justUploaded, setJustUploaded] = useState(false);
+  const [openResult, setOpenResult] = useState<LabResult | null>(null);
 
   const load = useCallback(async () => {
     if (!patient) return;
@@ -162,7 +164,10 @@ export default function RecordsPage() {
           Awaiting Your Upload
         </h2>
         {pendingRequests.length === 0 ? (
-          <Card className="text-center text-sm text-neutral-400">No pending lab requests</Card>
+          <Card className="text-center text-sm text-neutral-400">
+            <p>No pending lab requests</p>
+            <p className="mt-1 text-xs">When your care team asks for lab work, an upload form for it appears here.</p>
+          </Card>
         ) : (
           <div className="space-y-3">
             {pendingRequests.map((r) => (
@@ -188,7 +193,14 @@ export default function RecordsPage() {
           <ul className="space-y-2.5">
             {results.map((r) => (
               <li key={r.id}>
-                <Card className="flex items-center justify-between p-3.5">
+                <Card
+                  className="flex cursor-pointer items-center justify-between p-3.5 transition-shadow hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+                  role="button"
+                  tabIndex={0}
+                  aria-label={`View lab result from ${new Date(r.testDate).toLocaleDateString()}`}
+                  onClick={() => setOpenResult(r)}
+                  onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); setOpenResult(r); } }}
+                >
                   <div>
                     <p className="text-sm font-semibold text-neutral-900">
                       Test date: {new Date(r.testDate).toLocaleDateString()}
@@ -210,6 +222,8 @@ export default function RecordsPage() {
           </ul>
         )}
       </div>
+
+      <LabResultDialog result={openResult} onClose={() => setOpenResult(null)} />
     </div>
   );
 }

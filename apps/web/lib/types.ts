@@ -53,8 +53,21 @@ export interface Invoice {
   status: InvoiceStatus;
   totalKobo: string;
   issuedAt: string | null;
+  createdAt?: string | null;
   // Only present on GET /invoices/:id, not on the list endpoint.
   items?: InvoiceItem[];
+  facilityName?: string | null;
+  payment?: { reference: string; paidAt: string } | null;
+  lines?: InvoiceLine[];
+}
+
+// One billed service on an invoice, with the drugs recorded under a drug administration.
+export interface InvoiceLine {
+  id: string;
+  classificationId: string;
+  description: string;
+  amountKobo: string;
+  drugs: { id: string; name: string; strength: string; quantity: number }[];
 }
 
 export interface TimelineEvent {

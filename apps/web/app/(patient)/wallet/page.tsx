@@ -11,37 +11,10 @@ import { Badge } from "@/components/ui/Badge";
 import { BalanceAmount } from "@/components/patient/BalanceAmount";
 import { api } from "@/lib/api";
 import { useMyPatient } from "@/lib/useMyPatient";
-import type { Invoice, InvoiceComponent, InvoiceStatus, ServiceClassification } from "@/lib/types";
-
-const STATUS_VARIANT: Record<InvoiceStatus, "default" | "success" | "warning" | "critical"> = {
-  DRAFT: "default",
-  SENT: "warning",
-  PAID: "success",
-  VOID: "default",
-  OVERDUE: "critical",
-};
-
-const COMPONENT_LABELS: Record<InvoiceComponent, string> = {
-  NETWORK_FEE: "Network fee",
-  FACILITY_FEE: "Facility fee",
-  PROFESSIONAL_FEE: "Professional fee",
-  DRUG_COST: "Drug cost",
-};
-
-const CLASSIFICATION_LABELS: Record<ServiceClassification["name"], string> = {
-  SUBSCRIPTION: "Subscription",
-  CONSULTATION: "Clinical Consultation",
-  DRUG_ADMINISTRATION: "Drug Administration",
-  CHEMOTHERAPY: "Chemotherapy Session",
-  GENERAL_ADMISSION: "General Admission",
-  PROCEDURE: "Procedure",
-  SIDE_EFFECT_REPORT: "Side Effect Report",
-};
-
-// Formats a kobo string as a naira amount.
-function koboToNaira(kobo: string) {
-  return `₦${(Number(kobo) / 100).toLocaleString("en-NG", { minimumFractionDigits: 2 })}`;
-}
+import { InvoiceReceiptDialog } from "@/components/patient/InvoiceReceiptDialog";
+import { PendingInvoicesDialog } from "@/components/patient/PendingInvoicesDialog";
+import { CLASSIFICATION_LABELS, COMPONENT_LABELS, INVOICE_STATUS_VARIANT as STATUS_VARIANT, koboToNaira } from "@/lib/billing";
+import type { Invoice, ServiceClassification } from "@/lib/types";
 
 type View = "list" | "insufficient" | "unsuccessful" | "verified";
 
@@ -55,6 +28,8 @@ export default function WalletPage() {
   const [activeInvoice, setActiveInvoice] = useState<Invoice | null>(null);
   const [paying, setPaying] = useState(false);
   const [payError, setPayError] = useState<string | null>(null);
+  const [pendingOpen, setPendingOpen] = useState(false);
+  const [receipt, setReceipt] = useState<Invoice | null>(null);
 
   const loadInvoices = useCallback(async () => {
     if (!patient) return;
@@ -83,6 +58,18 @@ export default function WalletPage() {
     })();
   }, [loadInvoices]);
 
+  // A notification deep link (?invoice=<id>) opens that invoice's receipt once the invoices have loaded.
+  useEffect(() => {
+    if (loading) return;
+    const id = new URLSearchParams(window.location.search).get("invoice");
+    if (!id) return;
+    // The invoices arrive after the patient record does, so wait for them before giving up on the link.
+    const target = invoices.find((inv) => inv.id === id);
+    if (!target) return;
+    setReceipt(target);
+    window.history.replaceState(null, "", "/wallet");
+  }, [loading, invoices]);
+
   // Returns the classification name for an id.
   function classificationName(classificationId: string) {
     const found = classifications.find((c) => c.id === classificationId);
@@ -91,6 +78,8 @@ export default function WalletPage() {
 
   // Pays an invoice from the wallet.
   async function handlePay(invoice: Invoice) {
+    setReceipt(null);
+    setPendingOpen(false);
     setActiveInvoice(invoice);
     setPaying(true);
     setPayError(null);
@@ -297,10 +286,16 @@ export default function WalletPage() {
       </Card>
 
       <div className="flex gap-3">
-        <div className="flex-1 rounded-xl bg-critical-bg p-3.5">
+        <button
+          type="button"
+          onClick={() => setPendingOpen(true)}
+          className="flex-1 rounded-xl bg-critical-bg p-3.5 text-left transition-shadow hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+        >
           <p className="text-xs text-critical/70">Pending Invoices</p>
-          <p className="text-base font-bold text-neutral-900">{pendingInvoices.length} Items</p>
-        </div>
+          <p className="flex items-center justify-between text-base font-bold text-neutral-900">
+            {pendingInvoices.length} Items <ChevronRight className="size-4 text-critical/70" aria-hidden="true" />
+          </p>
+        </button>
         <div className="flex-1 rounded-xl bg-amber-bg p-3.5">
           <p className="text-xs text-amber-text">Last Payment</p>
           <p className="text-base font-bold text-neutral-900">
@@ -317,7 +312,14 @@ export default function WalletPage() {
         <ul className="space-y-3">
           {invoices.map((invoice) => (
             <li key={invoice.id}>
-              <Card className="p-3.5">
+              <Card
+                className="cursor-pointer p-3.5 transition-shadow hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+                role="button"
+                tabIndex={0}
+                aria-label={`View receipt for ${classificationName(invoice.classificationId)}`}
+                onClick={() => setReceipt(invoice)}
+                onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); setReceipt(invoice); } }}
+              >
                 <div className="mb-2 flex items-start justify-between">
                   <div>
                     <p className="text-sm font-bold text-neutral-900">{classificationName(invoice.classificationId)}</p>
@@ -338,8 +340,11 @@ export default function WalletPage() {
                     ))}
                   </div>
                 )}
+                <p className="mb-2 flex items-center gap-0.5 text-xs font-semibold text-primary">
+                  View full receipt <ChevronRight className="size-3.5" aria-hidden="true" />
+                </p>
                 {(invoice.status === "SENT" || invoice.status === "OVERDUE") && (
-                  <Button className="w-full" size="sm" onClick={() => handlePay(invoice)} loading={paying && activeInvoice?.id === invoice.id}>
+                  <Button className="w-full" size="sm" onClick={(e) => { e.stopPropagation(); handlePay(invoice); }} loading={paying && activeInvoice?.id === invoice.id}>
                     Confirm and Pay
                   </Button>
                 )}
@@ -348,6 +353,21 @@ export default function WalletPage() {
           ))}
         </ul>
       )}
+
+      <PendingInvoicesDialog
+        open={pendingOpen}
+        invoices={pendingInvoices}
+        serviceName={classificationName}
+        onClose={() => setPendingOpen(false)}
+        onSelect={(inv) => setReceipt(inv)}
+      />
+      <InvoiceReceiptDialog
+        invoice={receipt}
+        serviceName={classificationName}
+        onClose={() => setReceipt(null)}
+        onPay={handlePay}
+        paying={paying}
+      />
 
       {/* Pitch for auto-pay only: once it's on, the card has nothing left to say. */}
       {!wallet?.autoDeductEnabled && (
