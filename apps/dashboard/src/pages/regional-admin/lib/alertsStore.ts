@@ -18,6 +18,8 @@ export interface RegionAlert {
   actionTo: string;
   // Present for countdown and staffing alerts so callers can filter by region without this store depending on useAuth, avoiding an import cycle.
   facilityId?: string;
+  // When the underlying event happened, where the source knows it; alerts without one sort after dated ones.
+  at?: string;
 }
 
 interface AlertsState {
@@ -42,6 +44,12 @@ function publish(next: AlertsState): void {
   for (const notify of subscribers) notify();
 }
 
+// The most recent of the given timestamps, if any.
+function latestOf(...times: (string | null | undefined)[]): string | undefined {
+  const valid = times.filter((t): t is string => !!t);
+  return valid.length ? valid.reduce((a, b) => (new Date(a) > new Date(b) ? a : b)) : undefined;
+}
+
 // SLA-breached and escalated countdown cases.
 async function countdownAlerts(): Promise<RegionAlert[]> {
   const alerts: RegionAlert[] = [];
@@ -64,6 +72,7 @@ async function countdownAlerts(): Promise<RegionAlert[]> {
       actionLabel: "Open Countdown",
       actionTo: "/dashboard/regional-admin/countdown",
       facilityId: patient?.facilityId,
+      at: latestOf(c.reminderSentAt, c.resultsSentToQaAt, c.labsUploadedAt, c.labsPromptedAt),
     });
   }
 
@@ -105,10 +114,11 @@ async function staffingAlerts(region: string | null): Promise<RegionAlert[]> {
 // Open facility-level reconciliation variances.
 async function inventoryAlerts(region: string | null): Promise<RegionAlert[]> {
   const alerts: RegionAlert[] = [];
-  const variancesOpen = await api
-    .get<{ variancesOpen: number }>(`/inventory/overview${region ? `?region=${encodeURIComponent(region)}` : ""}`)
-    .then((d) => d.variancesOpen)
-    .catch(() => 0);
+  const overview = await api
+    .get<{ variancesOpen: number; latestVarianceAt: string | null }>(`/inventory/overview${region ? `?region=${encodeURIComponent(region)}` : ""}`)
+    .then((d) => d)
+    .catch(() => ({ variancesOpen: 0, latestVarianceAt: null }));
+  const { variancesOpen, latestVarianceAt } = overview;
   if (variancesOpen > 0) {
     alerts.push({
       id: "inventory-variance",
@@ -119,6 +129,7 @@ async function inventoryAlerts(region: string | null): Promise<RegionAlert[]> {
       detail: `${variancesOpen} ${variancesOpen === 1 ? "variance" : "variances"} awaiting review.`,
       actionLabel: "View Ledger",
       actionTo: "/dashboard/regional-admin/inventory",
+      at: latestVarianceAt ?? undefined,
     });
   }
 
@@ -142,6 +153,7 @@ async function securityAlerts(): Promise<RegionAlert[]> {
       detail: `A file was flagged ${incident.fileScanResult} by the safety scan and blocked, ${new Date(incident.createdAt).toLocaleString()}.`,
       actionLabel: "View Incident",
       actionTo: "/dashboard/regional-admin/security-incidents",
+      at: incident.createdAt,
     });
   }
 
@@ -179,6 +191,7 @@ async function inquiryAlerts(): Promise<RegionAlert[]> {
           : `Open inquiry approaching its SLA limit (${minutesSince}m, no reply yet).`,
         actionLabel: sla === "breached" ? "Open Chat" : "Reply",
         actionTo: "/dashboard/regional-admin/inquiry",
+        at: last.createdAt,
       };
       return alert;
     }),
@@ -187,7 +200,7 @@ async function inquiryAlerts(): Promise<RegionAlert[]> {
 }
 
 interface DrugAlertsResponse {
-  lowStock: { scope: "REGIONAL" | "NURSING_OFFICER"; drugId: string; drugName: string; drugStrength: string; quantity: number; reorderThreshold: number; officerId?: string; officerEmail?: string }[];
+  lowStock: { scope: "REGIONAL" | "NURSING_OFFICER"; drugId: string; drugName: string; drugStrength: string; quantity: number; reorderThreshold: number; officerId?: string; officerEmail?: string; lastActivityAt?: string | null }[];
   losses: { id: string; officerEmail: string; drugName: string; quantityLost: number; incidentType: string; reportedAt: string }[];
   variances: { id: string; scope: "REGIONAL" | "NURSING_OFFICER"; officerEmail: string | null; drugName: string; variance: number; periodEnd: string }[];
 }
@@ -202,21 +215,21 @@ async function drugAlerts(): Promise<RegionAlert[]> {
     source: "drug", severity: l.quantity <= 0 ? "critical" : "warning", badge: "LOW STOCK",
     title: `${l.drugName} ${l.drugStrength}`,
     detail: `${l.scope === "REGIONAL" ? "Regional stock" : l.officerEmail} is at ${l.quantity} (reorder at ${l.reorderThreshold}).`,
-    actionLabel: "View Stock", actionTo: to,
+    actionLabel: "View Stock", actionTo: to, at: l.lastActivityAt ?? undefined,
   }));
   const losses: RegionAlert[] = data.losses.map((l) => ({
     id: `drug-loss-${l.id}`,
     source: "drug", severity: "warning", badge: "DRUG LOSS",
     title: `${l.quantityLost} × ${l.drugName} lost`,
     detail: `${l.officerEmail} reported ${l.incidentType.toLowerCase()}, ${new Date(l.reportedAt).toLocaleString()}.`,
-    actionLabel: "View Losses", actionTo: to,
+    actionLabel: "View Losses", actionTo: to, at: l.reportedAt,
   }));
   const variances: RegionAlert[] = data.variances.map((v) => ({
     id: `drug-variance-${v.id}`,
     source: "drug", severity: "warning", badge: "STOCK VARIANCE",
     title: `${v.drugName} count off by ${v.variance > 0 ? "+" : ""}${v.variance}`,
     detail: `${v.scope === "REGIONAL" ? "Regional stock" : v.officerEmail}, counted for ${v.periodEnd}.`,
-    actionLabel: "Review Count", actionTo: to,
+    actionLabel: "Review Count", actionTo: to, at: v.periodEnd,
   }));
   return [...low, ...losses, ...variances];
 }
@@ -224,13 +237,13 @@ async function drugAlerts(): Promise<RegionAlert[]> {
 // VMO escalations to a Specialist Oncologist still awaiting a consult; the actionable work lives in the Notification Center's escalation section.
 async function escalationAlerts(): Promise<RegionAlert[]> {
   const rows = await api
-    .get<{ escalations: { id: string; status: string; triggerReason: string; firstName: string; lastName: string; facilityId: string }[] }>("/escalations?status=NOTIFIED")
+    .get<{ escalations: { id: string; status: string; triggerReason: string; firstName: string; lastName: string; facilityId: string; createdAt?: string }[] }>("/escalations?status=NOTIFIED")
     .then((d) => d.escalations)
     .catch(() => []);
   return rows.map((e) => ({
     id: `escalation-${e.id}`, source: "escalation" as const, severity: "critical" as const, badge: "SPECIALIST ESCALATION",
     title: `${e.firstName} ${e.lastName}`, detail: `${e.triggerReason} — needs a virtual consult with a Specialist Oncologist.`,
-    actionLabel: "Schedule consult", actionTo: "/dashboard/regional-admin/notifications#escalations", facilityId: e.facilityId,
+    actionLabel: "Schedule consult", actionTo: "/dashboard/regional-admin/notifications#escalations", facilityId: e.facilityId, at: e.createdAt,
   }));
 }
 
@@ -242,7 +255,16 @@ const ALERT_SOURCES: ((region: string | null) => Promise<RegionAlert[]>)[] = [
 // Runs every source in parallel and merges the results; a failing source contributes nothing rather than hiding the rest.
 async function fetchAlerts(region: string | null): Promise<RegionAlert[]> {
   const results = await Promise.all(ALERT_SOURCES.map((source) => source(region).catch(() => [] as RegionAlert[])));
-  return results.flat();
+  // Newest first, so the latest event sits on top; alerts with no known time keep their order after the dated ones.
+  const time = (a: RegionAlert) => (a.at ? new Date(a.at).getTime() : Number.NaN);
+  return results.flat().sort((a, b) => {
+    const ta = time(a);
+    const tb = time(b);
+    if (Number.isNaN(ta) && Number.isNaN(tb)) return 0;
+    if (Number.isNaN(ta)) return 1;
+    if (Number.isNaN(tb)) return -1;
+    return tb - ta;
+  });
 }
 
 // Loads alerts for a region, sharing an in-flight request.

@@ -1,4 +1,4 @@
-import { and, desc, eq, gte, inArray, isNull, lt, ne, sql, type SQL } from "drizzle-orm";
+import { and, desc, eq, gte, inArray, isNull, lt, max, ne, sql, type SQL } from "drizzle-orm";
 import { db } from "../../db/index.js";
 import { user } from "../auth/schema.js";
 import { facility } from "../facility/schema.js";
@@ -44,6 +44,8 @@ export class DrugSupplyRepository {
         officerId: user.id, officerEmail: user.email, facilityId: user.facilityId,
         drugId: drug.id, drugName: drug.name, drugStrength: drug.strength,
         reorderThreshold: drug.reorderThreshold, quantity: officerQty,
+        // The latest ledger movement for this officer's stock of the drug, i.e. when it last changed.
+        lastActivityAt: max(drugStockLedgerEntry.createdAt),
       })
       .from(drugStockLedgerEntry)
       .innerJoin(user, eq(drugStockLedgerEntry.nursingOfficerId, user.id))
@@ -62,6 +64,8 @@ export class DrugSupplyRepository {
       .select({
         drugId: drug.id, drugName: drug.name, drugStrength: drug.strength,
         reorderThreshold: drug.reorderThreshold, quantity: regionalQty,
+        // The latest regional ledger movement for the drug, i.e. when the pool last changed (null if it never has).
+        lastActivityAt: max(regionalDrugStockLedgerEntry.createdAt),
       })
       .from(drug)
       .leftJoin(regionalDrugStockLedgerEntry, join)

@@ -52,7 +52,7 @@ export function NotificationBridge({ children }: { children: ReactNode }) {
     const onNotification = (n: { type?: string }) => {
       window.dispatchEvent(new CustomEvent(NOTIFICATION_EVENT, { detail: n }));
       const id = nextId.current++;
-      setToasts((t) => [...t.slice(-3), { id, text: LIVE_TEXT[n.type ?? ""] ?? "You have a new notification." }]);
+      setToasts((t) => [{ id, text: LIVE_TEXT[n.type ?? ""] ?? "You have a new notification." }, ...t.slice(0, 3)]);
       setTimeout(() => setToasts((t) => t.filter((x) => x.id !== id)), 7000);
     };
     socket.on("notification:new", onNotification);

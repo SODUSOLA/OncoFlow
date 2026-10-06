@@ -55,6 +55,10 @@ export class InventoryService {
         status: v.status,
       })),
       variancesOpen: variances.length,
+      // When the most recent open variance was raised or last touched, so the alert can sort by latest activity.
+      latestVarianceAt: variances.length
+        ? new Date(Math.max(...variances.map((v) => Math.max(v.createdAt.getTime(), v.updatedAt.getTime())))).toISOString()
+        : null,
     };
   }
 
