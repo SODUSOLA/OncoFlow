@@ -7,6 +7,9 @@ const envSchema = z.object({
   DATABASE_URL: z.string().min(1, "DATABASE_URL is required"),
   REDIS_URL: z.string().min(1).default("redis://localhost:6379"),
   CORS_ORIGIN: z.string().optional(),
+  // How many reverse proxies sit in front of the API in production. Render's own proxy is 1; browser traffic that
+  // also passes through Vercel's rewrites makes it 2. Too low shows proxy addresses; too high lets clients spoof theirs.
+  TRUST_PROXY_HOPS: z.coerce.number().int().min(0).max(5).default(1),
   // Makes MFA mandatory for staff roles; a string enum because z.coerce.boolean() would turn "false" into true, and it defaults off until the dashboard has an MFA enrolment screen.
   MFA_ENFORCE_STAFF: z.enum(["true", "false"]).default("false"),
   // Largest file (bytes) accepted by POST /files/upload, default 10MB.
@@ -40,6 +43,7 @@ export const config = {
   databaseUrl: env.DATABASE_URL,
   redisUrl: env.REDIS_URL,
   corsOrigins: resolveCorsOrigins(),
+  trustProxyHops: env.TRUST_PROXY_HOPS,
   mfaEnforceStaff: env.MFA_ENFORCE_STAFF === "true",
   maxUploadBytes: env.MAX_UPLOAD_BYTES,
   // Upload JSON body limit: file limit inflated by 4/3 for base64 plus 1KB for the surrounding JSON fields.

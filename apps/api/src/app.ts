@@ -32,6 +32,10 @@ const UPLOAD_PATH = "/files/upload";
 export function createApp() {
   const app = express();
 
+  // Behind reverse proxies the real client address arrives in X-Forwarded-For. Trusting the right number of hops
+  // (TRUST_PROXY_HOPS) makes req.ip, rate limiting and audit logs see the user instead of a proxy.
+  if (config.isProduction && config.trustProxyHops > 0) app.set("trust proxy", config.trustProxyHops);
+
   // Security headers and CORS come first so every response, including errors, carries them.
   app.use(helmet());
   // Cross-origin requests are limited to the configured origins, with credentials allowed.
