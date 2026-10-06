@@ -201,16 +201,13 @@ export function ChatWidget() {
             <>
               <div className="flex-1 space-y-2.5 overflow-y-auto p-4">
                 {messages.map((m) => (
-                  <div
-                    key={m.id}
-                    className={`max-w-[85%] rounded-2xl px-3.5 py-2 text-sm ${
-                      m.senderType === "VISITOR" ? "ml-auto bg-primary text-white" : "bg-neutral-100 text-neutral-800"
-                    }`}
-                  >
-                    <p>{m.content}</p>
-                    <p className={`mt-0.5 text-[10px] ${m.senderType === "VISITOR" ? "text-white/60" : "text-neutral-400"}`}>
-                      {new Date(m.createdAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
-                    </p>
+                  <div key={m.id} className={`chat-row ${m.senderType === "VISITOR" ? "chat-row-sent" : "chat-row-received"}`}>
+                    <div className={`chat-bubble ${m.senderType === "VISITOR" ? "chat-bubble-sent" : "chat-bubble-received"}`}>
+                      <p>{m.content}</p>
+                      <p className={`chat-meta ${m.senderType === "VISITOR" ? "chat-meta-sent" : "chat-meta-received"}`}>
+                        {new Date(m.createdAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
+                      </p>
+                    </div>
                   </div>
                 ))}
                 <div ref={threadEndRef} />

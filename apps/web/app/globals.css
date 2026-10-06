@@ -105,3 +105,46 @@
     top: 1rem;
   }
 }
+
+/* Chat bubbles, shared by every conversation in the app: what you send is the OncoFlow deep blue on the right, what you receive is a
+   lighter neutral on the left. The colours are variables so they switch with a `.dark` class (or data-theme="dark")
+   on the root element when dark mode is added; nothing turns it on today. */
+:root {
+  --chat-sent-bg: #002147;
+  --chat-sent-fg: #ffffff;
+  --chat-sent-meta: rgb(255 255 255 / 0.75);
+  --chat-received-bg: #eef2f6;
+  --chat-received-fg: #172033;
+  --chat-received-meta: #66738a;
+  --chat-system-bg: #f1f3f6;
+  --chat-system-fg: #66738a;
+}
+.dark,
+[data-theme="dark"] {
+  --chat-sent-bg: #1f4e8c;
+  --chat-sent-fg: #ffffff;
+  --chat-sent-meta: rgb(255 255 255 / 0.8);
+  --chat-received-bg: #2a3446;
+  --chat-received-fg: #e8edf5;
+  --chat-received-meta: #9aa7bd;
+  --chat-system-bg: #212a3a;
+  --chat-system-fg: #9aa7bd;
+}
+.chat-row { display: flex; width: 100%; }
+.chat-row-sent { justify-content: flex-end; }
+.chat-row-received { justify-content: flex-start; }
+.chat-bubble {
+  max-width: 80%;
+  border-radius: 1rem;
+  padding: 0.5rem 0.875rem;
+  font-size: 0.875rem;
+  line-height: 1.4;
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+}
+.chat-bubble-sent { background: var(--chat-sent-bg); color: var(--chat-sent-fg); border-bottom-right-radius: 0.25rem; }
+.chat-bubble-received { background: var(--chat-received-bg); color: var(--chat-received-fg); border-bottom-left-radius: 0.25rem; }
+.chat-bubble-system { margin-inline: auto; background: var(--chat-system-bg); color: var(--chat-system-fg); font-style: italic; }
+.chat-meta { margin-top: 0.25rem; font-size: 0.625rem; }
+.chat-meta-sent { color: var(--chat-sent-meta); }
+.chat-meta-received { color: var(--chat-received-meta); }
