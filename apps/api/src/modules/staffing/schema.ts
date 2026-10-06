@@ -1,4 +1,5 @@
-import { pgTable, uuid, smallint, timestamp, boolean, integer } from "drizzle-orm/pg-core";
+import { pgTable, uuid, smallint, timestamp, boolean, integer, uniqueIndex } from "drizzle-orm/pg-core";
+import { sql } from "drizzle-orm";
 import { facility } from "../facility/schema.js";
 import { user } from "../auth/schema.js";
 
@@ -25,4 +26,9 @@ export const shiftAssignment = pgTable("shift_assignment", {
   assignedAt: timestamp("assigned_at").notNull().defaultNow(),
   publishedAt: timestamp("published_at"),
   isDeleted: boolean("is_deleted").notNull().default(false),
-});
+}, (t) => ({
+  // A nurse holds a shift once: assigning the same nurse to the same facility, day and week again is a duplicate.
+  oneNursePerShift: uniqueIndex("shift_assignment_one_nurse_per_shift")
+    .on(t.userId, t.facilityId, t.weekday, t.isoYear, t.isoWeek)
+    .where(sql`${t.isDeleted} = false`),
+}));

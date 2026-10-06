@@ -25,6 +25,7 @@ export function isStaffingConflict(day: { assigned: unknown[]; requiredCount: nu
   return day.assigned.length < day.requiredCount;
 }
 
+// Keyed like the staffing API's weekday: 0 = Monday through 6 = Sunday.
 export const WEEKDAY_NAMES: Record<number, string> = {
-  1: "Monday", 2: "Tuesday", 3: "Wednesday", 4: "Thursday", 5: "Friday",
+  0: "Monday", 1: "Tuesday", 2: "Wednesday", 3: "Thursday", 4: "Friday", 5: "Saturday", 6: "Sunday",
 };

@@ -121,6 +121,16 @@ describe("POST /staffing/assignments + /staffing/publish", () => {
     expect(monday.assigned[0].published).toBe(false);
   });
 
+  it("refuses to assign the same nurse to the same shift twice, but allows another day", async () => {
+    const body = { facilityId: testFacilityId, weekday: 0, isoYear: 2026, isoWeek: 2, userId: nurseUserId };
+    const dup = await request(app).post("/staffing/assignments").set("Cookie", regionalAdminCookie).send(body);
+    expect(dup.status).toBe(409);
+    expect(dup.body.error).toContain("already assigned");
+
+    const otherDay = await request(app).post("/staffing/assignments").set("Cookie", regionalAdminCookie).send({ ...body, weekday: 3 });
+    expect(otherDay.status).toBe(201);
+  });
+
   it("refuses to roster a nurse at a facility other than their own, and hides legacy cross-support from the nurse", async () => {
     const otherFacility = (await db.insert(facility).values({
       id: crypto.randomUUID(), name: "Staffing Other Facility", region: "Test Region", address: "S2 St", status: "ACTIVE",

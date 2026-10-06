@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Lock, TriangleAlert, ChevronLeft, ChevronRight, LayoutList, Map as MapIcon } from "lucide-react";
+import { Lock, TriangleAlert, ChevronLeft, ChevronRight, LayoutList, Map as MapIcon, X } from "lucide-react";
 import { api } from "../../../lib/api";
 import { useAuth } from "../../../lib/auth";
 import type { Patient } from "../../../lib/types";
@@ -211,10 +211,13 @@ export default function SchedulingPage() {
   const [publishing, setPublishing] = useState(false);
   const [publishResult, setPublishResult] = useState<string | null>(null);
 
-  const [assigning, setAssigning] = useState<{ facilityId: string; weekday: number } | null>(null);
-  const [eligibleNurses, setEligibleNurses] = useState<Nurse[]>([]);
+  // The facility dialog: which facility is open and, once the admin starts assigning, which weekday.
+  const [dialog, setDialog] = useState<{ facilityId: string; weekday: number | null } | null>(null);
+  const [eligibleNurses, setEligibleNurses] = useState<Nurse[] | null>(null);
   const [selectedNurseId, setSelectedNurseId] = useState("");
   const [assignLoading, setAssignLoading] = useState(false);
+  const [assignError, setAssignError] = useState<string | null>(null);
+  const [assignNotice, setAssignNotice] = useState<string | null>(null);
   const [viewMode, setViewMode] = useState<"list" | "map">("list");
   const [page, setPage] = useState(0);
   const tableRef = useRef<HTMLDivElement>(null);
@@ -272,10 +275,13 @@ export default function SchedulingPage() {
     return required === 0 ? 100 : Math.round((assigned / required) * 100);
   }
 
-  // Opens the assign-nurse dialog for a facility and weekday.
-  async function openAssign(facilityId: string, weekday: number) {
-    setAssigning({ facilityId, weekday });
+  // Opens the facility dialog; with a weekday it goes straight to assigning that day, without one it just shows the week.
+  async function openFacility(facilityId: string, weekday: number | null) {
+    setDialog({ facilityId, weekday });
     setSelectedNurseId("");
+    setAssignError(null);
+    setAssignNotice(null);
+    setEligibleNurses(null);
     try {
       const res = await api.get<{ nurses: Nurse[] }>(`/staffing/eligible-nurses?facilityId=${facilityId}`);
       setEligibleNurses(res.nurses);
@@ -284,22 +290,41 @@ export default function SchedulingPage() {
     }
   }
 
-  // Assigns the selected nurse.
+  function closeDialog() {
+    setDialog(null);
+    setSelectedNurseId("");
+    setAssignError(null);
+    setAssignNotice(null);
+  }
+
+  // Assigns the selected nurse to the chosen day, keeping the dialog open so the admin sees the roster update.
   async function confirmAssign() {
-    if (!assigning || !selectedNurseId) return;
+    if (!dialog || dialog.weekday === null || !selectedNurseId) return;
     setAssignLoading(true);
+    setAssignError(null);
+    setAssignNotice(null);
     try {
       await api.post("/staffing/assignments", {
-        facilityId: assigning.facilityId, weekday: assigning.weekday, isoYear, isoWeek, userId: selectedNurseId,
+        facilityId: dialog.facilityId, weekday: dialog.weekday, isoYear, isoWeek, userId: selectedNurseId,
       });
-      setAssigning(null);
+      const nurse = eligibleNurses?.find((n) => n.id === selectedNurseId);
+      setAssignNotice(`${nurse?.email ?? "Nurse"} assigned to ${WEEKDAY_LABELS[dialog.weekday]}`);
+      setSelectedNurseId("");
+      setDialog({ facilityId: dialog.facilityId, weekday: null });
       load();
-    } catch {
-      // Left open on failure so the admin can retry without re-selecting the facility/day.
+    } catch (err) {
+      setAssignError(err instanceof Error ? err.message : "Could not assign the nurse");
     } finally {
       setAssignLoading(false);
     }
   }
+
+  const dialogRow = dialog ? rows.find((r) => r.facility.id === dialog.facilityId) ?? null : null;
+  // A nurse already on the chosen day can't be picked again.
+  const assignedOnDay = new Set(
+    dialogRow && dialog && dialog.weekday !== null ? dialogRow.weekdays[dialog.weekday]?.assigned.map((a) => a.userId) : [],
+  );
+  const availableNurses = (eligibleNurses ?? []).filter((n) => !assignedOnDay.has(n.id));
 
   // Publishes the week's schedule.
   async function publishSchedule() {
@@ -475,12 +500,12 @@ export default function SchedulingPage() {
                       })}
                       <td className="px-4 py-3">
                         {severity === "critical" && shortDay ? (
-                          <Button onClick={() => openAssign(row.facility.id, shortDay.weekday)} size="sm" className="rounded-admin-xs bg-admin-danger hover:bg-admin-danger/90">
+                          <Button onClick={() => openFacility(row.facility.id, shortDay.weekday)} size="sm" className="rounded-admin-xs bg-admin-danger hover:bg-admin-danger/90">
                             Assign Nurse
                           </Button>
                         ) : severity === "partial" && shortDay ? (
                           <Button
-                            onClick={() => openAssign(row.facility.id, shortDay.weekday)}
+                            onClick={() => openFacility(row.facility.id, shortDay.weekday)}
                             variant="outline"
                             size="sm"
                             className="rounded-admin-xs border-admin-warning text-admin-warning hover:bg-admin-warning/10"
@@ -488,7 +513,7 @@ export default function SchedulingPage() {
                             Review Gaps
                           </Button>
                         ) : (
-                          <Button variant="outline" size="sm" title={`${rowUtilization(row)}% staffed`} className="rounded-admin-xs border-admin-border text-admin-text">
+                          <Button onClick={() => openFacility(row.facility.id, null)} variant="outline" size="sm" title={`${rowUtilization(row)}% staffed`} className="rounded-admin-xs border-admin-border text-admin-text">
                             View Details
                           </Button>
                         )}
@@ -521,31 +546,104 @@ export default function SchedulingPage() {
         </div>
       </Card>
 
-      {assigning && (
-        <Card className="border-admin-border p-4">
-          <p className="mb-2 text-admin-body-sm font-semibold text-admin-text">
-            Assign Nurse — {WEEKDAY_LABELS[assigning.weekday]}
-          </p>
-          <div className="flex items-center gap-2">
-            <select
-              value={selectedNurseId}
-              onChange={(e) => setSelectedNurseId(e.target.value)}
-              className="flex-1 rounded-admin-sm border border-admin-border px-3 py-2 text-admin-body-sm"
-            >
-              <option value="">Select nurse...</option>
-              {eligibleNurses.map((n) => (
-                <option key={n.id} value={n.id}>{n.email}</option>
-              ))}
-            </select>
-            <Button onClick={confirmAssign} loading={assignLoading} disabled={!selectedNurseId} size="sm" className="rounded-admin-xs bg-admin-sidebar-cta hover:bg-admin-sidebar-cta/90">
-              Assign
-            </Button>
-            <Button onClick={() => setAssigning(null)} variant="ghost" size="sm">Cancel</Button>
-          </div>
-          {eligibleNurses.length === 0 && (
-            <p className="mt-2 text-admin-caption text-admin-text-secondary">No Onsite Nursing Officer is linked to this facility yet.</p>
-          )}
-        </Card>
+      {dialog && dialogRow && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" role="dialog" aria-modal="true" aria-label={`${dialogRow.facility.name} staffing`}>
+          <Card className="max-h-[90vh] w-full max-w-2xl overflow-y-auto border-admin-border p-6">
+            <div className="flex items-start justify-between gap-3">
+              <div>
+                <h2 className="text-admin-h4 text-admin-text">{dialogRow.facility.name}</h2>
+                <p className="text-admin-caption text-admin-text-secondary">Week {isoWeek} · {rowUtilization(dialogRow)}% staffed</p>
+              </div>
+              <button onClick={closeDialog} aria-label="Close" className="text-admin-text-secondary hover:text-admin-text">
+                <X className="size-5" aria-hidden="true" />
+              </button>
+            </div>
+
+            <table className="mt-4 w-full text-admin-body-sm">
+              <thead className="border-b border-admin-border text-left text-admin-caption text-admin-text-secondary">
+                <tr>
+                  <th className="py-2 pr-3 font-medium">Day</th>
+                  <th className="py-2 pr-3 font-medium">Staffed</th>
+                  <th className="py-2 pr-3 font-medium">Assigned nurses</th>
+                  <th className="py-2 font-medium" />
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-admin-border">
+                {dialogRow.weekdays.slice(0, 5).map((day) => {
+                  const short = isStaffingConflict(day);
+                  return (
+                    <tr key={day.weekday} className={dialog.weekday === day.weekday ? "bg-admin-card-alt" : undefined}>
+                      <td className="py-2.5 pr-3 font-medium text-admin-text">{WEEKDAY_LABELS[day.weekday]}</td>
+                      <td className="py-2.5 pr-3">
+                        <span className={cn(
+                          "inline-block rounded-admin-xs px-2 py-0.5 text-admin-caption font-medium",
+                          short ? "bg-admin-danger/10 text-admin-danger-text" : "bg-admin-success/10 text-admin-success",
+                        )}>
+                          {day.assigned.length}/{day.requiredCount}
+                        </span>
+                      </td>
+                      <td className="py-2.5 pr-3">
+                        {day.assigned.length === 0 ? (
+                          <span className="text-admin-caption text-admin-text-secondary">No nurses assigned</span>
+                        ) : (
+                          <ul className="space-y-0.5">
+                            {day.assigned.map((a) => (
+                              <li key={a.userId} className="flex items-center gap-2 text-admin-caption text-admin-text">
+                                {a.email}
+                                <Badge variant={a.published ? "success" : "neutral"}>{a.published ? "Published" : "Draft"}</Badge>
+                              </li>
+                            ))}
+                          </ul>
+                        )}
+                      </td>
+                      <td className="py-2.5 text-right">
+                        <Button
+                          onClick={() => { setDialog({ facilityId: dialog.facilityId, weekday: day.weekday }); setSelectedNurseId(""); setAssignError(null); setAssignNotice(null); }}
+                          variant="outline"
+                          size="sm"
+                          className="rounded-admin-xs"
+                        >
+                          Assign
+                        </Button>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+
+            {assignNotice && <p role="status" className="mt-3 text-admin-body-sm text-admin-success">{assignNotice}</p>}
+
+            {dialog.weekday !== null && (
+              <div className="mt-4 rounded-admin-sm border border-admin-border p-4">
+                <p className="mb-2 text-admin-body-sm font-semibold text-admin-text">Assign nurse — {WEEKDAY_LABELS[dialog.weekday]}</p>
+                <div className="flex items-center gap-2">
+                  <select
+                    value={selectedNurseId}
+                    onChange={(e) => setSelectedNurseId(e.target.value)}
+                    className="flex-1 rounded-admin-sm border border-admin-border px-3 py-2 text-admin-body-sm"
+                  >
+                    <option value="">Select nurse...</option>
+                    {availableNurses.map((n) => (
+                      <option key={n.id} value={n.id}>{n.email}</option>
+                    ))}
+                  </select>
+                  <Button onClick={confirmAssign} loading={assignLoading} disabled={!selectedNurseId} size="sm" className="rounded-admin-xs bg-admin-sidebar-cta hover:bg-admin-sidebar-cta/90">
+                    Assign
+                  </Button>
+                  <Button onClick={() => { setDialog({ facilityId: dialog.facilityId, weekday: null }); setAssignError(null); }} variant="ghost" size="sm">Cancel</Button>
+                </div>
+                {eligibleNurses !== null && eligibleNurses.length === 0 && (
+                  <p className="mt-2 text-admin-caption text-admin-text-secondary">No Onsite Nursing Officer is linked to this facility yet.</p>
+                )}
+                {eligibleNurses !== null && eligibleNurses.length > 0 && availableNurses.length === 0 && (
+                  <p className="mt-2 text-admin-caption text-admin-text-secondary">Every nurse at this facility is already assigned to {WEEKDAY_LABELS[dialog.weekday]}.</p>
+                )}
+                {assignError && <p role="alert" className="mt-2 text-admin-caption text-admin-danger">{assignError}</p>}
+              </div>
+            )}
+          </Card>
+        </div>
       )}
 
       <TransferPanel patients={patients.filter((p) => facilitiesInRegion.some((f) => f.id === p.facilityId))} />

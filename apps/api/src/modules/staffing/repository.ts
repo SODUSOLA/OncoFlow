@@ -36,6 +36,19 @@ export class ShiftAssignmentRepository {
       ));
   }
 
+  // True when the nurse already holds this facility/day/week shift.
+  async exists(data: { userId: string; facilityId: string; weekday: number; isoYear: number; isoWeek: number }) {
+    const rows = await db.select({ id: shiftAssignment.id }).from(shiftAssignment).where(and(
+      eq(shiftAssignment.userId, data.userId),
+      eq(shiftAssignment.facilityId, data.facilityId),
+      eq(shiftAssignment.weekday, data.weekday),
+      eq(shiftAssignment.isoYear, data.isoYear),
+      eq(shiftAssignment.isoWeek, data.isoWeek),
+      eq(shiftAssignment.isDeleted, false),
+    )).limit(1);
+    return rows.length > 0;
+  }
+
   // Inserts a shift assignment.
   async create(data: typeof shiftAssignment.$inferInsert) {
     const row = await db.insert(shiftAssignment).values(data).returning();

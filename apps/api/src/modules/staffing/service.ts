@@ -10,6 +10,7 @@ const requirementRepo = new ShiftRequirementRepository();
 const assignmentRepo = new ShiftAssignmentRepository();
 const facilityRepo = new FacilityRepository();
 
+export const ALREADY_ASSIGNED_MESSAGE = "This nurse is already assigned to that shift";
 export const CROSS_SUPPORT_MESSAGE = "Cross-facility support is not available: a nurse can only be assigned to their own facility";
 
 // Business logic for weekly nurse staffing.
@@ -51,6 +52,7 @@ export class StaffingService {
     const [nurse] = await db.select({ facilityId: user.facilityId }).from(user).where(eq(user.id, data.userId)).limit(1);
     if (!nurse) throw new NotFoundError("Nurse not found");
     if (nurse.facilityId !== data.facilityId) throw new ConflictError(CROSS_SUPPORT_MESSAGE);
+    if (await assignmentRepo.exists(data)) throw new ConflictError(ALREADY_ASSIGNED_MESSAGE);
     return assignmentRepo.create({ id: crypto.randomUUID(), ...data, assignedAt: new Date() });
   }
 
