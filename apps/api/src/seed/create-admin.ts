@@ -4,13 +4,12 @@ import { db } from "../db/index.js";
 import { user, userRole } from "../db/schema.js";
 import { User } from "../modules/auth/index.js";
 
-// Creates the first Super Admin from ADMIN_EMAIL and ADMIN_PASSWORD (run once, from a shell, after the reference seed).
-// An existing account with that email is left alone apart from making sure it holds the role, so this never resets a password.
-async function createAdmin() {
-  const email = process.env.ADMIN_EMAIL?.trim().toLowerCase();
-  const password = process.env.ADMIN_PASSWORD;
-  if (!email || !password) throw new Error("Set ADMIN_EMAIL and ADMIN_PASSWORD");
-  if (password.length < 12) throw new Error("ADMIN_PASSWORD must be at least 12 characters");
+// Makes sure a Super Admin exists for the email. An existing account is left alone apart from making sure it holds
+// the role, so this never resets a password.
+export async function ensureAdmin(opts: { email: string; password: string; firstName?: string; lastName?: string }) {
+  const email = opts.email.trim().toLowerCase();
+  if (!email || !opts.password) throw new Error("Set ADMIN_EMAIL and ADMIN_PASSWORD");
+  if (opts.password.length < 12) throw new Error("ADMIN_PASSWORD must be at least 12 characters");
 
   const roleRows = await db.execute<{ id: string }>(sql`SELECT id FROM "role" WHERE name = 'SUPER_ADMIN' LIMIT 1`);
   if (roleRows.length === 0) throw new Error("SUPER_ADMIN role not found — run the reference seed first (npm run seed:production)");
@@ -23,8 +22,8 @@ async function createAdmin() {
   } else {
     userId = crypto.randomUUID();
     await db.insert(user).values({
-      id: userId, email, firstName: process.env.ADMIN_FIRST_NAME ?? "System", lastName: process.env.ADMIN_LAST_NAME ?? "Administrator",
-      passwordHash: await User.hashPassword(password), status: "ACTIVE", mfaEnabled: false, facilityId: null,
+      id: userId, email, firstName: opts.firstName ?? "System", lastName: opts.lastName ?? "Administrator",
+      passwordHash: await User.hashPassword(opts.password), status: "ACTIVE", mfaEnabled: false, facilityId: null,
     });
     console.log(`Created ${email}`);
   }
@@ -34,10 +33,17 @@ async function createAdmin() {
     await db.insert(userRole).values({ id: crypto.randomUUID(), userId, roleId: roleRows[0]!.id });
     console.log("Assigned SUPER_ADMIN");
   }
-  process.exit(0);
 }
 
-createAdmin().catch((err) => {
-  console.error(err instanceof Error ? err.message : err);
-  process.exit(1);
-});
+// Runs only when invoked directly, reading ADMIN_EMAIL and ADMIN_PASSWORD.
+if (import.meta.url === `file://${process.argv[1]}`) {
+  ensureAdmin({
+    email: process.env.ADMIN_EMAIL ?? "", password: process.env.ADMIN_PASSWORD ?? "",
+    firstName: process.env.ADMIN_FIRST_NAME, lastName: process.env.ADMIN_LAST_NAME,
+  })
+    .then(() => process.exit(0))
+    .catch((err) => {
+      console.error(err instanceof Error ? err.message : err);
+      process.exit(1);
+    });
+}
