@@ -148,3 +148,19 @@
 .chat-meta { margin-top: 0.25rem; font-size: 0.625rem; }
 .chat-meta-sent { color: var(--chat-sent-meta); }
 .chat-meta-received { color: var(--chat-received-meta); }
+
+/* Small red count of unread messages, shown on the right of a conversation in a list. */
+.unread-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 1.125rem;
+  height: 1.125rem;
+  padding: 0 0.3rem;
+  border-radius: 9999px;
+  background: #d92d20;
+  color: #ffffff;
+  font-size: 0.6875rem;
+  font-weight: 700;
+  line-height: 1;
+}

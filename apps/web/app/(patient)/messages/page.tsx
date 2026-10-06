@@ -211,6 +211,17 @@ function MessagesPageInner() {
     })();
   }, [loading, patient, conversations, searchParams, router]);
 
+  // A notification deep link (?conversation=<id>) opens that thread once the list has loaded.
+  const deepLinkedRef = useRef(false);
+  useEffect(() => {
+    const id = searchParams.get("conversation");
+    if (!id || deepLinkedRef.current || loading || !patient) return;
+    deepLinkedRef.current = true;
+    const target = conversations.find((c) => c.id === id);
+    if (target) void openConversation(target);
+    router.replace("/messages");
+  }, [loading, patient, conversations, searchParams, router]);
+
   useEffect(() => {
     if (!selected || selected.status !== "CLOSED" || selected.conversationType !== "MO_SIDE_EFFECT") return;
     api.get<{ feedback: ConversationFeedback[] }>(`/conversations/${selected.id}/feedback`)
@@ -249,6 +260,9 @@ function MessagesPageInner() {
     try {
       const res = await api.get<{ messages: Message[] }>(`/conversations/${conversation.id}/messages`);
       setMessages(res.messages);
+      // Opening the thread reads it, so the Chat tab's unread badge and this list's counts refresh.
+      window.dispatchEvent(new Event("chat:unread-changed"));
+      void loadConversations();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to load messages");
     }
@@ -564,29 +578,23 @@ function MessagesPageInner() {
           ) : (
             messages.map((m) => {
               const isMine = m.senderId === patient.userId;
+              const system = m.type === "SYSTEM";
               return (
-                <div
-                  key={m.id}
-                  className={`max-w-[80%] rounded-2xl px-4 py-2 text-sm ${
-                    m.type === "SYSTEM"
-                      ? "mx-auto bg-neutral-100 text-neutral-500 italic"
-                      : isMine
-                        ? "ml-auto bg-primary text-white"
-                        : "bg-neutral-100 text-neutral-800"
-                  }`}
-                >
-                  {m.type === "TEXT" || m.type === "SYSTEM" ? (
-                    <p>{m.content}</p>
-                  ) : (
-                    <MessageAttachment type={m.type} fileId={m.content} />
-                  )}
-                  {isMine && m.type !== "SYSTEM" ? (
-                    <DeliveryStatus status={m.status} />
-                  ) : (
-                    <p className="mt-1 text-[10px] text-neutral-400">
-                      {new Date(m.createdAt).toLocaleTimeString()}
-                    </p>
-                  )}
+                <div key={m.id} className={system ? "flex" : `chat-row ${isMine ? "chat-row-sent" : "chat-row-received"}`}>
+                  <div className={`chat-bubble ${system ? "chat-bubble-system" : isMine ? "chat-bubble-sent" : "chat-bubble-received"}`}>
+                    {m.type === "TEXT" || m.type === "SYSTEM" ? (
+                      <p>{m.content}</p>
+                    ) : (
+                      <MessageAttachment type={m.type} fileId={m.content} />
+                    )}
+                    {isMine && !system ? (
+                      <DeliveryStatus status={m.status} />
+                    ) : (
+                      <p className="chat-meta chat-meta-received">
+                        {new Date(m.createdAt).toLocaleTimeString()}
+                      </p>
+                    )}
+                  </div>
                 </div>
               );
             })
@@ -723,7 +731,8 @@ function MessagesPageInner() {
         <Card className="text-center text-sm text-neutral-400">No conversations yet</Card>
       ) : (
         <ul className="space-y-3">
-          {conversations.map((c) => {
+          {/* Most recently active first; a conversation with no messages yet keeps its place after the others. */}
+          {[...conversations].sort((a, b) => (b.lastMessage ? new Date(b.lastMessage.createdAt).getTime() : 0) - (a.lastMessage ? new Date(a.lastMessage.createdAt).getTime() : 0)).map((c) => {
             const Icon = TYPE_ICONS[c.conversationType];
             return (
               <li key={c.id}>
@@ -744,9 +753,16 @@ function MessagesPageInner() {
                           </span>
                         )}
                       </div>
-                      <p className="truncate text-xs text-neutral-500">
-                        {lastMessagePreview(c, patient?.userId)}
-                      </p>
+                      <div className="flex items-center justify-between gap-2">
+                        <p className={`truncate text-xs ${c.unreadCount ? "font-semibold text-neutral-800" : "text-neutral-500"}`}>
+                          {lastMessagePreview(c, patient?.userId)}
+                        </p>
+                        {!!c.unreadCount && (
+                          <span className="unread-badge shrink-0" aria-label={`${c.unreadCount} unread ${c.unreadCount === 1 ? "message" : "messages"}`}>
+                            {c.unreadCount > 99 ? "99+" : c.unreadCount}
+                          </span>
+                        )}
+                      </div>
                     </div>
                     <SlaBadge conversation={c} />
                   </Card>

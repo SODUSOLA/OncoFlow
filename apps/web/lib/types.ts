@@ -86,6 +86,8 @@ export interface Conversation {
   firstResponseAt: string | null;
   slaBreached: boolean;
   assignedTo: string | null;
+  // Messages from the other side that haven't been read yet.
+  unreadCount?: number;
   // Latest message for the list preview; null if none, and callers must branch on type since content is a file id for IMAGE and VOICE.
   lastMessage: {
     id: string;
