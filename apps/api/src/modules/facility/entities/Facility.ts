@@ -7,6 +7,7 @@ export interface FacilityData {
   name: string;
   region: string;
   address: string;
+  description?: string | null;
   // Drizzle returns numeric columns as strings; null when a facility has no coordinates yet.
   latitude: string | null;
   longitude: string | null;

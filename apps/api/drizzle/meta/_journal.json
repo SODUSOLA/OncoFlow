@@ -218,6 +218,13 @@
       "when": 1791224408176,
       "tag": "0030_invoice_lines_and_flat_prices",
       "breakpoints": true
+    },
+    {
+      "idx": 31,
+      "version": "7",
+      "when": 1791272415345,
+      "tag": "0031_facility_description",
+      "breakpoints": true
     }
   ]
 }
