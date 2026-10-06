@@ -19,6 +19,9 @@
     "db:migrate": "drizzle-kit migrate",
     "db:push": "tsc --outDir dist && drizzle-kit push",
     "db:studio": "tsc --outDir dist && drizzle-kit studio",
+    "seed:production": "tsx src/seed/production.ts",
+    "seed:demo": "tsx src/seed/index.ts",
+    "create-admin": "tsx src/seed/create-admin.ts",
     "depcruise": "depcruise src --config .dependency-cruiser.js",
     "ci": "npm run typecheck && npm run lint && npm run depcruise && npm run test"
   },
