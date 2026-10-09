@@ -113,15 +113,22 @@ export function RegisterWizard() {
   const [submitting, setSubmitting] = useState(false);
   const [done, setDone] = useState(false);
   const [facilities, setFacilities] = useState<Facility[]>([]);
+  const [facilitiesStatus, setFacilitiesStatus] = useState<"loading" | "ready" | "error">("loading");
   const [facilityQuery, setFacilityQuery] = useState("");
   const [geo, setGeo] = useState<GeoState>({ status: "idle" });
   const [consent, setConsent] = useState(false);
   const shouldReduceMotion = useReducedMotion();
 
-  useEffect(() => {
+  // Loads the centres; also the Try again button, since the first request after the API has been idle can be slow or fail.
+  function loadFacilities() {
+    setFacilitiesStatus("loading");
     api.get<{ facilities: Facility[] }>("/facilities")
-      .then((res) => setFacilities(res.facilities))
-      .catch(() => setFacilities([]));
+      .then((res) => { setFacilities(res.facilities); setFacilitiesStatus("ready"); })
+      .catch(() => { setFacilities([]); setFacilitiesStatus("error"); });
+  }
+
+  useEffect(() => {
+    loadFacilities();
   }, []);
 
   // Asks for location only when the patient reaches the facility step, rather than prompting on page load.
@@ -408,9 +415,20 @@ export function RegisterWizard() {
                     );
                   })}
                   {rankedFacilities.length === 0 && (
-                    <p className="rounded-xl border border-dashed border-neutral-200 p-6 text-center text-sm text-neutral-500">
-                      {facilities.length === 0 ? "Loading centres…" : "No centres match that search."}
-                    </p>
+                    <div className="rounded-xl border border-dashed border-neutral-200 p-6 text-center text-sm text-neutral-500">
+                      {facilitiesStatus === "loading" && <p>Loading centres… this can take up to a minute the first time.</p>}
+                      {facilitiesStatus === "error" && (
+                        <>
+                          <p role="alert" className="text-warning">We couldn&apos;t load the list of centres.</p>
+                          <Button type="button" variant="outline" size="sm" className="mt-3" onClick={loadFacilities}>
+                            Try again
+                          </Button>
+                        </>
+                      )}
+                      {facilitiesStatus === "ready" && (
+                        <p>{facilities.length === 0 ? "No centres are available yet. Please try again later." : "No centres match that search."}</p>
+                      )}
+                    </div>
                   )}
                 </div>
               </fieldset>
