@@ -1,7 +1,7 @@
 import { sql } from "drizzle-orm";
 import { db } from "../db/index.js";
 import { seedReferenceData } from "./production.js";
-import { ensureAdmin } from "./create-admin.js";
+import { ensureAdmin, ensureStaffAccount } from "./create-admin.js";
 
 // First-boot setup for hosts with no shell (for example Render's free plan), run after the migrations on every start
 // and cheap once done: it seeds the reference data only into an empty database, and creates the admin named by
@@ -20,6 +20,25 @@ async function bootstrap() {
     await ensureAdmin({ email, password, firstName: process.env.ADMIN_FIRST_NAME, lastName: process.env.ADMIN_LAST_NAME });
   } else {
     console.log("ADMIN_EMAIL / ADMIN_PASSWORD not set, skipping admin creation.");
+  }
+
+  // The first Regional Admin, which the app cannot create itself (provisioning only covers field roles). They are placed
+  // at REGIONAL_ADMIN_FACILITY (a name or part of one), or the first facility alphabetically, and their region follows it.
+  const raEmail = process.env.REGIONAL_ADMIN_EMAIL;
+  const raPassword = process.env.REGIONAL_ADMIN_PASSWORD;
+  if (raEmail && raPassword) {
+    const wanted = process.env.REGIONAL_ADMIN_FACILITY?.trim();
+    const rows = await db.execute<{ id: string; name: string }>(
+      wanted
+        ? sql`SELECT id, name FROM facility WHERE is_deleted = false AND name ILIKE ${`%${wanted}%`} ORDER BY name LIMIT 1`
+        : sql`SELECT id, name FROM facility WHERE is_deleted = false ORDER BY name LIMIT 1`,
+    );
+    if (!rows[0]) throw new Error(`No facility found for REGIONAL_ADMIN_FACILITY="${wanted ?? ""}"`);
+    console.log(`Regional Admin will be placed at ${rows[0].name}`);
+    await ensureStaffAccount({
+      email: raEmail, password: raPassword, roleName: "REGIONAL_ADMIN", facilityId: rows[0].id,
+      firstName: process.env.REGIONAL_ADMIN_FIRST_NAME ?? "Regional", lastName: process.env.REGIONAL_ADMIN_LAST_NAME ?? "Admin",
+    });
   }
 }
 
